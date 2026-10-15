@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "vadimcn.vscode-lldb",
+        "anthropic.claude-code",
+        "editorconfig.editorconfig",
+        "github.vscode-github-actions",
+        "esbenp.prettier-vscode",
+        "tauri-apps.tauri-vscode",
+        "mtsmfm.vscode-stl-viewer",
+        "tamasfe.even-better-toml",
+        "usernamehw.errorlens"
+    ]
+}
