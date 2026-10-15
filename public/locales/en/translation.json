@@ -1,11 +1,184 @@
 {
   "title": "Frederic Coultier",
-  "logosHint": "Click on the Tauri, Vite, and React logos to learn more.",
-  "namePlaceholder": "Enter a name...",
-  "greetButton": "Greet",
-  "greeting": "Hello, {{name}}! You've been greeted from the app.",
   "checkUpdates": "Check for updates",
   "upToDate": "You're up to date.",
   "downloading": "Downloading {{version}}...",
-  "language": "Language"
+  "language": "Language",
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "done": "Done"
+  },
+  "app": {
+    "panes": "Panes"
+  },
+  "menu": {
+    "file": "File",
+    "project": "Project",
+    "help": "Help",
+    "new": "New project",
+    "open": "Open…",
+    "save": "Save",
+    "saveAs": "Save as…",
+    "export": "Export…",
+    "close": "Close project",
+    "settings": "Project settings…",
+    "settingsShort": "Settings"
+  },
+  "file": {
+    "untitled": "Untitled",
+    "saved": "Saved {{name}}",
+    "discard": "Discard unsaved changes?",
+    "name": "File name"
+  },
+  "welcome": {
+    "tagline": "Design jewelry by chatting. Projects are saved as .fc files.",
+    "new": "New project",
+    "open": "Open project…",
+    "recent": "Recent"
+  },
+  "source": {
+    "title": "Source",
+    "readonly": "read-only",
+    "copy": "Copy source"
+  },
+  "chat": {
+    "title": "Chat",
+    "emptyTitle": "What shall we design?",
+    "emptyHint": "Describe a piece, its stones and measurements. Attach reference photos if you have them.",
+    "s1": "A signet ring with an engraved initial",
+    "s2": "Pendant with a pear-cut stone in a bezel",
+    "s3": "Stud earrings with 4 mm round stones",
+    "placeholder": "Describe your piece or a change…",
+    "hint": "Enter to send · Shift+Enter for a new line",
+    "send": "Send",
+    "attach": "Attach reference photo",
+    "thinking": "Thinking",
+    "mockReply": "Done — I updated the model and re-rendered it. Have a look at the preview and tell me what to adjust."
+  },
+  "preview": {
+    "title": "Preview",
+    "views": "Camera views",
+    "view": {
+      "front": "Front",
+      "right": "Right",
+      "back": "Back",
+      "left": "Left",
+      "top": "Top",
+      "bottom": "Bottom",
+      "iso": "Iso"
+    },
+    "ortho": "Ortho",
+    "shading": {
+      "shaded": "Shaded",
+      "edges": "Edges",
+      "wireframe": "Wireframe",
+      "xray": "X-ray"
+    },
+    "valid": "Printable",
+    "tris": "triangles",
+    "volume": "Volume",
+    "supports": "{{count}} supports",
+    "fit": "Fit to view (F)",
+    "display": "Display mode",
+    "grid": "Grid (G)",
+    "dimensions": "Dimensions",
+    "turntable": "Turntable",
+    "orthoHint": "Orthographic projection (O)",
+    "persp": "Perspective",
+    "gizmo": "Click an axis to snap the camera",
+    "weight": "Weight"
+  },
+  "settings": {
+    "title": "Project settings",
+    "autosave": "Changes apply to this project; save to keep them.",
+    "tab": {
+      "general": "General",
+      "material": "Material & render",
+      "printing": "Printing",
+      "optimization": "Optimization"
+    },
+    "name": "Name",
+    "notes": "Notes",
+    "materialTitle": "Material",
+    "renderTitle": "Render",
+    "metal": "Metal",
+    "metalHint": "Used for weight estimates and the preview tint.",
+    "process": "Process",
+    "casting": "Casting master",
+    "direct": "Printed directly",
+    "metalColor": "Metal colour",
+    "gemColor": "Stone colour",
+    "finish": "Finish",
+    "previewQuality": "Sketch quality",
+    "previewQualityHint": "Facets used in fast previews; exports always use full quality.",
+    "printer": "Printer",
+    "minWall": "Minimum wall",
+    "minWallHint": "Resin jewelry is typically 0.5–0.8 mm.",
+    "tilt": "Print tilt",
+    "tiltHint": "Fine detail should face upwards after tilting.",
+    "supportsTitle": "Supports",
+    "supportsEnable": "Print with supports",
+    "tipRadius": "Tip radius",
+    "baseRadius": "Base radius",
+    "overhang": "Overhang angle",
+    "spacing": "Max spacing",
+    "raft": "Raft margin",
+    "supportCount": "{{count}} supports ({{auto}} auto, {{manual}} manual)",
+    "suggestTilt": "Suggest tilt",
+    "autoSupports": "Auto-generate",
+    "clearSupports": "Clear",
+    "hollowTitle": "Hollowing & casting",
+    "hollowEnable": "Hollow the piece",
+    "hollowWall": "Wall thickness",
+    "drain": "Drain hole diameter",
+    "sprue": "Add sprue",
+    "optimizeIntro": "Reduce the triangle count of exported meshes. Rejected automatically if the volume changes too much.",
+    "simplify": "Simplify mesh on export",
+    "keep": "Keep triangles",
+    "keepHint": "Percentage of the original triangles to keep.",
+    "maxVolume": "Max volume change",
+    "maxVolumeHint": "Safety check: the export is refused above this.",
+    "trisNow": "Triangles now",
+    "trisAfter": "After simplify"
+  },
+  "metal": {
+    "silver925": "Silver 925",
+    "gold18y": "Gold 18k yellow",
+    "gold18r": "Gold 18k rose",
+    "gold18w": "Gold 18k white",
+    "platinum": "Platinum",
+    "resin": "Resin"
+  },
+  "finish": {
+    "polished": "Polished",
+    "satin": "Satin",
+    "matte": "Matte"
+  },
+  "export": {
+    "title": "Export",
+    "format": "Format",
+    "options": "Options",
+    "action": "Export",
+    "done": "Exported {{file}}",
+    "fmt": {
+      "stl-bin": "STL (binary)",
+      "stl-ascii": "STL (ASCII)",
+      "obj": "OBJ",
+      "3mf": "3MF"
+    },
+    "fmtHint": {
+      "stl-bin": "Slicers, smallest",
+      "stl-ascii": "Readable, large",
+      "obj": "General 3D tools",
+      "3mf": "Modern slicers"
+    },
+    "supports": "Include supports",
+    "tilted": "(print-ready, tilted)",
+    "noSupports": "(none defined)",
+    "simplify": "Simplify mesh (keep {{pct}}%)",
+    "hollow": "Hollow, {{wall}} mm walls",
+    "sprue": "Add sprue",
+    "safety": "Export is refused if volume changes by more than {{max}}%."
+  }
 }

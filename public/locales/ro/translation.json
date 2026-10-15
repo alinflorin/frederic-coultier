@@ -1,11 +1,184 @@
 {
   "title": "Frederic Coultier",
-  "logosHint": "Apasă pe logo-urile Tauri, Vite și React pentru a afla mai multe.",
-  "namePlaceholder": "Introdu un nume...",
-  "greetButton": "Salută",
-  "greeting": "Salut, {{name}}! Ai fost salutat din aplicație.",
   "checkUpdates": "Caută actualizări",
   "upToDate": "Ai cea mai recentă versiune.",
   "downloading": "Se descarcă {{version}}...",
-  "language": "Limbă"
+  "language": "Limbă",
+  "common": {
+    "close": "Închide",
+    "cancel": "Anulează",
+    "done": "Gata"
+  },
+  "app": {
+    "panes": "Panouri"
+  },
+  "menu": {
+    "file": "Fișier",
+    "project": "Proiect",
+    "help": "Ajutor",
+    "new": "Proiect nou",
+    "open": "Deschide…",
+    "save": "Salvează",
+    "saveAs": "Salvează ca…",
+    "export": "Exportă…",
+    "close": "Închide proiectul",
+    "settings": "Setările proiectului…",
+    "settingsShort": "Setări"
+  },
+  "file": {
+    "untitled": "Fără titlu",
+    "saved": "{{name}} salvat",
+    "discard": "Renunți la modificările nesalvate?",
+    "name": "Nume fișier"
+  },
+  "welcome": {
+    "tagline": "Proiectează bijuterii prin conversație. Proiectele se salvează ca fișiere .fc.",
+    "new": "Proiect nou",
+    "open": "Deschide proiect…",
+    "recent": "Recente"
+  },
+  "source": {
+    "title": "Sursă",
+    "readonly": "doar citire",
+    "copy": "Copiază sursa"
+  },
+  "chat": {
+    "title": "Chat",
+    "emptyTitle": "Ce proiectăm?",
+    "emptyHint": "Descrie piesa, pietrele și măsurile. Atașează fotografii de referință dacă ai.",
+    "s1": "Un inel sigiliu cu inițială gravată",
+    "s2": "Pandantiv cu piatră pară într-un bezel",
+    "s3": "Cercei cu pietre rotunde de 4 mm",
+    "placeholder": "Descrie piesa sau o modificare…",
+    "hint": "Enter trimite · Shift+Enter rând nou",
+    "send": "Trimite",
+    "attach": "Atașează fotografie de referință",
+    "thinking": "Se gândește",
+    "mockReply": "Gata — am actualizat modelul și l-am randat din nou. Uită-te la previzualizare și spune-mi ce să ajustez."
+  },
+  "preview": {
+    "title": "Previzualizare",
+    "views": "Vederi cameră",
+    "view": {
+      "front": "Față",
+      "right": "Dreapta",
+      "back": "Spate",
+      "left": "Stânga",
+      "top": "Sus",
+      "bottom": "Jos",
+      "iso": "Izo"
+    },
+    "ortho": "Ortho",
+    "shading": {
+      "shaded": "Umbrit",
+      "edges": "Muchii",
+      "wireframe": "Schelet",
+      "xray": "Transparent"
+    },
+    "valid": "Imprimabil",
+    "tris": "triunghiuri",
+    "volume": "Volum",
+    "supports": "{{count}} suporturi",
+    "fit": "Încadrează (F)",
+    "display": "Mod afișare",
+    "grid": "Grilă (G)",
+    "dimensions": "Dimensiuni",
+    "turntable": "Platou rotativ",
+    "orthoHint": "Proiecție ortografică (O)",
+    "persp": "Perspectivă",
+    "gizmo": "Apasă pe o axă pentru a muta camera",
+    "weight": "Greutate"
+  },
+  "settings": {
+    "title": "Setările proiectului",
+    "autosave": "Modificările se aplică proiectului; salvează pentru a le păstra.",
+    "tab": {
+      "general": "General",
+      "material": "Material și randare",
+      "printing": "Imprimare",
+      "optimization": "Optimizare"
+    },
+    "name": "Nume",
+    "notes": "Note",
+    "materialTitle": "Material",
+    "renderTitle": "Randare",
+    "metal": "Metal",
+    "metalHint": "Folosit pentru estimarea greutății și culoarea previzualizării.",
+    "process": "Proces",
+    "casting": "Model pentru turnare",
+    "direct": "Imprimat direct",
+    "metalColor": "Culoare metal",
+    "gemColor": "Culoare piatră",
+    "finish": "Finisaj",
+    "previewQuality": "Calitate schiță",
+    "previewQualityHint": "Fațete folosite în previzualizări rapide; exportul folosește mereu calitatea maximă.",
+    "printer": "Imprimantă",
+    "minWall": "Perete minim",
+    "minWallHint": "Bijuteriile din rășină au de obicei 0,5–0,8 mm.",
+    "tilt": "Înclinare la imprimare",
+    "tiltHint": "Detaliile fine trebuie să privească în sus după înclinare.",
+    "supportsTitle": "Suporturi",
+    "supportsEnable": "Imprimă cu suporturi",
+    "tipRadius": "Rază vârf",
+    "baseRadius": "Rază bază",
+    "overhang": "Unghi surplomb",
+    "spacing": "Distanță maximă",
+    "raft": "Margine platformă",
+    "supportCount": "{{count}} suporturi ({{auto}} automate, {{manual}} manuale)",
+    "suggestTilt": "Sugerează înclinarea",
+    "autoSupports": "Generează automat",
+    "clearSupports": "Șterge",
+    "hollowTitle": "Golire și turnare",
+    "hollowEnable": "Golește piesa",
+    "hollowWall": "Grosime perete",
+    "drain": "Diametru orificiu de scurgere",
+    "sprue": "Adaugă canal de turnare",
+    "optimizeIntro": "Reduce numărul de triunghiuri al mesh-urilor exportate. Respins automat dacă volumul se schimbă prea mult.",
+    "simplify": "Simplifică mesh-ul la export",
+    "keep": "Păstrează triunghiuri",
+    "keepHint": "Procentul de triunghiuri păstrate din original.",
+    "maxVolume": "Schimbare maximă de volum",
+    "maxVolumeHint": "Verificare de siguranță: exportul e refuzat peste această valoare.",
+    "trisNow": "Triunghiuri acum",
+    "trisAfter": "După simplificare"
+  },
+  "metal": {
+    "silver925": "Argint 925",
+    "gold18y": "Aur 18k galben",
+    "gold18r": "Aur 18k roz",
+    "gold18w": "Aur 18k alb",
+    "platinum": "Platină",
+    "resin": "Rășină"
+  },
+  "finish": {
+    "polished": "Lustruit",
+    "satin": "Satinat",
+    "matte": "Mat"
+  },
+  "export": {
+    "title": "Exportă",
+    "format": "Format",
+    "options": "Opțiuni",
+    "action": "Exportă",
+    "done": "{{file}} exportat",
+    "fmt": {
+      "stl-bin": "STL (binar)",
+      "stl-ascii": "STL (ASCII)",
+      "obj": "OBJ",
+      "3mf": "3MF"
+    },
+    "fmtHint": {
+      "stl-bin": "Slicere, cel mai mic",
+      "stl-ascii": "Lizibil, mare",
+      "obj": "Unelte 3D generale",
+      "3mf": "Slicere moderne"
+    },
+    "supports": "Include suporturile",
+    "tilted": "(gata de imprimare, înclinat)",
+    "noSupports": "(niciun suport definit)",
+    "simplify": "Simplifică mesh-ul (păstrează {{pct}}%)",
+    "hollow": "Gol, pereți de {{wall}} mm",
+    "sprue": "Adaugă canal de turnare",
+    "safety": "Exportul e refuzat dacă volumul se schimbă cu mai mult de {{max}}%."
+  }
 }
