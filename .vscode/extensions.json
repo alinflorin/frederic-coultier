@@ -8,6 +8,12 @@
         "tauri-apps.tauri-vscode",
         "mtsmfm.vscode-stl-viewer",
         "tamasfe.even-better-toml",
-        "usernamehw.errorlens"
+        "usernamehw.errorlens",
+        "dsznajder.es7-react-js-snippets",
+        "ecmel.vscode-html-css",
+        "christian-kohler.npm-intellisense",
+        "oxc.oxc-vscode",
+        "vscode-icons-team.vscode-icons",
+        "vitest.explorer"
     ]
 }

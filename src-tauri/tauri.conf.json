@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Frederic Coultier",
+  "version": "0.1.0",
+  "identifier": "com.fredericcoultier",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Frederic Coultier",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "publisher": "Frederic Coultier",
+    "shortDescription": "Frederic Coultier desktop app"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCOTg2RjFGRENBQ0Q0NzMKUldSejFLemNIMitZYTFNOFdkOENqWFBuTVNLNHJuaTRYNUJhMDNzYXY1Y1l6Y1FQeVM1bGFhS00K",
+      "endpoints": [
+        "https://github.com/alinflorin/frederic-coultier/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
