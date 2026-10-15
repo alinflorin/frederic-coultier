@@ -1,0 +1,11 @@
+{
+  "title": "Frederic Coultier",
+  "logosHint": "Click on the Tauri, Vite, and React logos to learn more.",
+  "namePlaceholder": "Enter a name...",
+  "greetButton": "Greet",
+  "greeting": "Hello, {{name}}! You've been greeted from the app.",
+  "checkUpdates": "Check for updates",
+  "upToDate": "You're up to date.",
+  "downloading": "Downloading {{version}}...",
+  "language": "Language"
+}

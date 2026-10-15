@@ -14,8 +14,11 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.13.3",
+    "i18next": "^26.4.5",
+    "i18next-http-backend": "^4.0.2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-i18next": "^17.0.16"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

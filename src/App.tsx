@@ -1,34 +1,49 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "./i18n";
 import "./App.css";
 
 function App() {
+  const { t, i18n } = useTranslation();
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
   const [updateMsg, setUpdateMsg] = useState("");
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  function greet() {
+    setGreetMsg(t("greeting", { name }));
   }
 
   async function checkForUpdates() {
     const update = await check();
     if (!update) {
-      setUpdateMsg("You're up to date.");
+      setUpdateMsg(t("upToDate"));
       return;
     }
-    setUpdateMsg(`Downloading ${update.version}...`);
+    setUpdateMsg(t("downloading", { version: update.version }));
     await update.downloadAndInstall();
     await relaunch();
   }
 
   return (
     <main className="container">
-      <h1>Frederic Coultier</h1>
+      <label className="row">
+        {t("language")}:&nbsp;
+        <select
+          value={i18n.resolvedLanguage}
+          onChange={(e) => setLanguage(e.currentTarget.value as Language)}
+        >
+          {SUPPORTED_LANGUAGES.map((l) => (
+            <option key={l} value={l}>
+              {l.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <h1>{t("title")}</h1>
 
       <div className="row">
         <a href="https://vite.dev" target="_blank">
@@ -41,7 +56,7 @@ function App() {
           <img src={reactLogo} className="logo react" alt="React logo" />
         </a>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <p>{t("logosHint")}</p>
 
       <form
         className="row"
@@ -53,13 +68,13 @@ function App() {
         <input
           id="greet-input"
           onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          placeholder={t("namePlaceholder")}
         />
-        <button type="submit">Greet</button>
+        <button type="submit">{t("greetButton")}</button>
       </form>
       <p>{greetMsg}</p>
       <button onClick={() => checkForUpdates().catch((e) => setUpdateMsg(String(e)))}>
-        Check for updates
+        {t("checkUpdates")}
       </button>
       <p>{updateMsg}</p>
     </main>
