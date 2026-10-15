@@ -85,7 +85,7 @@ export function PreviewPane({
 
   useEffect(() => {
     if (!viewer) return;
-    const st = showLayout ? viewer.setMesh(layout.model, layout.supports) : viewer.setMesh(render.mesh);
+    const st = showLayout ? viewer.setMesh(layout.model, layout.supports, layout.sprue) : viewer.setMesh(render.mesh);
     setStats(st);
     onStats(st);
     // eslint-disable-next-line react-hooks/exhaustive-deps

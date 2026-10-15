@@ -216,6 +216,8 @@ export interface PrintLayout {
   model: ArrayBuffer;
   /** Supports and raft, null when there are none. */
   supports: ArrayBuffer | null;
+  /** The casting sprue, null when off or no spot was found. */
+  sprue: ArrayBuffer | null;
   size: [number, number, number];
   fits: boolean;
   /** Lift applied to the tilted model, to map clicks back to model coordinates. */
@@ -235,13 +237,16 @@ export async function printLayout(
     size: [number, number, number];
     fits: boolean;
     modelLen: number;
+    supportsLen: number;
     zoff: number;
   };
   const start = 4 + n;
-  const rest = buf.slice(start + info.modelLen);
+  const supStart = start + info.modelLen;
+  const sprueStart = supStart + info.supportsLen;
   return {
-    model: buf.slice(start, start + info.modelLen),
-    supports: rest.byteLength > 84 ? rest : null,
+    model: buf.slice(start, supStart),
+    supports: info.supportsLen > 84 ? buf.slice(supStart, sprueStart) : null,
+    sprue: buf.byteLength - sprueStart > 84 ? buf.slice(sprueStart) : null,
     size: info.size,
     fits: info.fits,
     zoff: info.zoff,

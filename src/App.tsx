@@ -136,7 +136,12 @@ function App() {
     const params = supOpts.enabled ? printParams(tilt, supOpts) : { ...printParams(0, supOpts), lift: 0, raft: 0 };
     printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL } : undefined)
       .then((l) => live && setLayout(l))
-      .catch(() => live && setLayout(null));
+      .catch((e) => {
+        if (!live) return;
+        setLayout(null);
+        console.error("print layout failed", e);
+        notify(t("preview.layoutFailed", { error: errorText(e) }));
+      });
     return () => {
       live = false;
     };

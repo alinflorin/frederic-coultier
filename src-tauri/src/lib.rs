@@ -155,7 +155,7 @@ async fn auto_supports(
 }
 
 /// The piece as it will be printed. Reply: `u32 LE JSON length | JSON {size, fits, modelLen} |
-/// binary STL of the tilted model | binary STL of the supports and raft`.
+/// binary STL of the tilted model | binary STL of the supports and raft | binary STL of the sprue`.
 #[tauri::command]
 async fn print_layout(
     source: String,
@@ -168,25 +168,23 @@ async fn print_layout(
     tauri::async_runtime::spawn_blocking(move || {
         let mut mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         // show the casting sprue too: stub added as a separate shell, enough for a preview
-        if let Some((stub, _)) = sprue.and_then(|s| meshtools::plan_sprue(&mesh, &s)) {
-            let mut with = (*mesh).clone();
-            let base = with.verts.len() as u32;
-            with.verts.extend(stub.verts);
-            with.tris.extend(stub.tris.into_iter().map(|t| t.map(|i| i + base)));
-            mesh = std::sync::Arc::new(with);
-        }
+        let stub = sprue.and_then(|s| meshtools::plan_sprue(&mesh, &s)).map(|(m, _)| m);
         let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
         let model = supports::tilted_model(&mesh, &print, zoff).to_binary_stl();
+        let sprue_stl = stub
+            .map(|m| supports::tilted_model(&m, &print, zoff).to_binary_stl())
+            .unwrap_or_default();
         let sup = if supports.is_empty() { Vec::new() } else { supports::support_mesh(&supports, &print, zoff).to_binary_stl() };
         let info = serde_json::to_vec(&serde_json::json!({
-            "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "zoff": zoff,
+            "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff,
         }))
         .map_err(|e| e.to_string())?;
-        let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len());
+        let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len() + sprue_stl.len());
         out.extend_from_slice(&(info.len() as u32).to_le_bytes());
         out.extend_from_slice(&info);
         out.extend_from_slice(&model);
         out.extend_from_slice(&sup);
+        out.extend_from_slice(&sprue_stl);
         Ok(Response::new(out))
     })
     .await

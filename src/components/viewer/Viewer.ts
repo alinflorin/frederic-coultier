@@ -60,6 +60,7 @@ export class Viewer {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
   private controls: OrbitControls;
   private metalMat = new THREE.MeshStandardMaterial({ metalness: 1 });
+  private sprueMat = new THREE.MeshStandardMaterial({ color: 0xf0a030, metalness: 0.3, roughness: 0.4 });
   private supportMat = new THREE.MeshStandardMaterial({ color: 0xd9534f, metalness: 0.1, roughness: 0.6 });
   private model: THREE.Group | null = null;
   private edges: THREE.LineSegments[] = [];
@@ -185,7 +186,7 @@ export class Viewer {
   }
 
   /** Shows an STL (binary or ASCII). Returns its stats, or null when there is nothing to show. */
-  setMesh(stl: ArrayBuffer | null, supportsStl: ArrayBuffer | null = null): ViewerStats | null {
+  setMesh(stl: ArrayBuffer | null, supportsStl: ArrayBuffer | null = null, sprueStl: ArrayBuffer | null = null): ViewerStats | null {
     const first = !this.model;
     if (this.model) {
       this.scene.remove(this.model);
@@ -212,6 +213,11 @@ export class Viewer {
       const sup = new THREE.Mesh(new STLLoader().parse(supportsStl), this.supportMat);
       sup.castShadow = true;
       this.model.add(sup);
+    }
+    if (sprueStl && sprueStl.byteLength > 84) {
+      const sp = new THREE.Mesh(new STLLoader().parse(sprueStl), this.sprueMat);
+      sp.castShadow = true;
+      this.model.add(sp);
     }
     this.scene.add(this.model);
 
@@ -294,6 +300,7 @@ export class Viewer {
     });
     this.metalMat.dispose();
     this.supportMat.dispose();
+    this.sprueMat.dispose();
     this.edgeMat.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
