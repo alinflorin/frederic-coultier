@@ -472,7 +472,6 @@ export class Viewer {
       g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
       g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
       this.axesLines.geometry = g;
-      this.dirty = true;
     }
     this.axesLines!.visible = true;
 
@@ -507,7 +506,6 @@ export class Viewer {
   }
 
   private updateLabels() {
-    this.updateAxes();
     if (!this.style?.dimensions || !this.model) return;
     const { min, max } = this.box;
     const s = this.box.getSize(new THREE.Vector3());
@@ -538,6 +536,7 @@ export class Viewer {
     const moved = this.controls.update();
     if (!this.dirty && !moved && !this.controls.autoRotate) return;
     this.dirty = false;
+    this.updateAxes(); // before drawing: it toggles and rebuilds the axis lines
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
     if (!this.lastQ.equals(this.camera.quaternion)) {
