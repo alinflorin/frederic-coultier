@@ -23,7 +23,8 @@
     "export": "Export…",
     "close": "Close project",
     "settings": "Project settings…",
-    "settingsShort": "Settings"
+    "settingsShort": "Settings",
+    "preferences": "Preferences"
   },
   "file": {
     "untitled": "Untitled",
@@ -199,5 +200,9 @@
       "hollow": "Hollow the piece",
       "sprue": "Add sprue"
     }
+  },
+  "prefs": {
+    "title": "Preferences",
+    "hint": "Applies to the whole app, not just this project."
   }
 }

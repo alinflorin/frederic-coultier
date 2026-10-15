@@ -23,7 +23,8 @@
     "export": "Exportă…",
     "close": "Închide proiectul",
     "settings": "Setările proiectului…",
-    "settingsShort": "Setări"
+    "settingsShort": "Setări",
+    "preferences": "Preferințe"
   },
   "file": {
     "untitled": "Fără titlu",
@@ -199,5 +200,9 @@
       "hollow": "Golește piesa",
       "sprue": "Adaugă canal de turnare"
     }
+  },
+  "prefs": {
+    "title": "Preferințe",
+    "hint": "Se aplică întregii aplicații, nu doar acestui proiect."
   }
 }

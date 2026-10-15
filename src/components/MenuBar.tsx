@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { Icon } from "./Icon";
 
 export interface MenuItem {
@@ -13,11 +11,12 @@ export interface MenuItem {
 export interface Menu {
   id: string;
   label: string;
-  items: MenuItem[];
+  /** A menu with no `items` is a plain button that runs this. */
+  onSelect?: () => void;
+  items?: MenuItem[];
 }
 
 export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string; dirty: boolean }) {
-  const { i18n } = useTranslation();
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,17 +43,22 @@ export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string;
           <div className="menu" key={m.id}>
             <button
               role="menuitem"
-              aria-haspopup="true"
-              aria-expanded={open === m.id}
+              aria-haspopup={m.items ? "true" : undefined}
+              aria-expanded={m.items ? open === m.id : undefined}
               className={open === m.id ? "active" : ""}
-              onClick={() => setOpen(open === m.id ? null : m.id)}
-              onMouseEnter={() => open && setOpen(m.id)}
+              onClick={() => {
+                if (!m.items) {
+                  setOpen(null);
+                  m.onSelect?.();
+                } else setOpen(open === m.id ? null : m.id);
+              }}
+              onMouseEnter={() => open && setOpen(m.items ? m.id : null)}
             >
               {m.label}
             </button>
-            {open === m.id && (
+            {m.items && open === m.id && (
               <ul className="dropdown" role="menu">
-                {m.items.map((it, i) =>
+                {m.items!.map((it, i) =>
                   it.separator ? (
                     <li key={i} className="sep" role="separator" />
                   ) : (
@@ -82,18 +86,6 @@ export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string;
         {title}
         {dirty && <span className="dirty" aria-label="unsaved">●</span>}
       </div>
-      <select
-        className="lang"
-        aria-label="Language"
-        value={i18n.resolvedLanguage}
-        onChange={(e) => setLanguage(e.currentTarget.value as Language)}
-      >
-        {SUPPORTED_LANGUAGES.map((l) => (
-          <option key={l} value={l}>
-            {l.toUpperCase()}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

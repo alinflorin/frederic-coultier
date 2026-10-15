@@ -23,13 +23,14 @@ import { ChatPane } from "./components/ChatPane";
 import { PreviewPane, type RenderState } from "./components/PreviewPane";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
+import { PreferencesDialog } from "./components/PreferencesDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
 import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
-type DialogId = "settings" | "export" | null;
+type DialogId = "settings" | "export" | "prefs" | null;
 
 const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
 const RENDER_DELAY_MS = 200;
@@ -269,6 +270,7 @@ function App() {
         label: t("menu.project"),
         items: [{ label: t("menu.settings"), onSelect: () => setDialog("settings"), disabled: !open }],
       },
+      { id: "prefs", label: t("menu.preferences"), onSelect: () => setDialog("prefs") },
       {
         id: "help",
         label: t("menu.help"),
@@ -293,6 +295,7 @@ function App() {
       else if (k === "s" && open) run(() => void (e.shiftKey ? doSaveAs() : doSave()));
       else if (k === "e" && open) run(() => setDialog("export"));
       else if (k === "w" && open) run(closeProject);
+      else if (k === ",") run(() => setDialog("prefs"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -379,6 +382,7 @@ function App() {
       {dialog === "export" && project && (
         <ExportDialog project={project} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
       )}
+      {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
       {pending && (
         <ConfirmDialog
           name={title}
