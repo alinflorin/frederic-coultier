@@ -28,14 +28,20 @@
   "file": {
     "untitled": "Fără titlu",
     "saved": "{{name}} salvat",
-    "discard": "Renunți la modificările nesalvate?",
-    "name": "Nume fișier"
+    "name": "Nume fișier",
+    "unsavedTitle": "Salvezi modificările?",
+    "unsavedBody": "„{{name}}” are modificări nesalvate.",
+    "discardButton": "Nu salva",
+    "openFailed": "Fișierul nu s-a putut deschide: {{error}}",
+    "saveFailed": "Nu s-a putut salva: {{error}}",
+    "exportFailed": "Exportul a eșuat: {{error}}"
   },
   "welcome": {
     "tagline": "Proiectează bijuterii prin conversație. Proiectele se salvează ca fișiere .fc.",
     "new": "Proiect nou",
     "open": "Deschide proiect…",
-    "recent": "Recente"
+    "recent": "Recente",
+    "sample": "Deschide exemplul"
   },
   "source": {
     "title": "Sursă",
@@ -75,7 +81,6 @@
       "wireframe": "Schelet",
       "xray": "Transparent"
     },
-    "valid": "Imprimabil",
     "tris": "triunghiuri",
     "volume": "Volum",
     "supports": "{{count}} suporturi",
@@ -87,7 +92,14 @@
     "orthoHint": "Proiecție ortografică (O)",
     "persp": "Perspectivă",
     "gizmo": "Apasă pe o axă pentru a muta camera",
-    "weight": "Greutate"
+    "weight": "Greutate",
+    "line": "Linia {{line}}",
+    "empty": "Modelul nu are încă geometrie.",
+    "console": "Mesaje",
+    "rendering": "Se randează…",
+    "failed": "Randare eșuată",
+    "rendered": "Randat în {{ms}} ms",
+    "messages": "{{count}} mesaje"
   },
   "settings": {
     "title": "Setările proiectului",
@@ -179,6 +191,14 @@
     "simplify": "Simplifică mesh-ul (păstrează {{pct}}%)",
     "hollow": "Gol, pereți de {{wall}} mm",
     "sprue": "Adaugă canal de turnare",
-    "safety": "Exportul e refuzat dacă volumul se schimbă cu mai mult de {{max}}%."
+    "safety": "Exportul e refuzat dacă volumul se schimbă cu mai mult de {{max}}%.",
+    "noModel": "Nimic de exportat încă.",
+    "soon": "în curând",
+    "opt": {
+      "supports": "Include suporturile",
+      "simplify": "Simplifică mesh-ul",
+      "hollow": "Golește piesa",
+      "sprue": "Adaugă canal de turnare"
+    }
   }
 }

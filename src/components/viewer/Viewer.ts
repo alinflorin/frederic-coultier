@@ -2,13 +2,14 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { ShadingMode } from "../../types";
-import { buildPlaceholder } from "./placeholder";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { meshVolume } from "./geometry";
 
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 export interface ViewerStyle {
   metalColor: string;
-  gemColor: string;
   roughness: number;
   display: ShadingMode;
   ortho: boolean;
@@ -59,19 +60,17 @@ export class Viewer {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
   private controls: OrbitControls;
   private metalMat = new THREE.MeshStandardMaterial({ metalness: 1 });
-  private gemMat = new THREE.MeshPhysicalMaterial({
-    metalness: 0, roughness: 0.04, ior: 2.4, thickness: 3, transmission: 0.65,
-    flatShading: true, envMapIntensity: 1.6,
-  });
+  private model: THREE.Group | null = null;
   private edges: THREE.LineSegments[] = [];
+  private sun = new THREE.DirectionalLight(0xffffff, 1.2);
   private edgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
-  private grid: THREE.GridHelper;
+  private grid = new THREE.GridHelper(1, 1);
   private shadow: THREE.Mesh;
   private boxHelper: THREE.Box3Helper;
   private labels: HTMLElement[] = [];
-  private box = new THREE.Box3();
+  private box = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
   private center = new THREE.Vector3();
-  private radius = 1;
+  private radius = 17;
   private tween: Tween | null = null;
   private dirty = true;
   private raf = 0;
@@ -79,7 +78,6 @@ export class Viewer {
   private style: ViewerStyle | null = null;
   private lastQ = new THREE.Quaternion();
   private orientCbs = new Set<(q: THREE.Quaternion) => void>();
-  readonly stats: ViewerStats;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -93,46 +91,17 @@ export class Viewer {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(18, -22, 40);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -25;
-    sun.shadow.camera.right = sun.shadow.camera.top = 25;
-    sun.shadow.bias = -0.0004;
-    sun.shadow.radius = 5;
-    this.scene.add(sun);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(1024, 1024);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.radius = 5;
+    this.scene.add(this.sun, this.sun.target);
 
-    const model = buildPlaceholder(this.metalMat, this.gemMat);
-    for (const m of [...model.metal, ...model.gems]) {
-      const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 28), this.edgeMat);
-      m.add(e);
-      this.edges.push(e);
-    }
-    this.scene.add(model.group);
-
-    this.box.setFromObject(model.group);
-    this.box.getCenter(this.center);
-    this.radius = this.box.getBoundingSphere(new THREE.Sphere()).radius;
-    const size = this.box.getSize(new THREE.Vector3());
-    this.stats = {
-      size: [size.x, size.y, size.z],
-      tris: Math.round(model.tris),
-      metalVolumeMm3: model.metalVolumeMm3,
-    };
-
-    const floor = this.box.min.z - 0.02;
-    this.grid = new THREE.GridHelper(80, 16, 0x888888, 0x888888);
-    this.grid.rotation.x = Math.PI / 2;
-    this.grid.position.z = floor;
-    (this.grid.material as THREE.Material).transparent = true;
-    (this.grid.material as THREE.Material).opacity = 0.35;
     this.scene.add(this.grid);
-
-    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.28 }));
-    this.shadow.position.z = floor;
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ opacity: 0.28 }));
     this.shadow.receiveShadow = true;
     this.scene.add(this.shadow);
+    this.layoutStage();
 
     this.boxHelper = new THREE.Box3Helper(this.box, new THREE.Color("#d4a24c"));
     this.scene.add(this.boxHelper);
@@ -156,8 +125,6 @@ export class Viewer {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.screenSpacePanning = true;
-    this.controls.minDistance = 4;
-    this.controls.maxDistance = 400;
     this.controls.autoRotateSpeed = 2.2;
     this.controls.addEventListener("change", () => (this.dirty = true));
     this.renderer.domElement.addEventListener("dblclick", () => this.fit());
@@ -183,28 +150,96 @@ export class Viewer {
     this.style = s;
     this.metalMat.color.set(s.metalColor);
     this.metalMat.roughness = s.roughness;
-    this.gemMat.color.set(s.gemColor);
-    this.gemMat.attenuationColor.set(s.gemColor);
 
     const wire = s.display === "wireframe";
     const xray = s.display === "xray";
-    for (const m of [this.metalMat, this.gemMat]) {
-      m.wireframe = wire;
-      m.transparent = xray;
-      m.opacity = xray ? 0.3 : 1;
-      m.depthWrite = !xray;
-      m.needsUpdate = true;
-    }
-    this.gemMat.transmission = wire || xray ? 0 : 0.65;
+    const m = this.metalMat;
+    m.wireframe = wire;
+    m.transparent = xray;
+    m.opacity = xray ? 0.3 : 1;
+    m.depthWrite = !xray;
+    m.needsUpdate = true;
     for (const e of this.edges) e.visible = s.display === "edges" || xray;
     this.shadow.visible = !wire;
     this.grid.visible = s.grid;
-    this.boxHelper.visible = s.dimensions;
-    for (const l of this.labels) l.style.display = s.dimensions ? "" : "none";
+    this.boxHelper.visible = s.dimensions && !!this.model;
+    for (const l of this.labels) l.style.display = s.dimensions && this.model ? "" : "none";
     this.controls.autoRotate = s.turntable;
     this.applyTheme();
     if (prev?.ortho !== s.ortho) this.setOrtho(s.ortho);
     this.dirty = true;
+  }
+
+  /** Shows an STL (binary or ASCII). Returns its stats, or null when there is nothing to show. */
+  setMesh(stl: ArrayBuffer | null): ViewerStats | null {
+    const first = !this.model;
+    if (this.model) {
+      this.scene.remove(this.model);
+      this.model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+      this.model = null;
+      this.edges = [];
+    }
+    this.dirty = true;
+    if (!stl || stl.byteLength < 84) {
+      if (this.style) this.setStyle(this.style);
+      return null;
+    }
+
+    const raw = new STLLoader().parse(stl);
+    const geo = toCreasedNormals(raw, THREE.MathUtils.degToRad(35));
+    raw.dispose();
+    const mesh = new THREE.Mesh(geo, this.metalMat);
+    mesh.castShadow = true;
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), this.edgeMat);
+    mesh.add(edges);
+    this.edges = [edges];
+    this.model = new THREE.Group().add(mesh);
+    this.scene.add(this.model);
+
+    this.box.setFromObject(this.model);
+    this.box.getCenter(this.center);
+    this.radius = Math.max(this.box.getBoundingSphere(new THREE.Sphere()).radius, 0.5);
+    this.controls.minDistance = this.radius * 0.4;
+    this.controls.maxDistance = this.radius * 40;
+    this.layoutStage();
+    if (this.style) this.setStyle(this.style);
+    if (first) this.fit(false);
+
+    const size = this.box.getSize(new THREE.Vector3());
+    return {
+      size: [size.x, size.y, size.z],
+      tris: geo.attributes.position.count / 3,
+      metalVolumeMm3: meshVolume(geo),
+    };
+  }
+
+  /** Floor grid, shadow catcher and light follow the model's bounds. */
+  private layoutStage() {
+    const span = Math.max(80, Math.ceil((this.radius * 6) / 10) * 10);
+    const floor = this.box.min.z - 0.02;
+    this.scene.remove(this.grid);
+    this.grid.geometry.dispose();
+    this.grid = new THREE.GridHelper(span, span / 5, 0x888888, 0x888888);
+    this.grid.rotation.x = Math.PI / 2;
+    this.grid.position.set(this.center.x, this.center.y, floor);
+    const gm = this.grid.material as THREE.LineBasicMaterial;
+    gm.transparent = true;
+    gm.opacity = 0.35;
+    this.scene.add(this.grid);
+
+    this.shadow.scale.set(span, span, 1);
+    this.shadow.position.set(this.center.x, this.center.y, floor);
+
+    const k = Math.max(1, this.radius / 20);
+    this.sun.position.copy(this.center).add(new THREE.Vector3(18, -22, 40).multiplyScalar(k));
+    this.sun.target.position.copy(this.center);
+    const ext = this.radius * 1.8;
+    const cam = this.sun.shadow.camera;
+    cam.left = cam.bottom = -ext;
+    cam.right = cam.top = ext;
+    cam.far = 200 * k;
+    cam.updateProjectionMatrix();
+    this.applyTheme();
   }
 
   setView(name: ViewName, animate = true) {
@@ -224,7 +259,6 @@ export class Viewer {
       m.geometry?.dispose();
     });
     this.metalMat.dispose();
-    this.gemMat.dispose();
     this.edgeMat.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -321,7 +355,7 @@ export class Viewer {
   }
 
   private updateLabels() {
-    if (!this.style?.dimensions) return;
+    if (!this.style?.dimensions || !this.model) return;
     const { min, max } = this.box;
     const s = this.box.getSize(new THREE.Vector3());
     const anchors: [THREE.Vector3, number][] = [

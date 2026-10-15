@@ -126,9 +126,6 @@ export function SettingsDialog({
               <Field label={t("settings.metalColor")}>
                 <input type="color" value={s.render.metalColor} onChange={(e) => onChange({ ...s, render: { ...s.render, metalColor: e.currentTarget.value } })} />
               </Field>
-              <Field label={t("settings.gemColor")}>
-                <input type="color" value={s.render.gemColor} onChange={(e) => onChange({ ...s, render: { ...s.render, gemColor: e.currentTarget.value } })} />
-              </Field>
               <Field label={t("settings.finish")}>
                 <select value={s.render.finish} onChange={(e) => onChange({ ...s, render: { ...s.render, finish: e.currentTarget.value as Finish } })}>
                   {FINISHES.map((f) => <option key={f} value={f}>{t(`finish.${f}`)}</option>)}

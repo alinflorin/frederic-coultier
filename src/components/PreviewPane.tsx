@@ -4,16 +4,30 @@ import type { FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
 import { Viewer, type ViewerStats } from "./viewer/Viewer";
 import { Gizmo } from "./viewer/Gizmo";
+import type { Diagnostic, RenderError } from "../api";
 import { Icon } from "./Icon";
 
 const MODES: ShadingMode[] = ["shaded", "edges", "wireframe", "xray"];
 
+export interface RenderState {
+  status: "idle" | "rendering" | "ok" | "error";
+  mesh: ArrayBuffer | null;
+  ms?: number;
+  error?: RenderError;
+  diagnostics: Diagnostic[];
+  echoes: string[];
+}
+
 export function PreviewPane({
   project,
+  render,
   onPatchRender,
+  onStats,
 }: {
   project: FcProject;
+  render: RenderState;
   onPatchRender: (p: Partial<FcProject["settings"]["render"]>) => void;
+  onStats: (s: ViewerStats | null) => void;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -23,6 +37,7 @@ export function PreviewPane({
   const [dimensions, setDimensions] = useState(false);
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [console_, setConsole] = useState(false);
 
   const { render: r, material } = project.settings;
   const supTotal = project.supportCount.auto + project.supportCount.manual;
@@ -36,7 +51,6 @@ export function PreviewPane({
       return; // WebGL unavailable
     }
     setViewer(v);
-    setStats(v.stats);
     return () => {
       v.dispose();
       setViewer(null);
@@ -46,7 +60,6 @@ export function PreviewPane({
   useEffect(() => {
     viewer?.setStyle({
       metalColor: r.metalColor,
-      gemColor: r.gemColor,
       roughness: ROUGHNESS[r.finish],
       display: r.shading,
       ortho: r.orthographic,
@@ -55,6 +68,14 @@ export function PreviewPane({
       turntable,
     });
   }, [viewer, r, grid, dimensions, turntable]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    const st = viewer.setMesh(render.mesh);
+    setStats(st);
+    onStats(st);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, render.mesh]);
 
   useEffect(() => {
     if (!menu) return;
@@ -139,13 +160,49 @@ export function PreviewPane({
         </div>
       </div>
 
+      {render.status === "error" && render.error && (
+        <div className="vp-banner error" role="alert">
+          <Icon name="warn" size={15} />
+          <span>
+            {render.error.line ? t("preview.line", { line: render.error.line }) + ": " : ""}
+            {render.error.message}
+          </span>
+        </div>
+      )}
+      {render.status === "ok" && !render.mesh && (
+        <div className="vp-banner">{t("preview.empty")}</div>
+      )}
+
+      {console_ && (
+        <ul className="diag" aria-label={t("preview.console")}>
+          {render.diagnostics.map((d, i) => (
+            <li key={`d${i}`} className={d.severity}>
+              {d.line ? `${t("preview.line", { line: d.line })}: ` : ""}
+              {d.message}
+            </li>
+          ))}
+          {render.echoes.map((e, i) => (
+            <li key={`e${i}`} className="echo">{e}</li>
+          ))}
+        </ul>
+      )}
+
       <footer className="statusbar">
-        <span className="ok"><Icon name="check" size={13} /> {t("preview.valid")}</span>
+        {render.status === "rendering" && <span className="busy">{t("preview.rendering")}</span>}
+        {render.status === "error" && <span className="bad"><Icon name="warn" size={13} /> {t("preview.failed")}</span>}
+        {render.status === "ok" && (
+          <span className="ok"><Icon name="check" size={13} /> {t("preview.rendered", { ms: render.ms })}</span>
+        )}
         {dims && <span>{dims} mm</span>}
         {stats && <span>{stats.tris.toLocaleString()} {t("preview.tris")}</span>}
         {stats && <span>{t("preview.volume")} {(stats.metalVolumeMm3 / 1000).toFixed(2)} cm³</span>}
         {stats && <span>{t("preview.weight")} ≈ {grams.toFixed(1)} g</span>}
         {project.settings.printing.supports.enabled && <span>{t("preview.supports", { count: supTotal })}</span>}
+        {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
+          <button className="link" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>
+            {t("preview.messages", { count: render.diagnostics.length + render.echoes.length })}
+          </button>
+        )}
       </footer>
     </section>
   );

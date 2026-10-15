@@ -28,14 +28,20 @@
   "file": {
     "untitled": "Untitled",
     "saved": "Saved {{name}}",
-    "discard": "Discard unsaved changes?",
-    "name": "File name"
+    "name": "File name",
+    "unsavedTitle": "Save changes?",
+    "unsavedBody": "“{{name}}” has unsaved changes.",
+    "discardButton": "Don't save",
+    "openFailed": "Couldn't open the file: {{error}}",
+    "saveFailed": "Couldn't save: {{error}}",
+    "exportFailed": "Export failed: {{error}}"
   },
   "welcome": {
     "tagline": "Design jewelry by chatting. Projects are saved as .fc files.",
     "new": "New project",
     "open": "Open project…",
-    "recent": "Recent"
+    "recent": "Recent",
+    "sample": "Open example"
   },
   "source": {
     "title": "Source",
@@ -75,7 +81,6 @@
       "wireframe": "Wireframe",
       "xray": "X-ray"
     },
-    "valid": "Printable",
     "tris": "triangles",
     "volume": "Volume",
     "supports": "{{count}} supports",
@@ -87,7 +92,14 @@
     "orthoHint": "Orthographic projection (O)",
     "persp": "Perspective",
     "gizmo": "Click an axis to snap the camera",
-    "weight": "Weight"
+    "weight": "Weight",
+    "line": "Line {{line}}",
+    "empty": "The model has no geometry yet.",
+    "console": "Messages",
+    "rendering": "Rendering…",
+    "failed": "Render failed",
+    "rendered": "Rendered in {{ms}} ms",
+    "messages": "{{count}} messages"
   },
   "settings": {
     "title": "Project settings",
@@ -179,6 +191,14 @@
     "simplify": "Simplify mesh (keep {{pct}}%)",
     "hollow": "Hollow, {{wall}} mm walls",
     "sprue": "Add sprue",
-    "safety": "Export is refused if volume changes by more than {{max}}%."
+    "safety": "Export is refused if volume changes by more than {{max}}%.",
+    "noModel": "Nothing to export yet.",
+    "soon": "coming soon",
+    "opt": {
+      "supports": "Include supports",
+      "simplify": "Simplify mesh",
+      "hollow": "Hollow the piece",
+      "sprue": "Add sprue"
+    }
   }
 }

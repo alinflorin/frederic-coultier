@@ -23,7 +23,7 @@ function highlight(line: string) {
   return parts;
 }
 
-export function SourcePane({ source }: { source: string }) {
+export function SourcePane({ source, errorLine }: { source: string; errorLine?: number | null }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const lines = source.split("\n");
@@ -49,7 +49,7 @@ export function SourcePane({ source }: { source: string }) {
       </header>
       <pre className="code" tabIndex={0}>
         {lines.map((l, i) => (
-          <div className="line" key={i}>
+          <div className={`line${errorLine === i + 1 ? " err" : ""}`} key={i}>
             <span className="ln">{i + 1}</span>
             <span className="lc">{highlight(l)}</span>
           </div>

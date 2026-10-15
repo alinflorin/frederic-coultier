@@ -1,21 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { emptyProject, sampleProject } from "./mock";
-import type { FcProject, ProjectSettings } from "./types";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  RenderError,
+  exportModel,
+  inTauri,
+  openProject,
+  pickExportPath,
+  pickProjectToOpen,
+  pickProjectToSave,
+  renderScad,
+  saveProject,
+} from "./api";
+import { emptyProject, sampleProject } from "./defaults";
+import { addRecent, baseName, fromWire, getRecents, removeRecent, toWire } from "./project";
+import type { ExportFormat, FcProject, ProjectSettings } from "./types";
 import { MenuBar, type Menu } from "./components/MenuBar";
 import { SourcePane } from "./components/SourcePane";
 import { ChatPane } from "./components/ChatPane";
-import { PreviewPane } from "./components/PreviewPane";
+import { PreviewPane, type RenderState } from "./components/PreviewPane";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
 import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
-type DialogId = "settings" | "export" | "saveAs" | null;
+type DialogId = "settings" | "export" | null;
+
+const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
+const RENDER_DELAY_MS = 200;
 
 function useMediaQuery(query: string) {
   const [match, setMatch] = useState(() => window.matchMedia(query).matches);
@@ -28,25 +45,32 @@ function useMediaQuery(query: string) {
   return match;
 }
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
+
 function App() {
   const { t } = useTranslation();
   const compact = useMediaQuery("(max-width: 899px)");
 
-  // File state. `project` is the in-memory content of the open .fc file.
+  // `project` is the in-memory content of the open .fc file, `path` where it lives on disk.
   const [project, setProject] = useState<FcProject | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [path, setPath] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Bumped whenever a different project is loaded, so the preview starts with a fresh camera.
+  const [projectId, setProjectId] = useState(0);
 
   const [dialog, setDialog] = useState<DialogId>(null);
-  const [saveAsName, setSaveAsName] = useState("");
+  const [pending, setPending] = useState<{ next: () => void } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mobilePane, setMobilePane] = useState<PaneId>("chat");
   const [cols, setCols] = useState({ source: 340, preview: 460 });
+  const [render, setRender] = useState<RenderState>(IDLE);
+  const [triangles, setTriangles] = useState<number | null>(null);
+  const [recents, setRecents] = useState(getRecents);
 
   const notify = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), 3200);
   }, []);
 
   const edit = useCallback((fn: (p: FcProject) => FcProject) => {
@@ -54,42 +78,124 @@ function App() {
     setDirty(true);
   }, []);
 
-  // --- file actions (UI only: no disk I/O yet) ---
-  const newProject = () => {
-    setProject(emptyProject(t("file.untitled")));
-    setFileName(null);
+  const load = (p: FcProject, filePath: string | null) => {
+    setProject(p);
+    setPath(filePath);
     setDirty(false);
+    setRender(IDLE);
+    setProjectId((n) => n + 1);
   };
-  const openProject = () => {
-    // TODO: native file dialog + .fc reader
-    setProject(sampleProject());
-    setFileName("Solitaire ring.fc");
-    setDirty(false);
+
+  // --- rendering: re-render shortly after the source stops changing ---
+  const source = project?.source;
+  const request = useRef(0);
+  useEffect(() => {
+    if (source === undefined) return;
+    const id = ++request.current;
+    setRender((r) => ({ ...r, status: "rendering" }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await renderScad(source);
+        if (id !== request.current) return;
+        setRender({ status: "ok", mesh: res.stl, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes });
+      } catch (e) {
+        if (id !== request.current) return;
+        // keep showing the last good model while the source is broken
+        setRender((r) => ({
+          ...r,
+          status: "error",
+          error: e instanceof RenderError ? e : new RenderError(errorText(e)),
+        }));
+      }
+    }, RENDER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [source, projectId]);
+
+  // --- file actions ---
+  const loadPath = async (p: string) => {
+    try {
+      load(fromWire(await openProject(p)), p);
+      addRecent(p);
+    } catch (e) {
+      removeRecent(p);
+      notify(t("file.openFailed", { error: errorText(e) }));
+    }
+    setRecents(getRecents());
   };
-  const closeProject = () => {
-    if (dirty && !window.confirm(t("file.discard"))) return;
-    setProject(null);
-    setFileName(null);
-    setDirty(false);
-    setDialog(null);
+
+  const doSaveAs = async (): Promise<boolean> => {
+    if (!project) return false;
+    try {
+      const target = await pickProjectToSave(path ? baseName(path).replace(/\.fc$/i, "") : project.settings.general.name);
+      if (!target) return false;
+      const written = await saveProject(target, toWire(project));
+      setPath(written);
+      setDirty(false);
+      addRecent(written);
+      setRecents(getRecents());
+      notify(t("file.saved", { name: baseName(written) }));
+      return true;
+    } catch (e) {
+      notify(t("file.saveFailed", { error: errorText(e) }));
+      return false;
+    }
   };
-  const save = () => {
+
+  const doSave = async (): Promise<boolean> => {
+    if (!project) return false;
+    if (!path) return doSaveAs();
+    try {
+      await saveProject(path, toWire(project));
+      setDirty(false);
+      notify(t("file.saved", { name: baseName(path) }));
+      return true;
+    } catch (e) {
+      notify(t("file.saveFailed", { error: errorText(e) }));
+      return false;
+    }
+  };
+
+  /** Runs `next` now, or after the user has dealt with unsaved changes. */
+  const guard = (next: () => void) => (dirty && project ? setPending({ next }) : next());
+
+  const newProject = () => guard(() => load(emptyProject(t("file.untitled")), null));
+  const newSample = () =>
+    guard(() => {
+      load(sampleProject(), null);
+      setDirty(true); // never saved yet
+    });
+  const openDialog = () =>
+    guard(async () => {
+      try {
+        const p = await pickProjectToOpen();
+        if (p) await loadPath(p);
+      } catch (e) {
+        notify(t("file.openFailed", { error: errorText(e) }));
+      }
+    });
+  const openRecent = (p: string) => guard(() => void loadPath(p));
+  const closeProject = () =>
+    guard(() => {
+      request.current++;
+      setProject(null);
+      setPath(null);
+      setDirty(false);
+      setDialog(null);
+      setRender(IDLE);
+      setTriangles(null);
+    });
+
+  const doExport = async (format: ExportFormat) => {
     if (!project) return;
-    if (!fileName) return openSaveAs();
-    setDirty(false);
-    notify(t("file.saved", { name: fileName }));
-  };
-  const openSaveAs = () => {
-    if (!project) return;
-    setSaveAsName((fileName ?? `${project.settings.general.name}.fc`).replace(/\.fc$/, ""));
-    setDialog("saveAs");
-  };
-  const confirmSaveAs = () => {
-    const name = `${saveAsName.trim() || t("file.untitled")}.fc`;
-    setFileName(name);
-    setDirty(false);
     setDialog(null);
-    notify(t("file.saved", { name }));
+    try {
+      const target = await pickExportPath(path ? baseName(path).replace(/\.fc$/i, "") : project.settings.general.name, format);
+      if (!target) return;
+      await exportModel(project.source, target, format);
+      notify(t("export.done", { file: baseName(target) }));
+    } catch (e) {
+      notify(t("file.exportFailed", { error: errorText(e) }));
+    }
   };
 
   async function checkForUpdates() {
@@ -100,25 +206,45 @@ function App() {
       await update.downloadAndInstall();
       await relaunch();
     } catch (e) {
-      notify(String(e));
+      notify(errorText(e));
     }
   }
 
-  // --- chat (mocked reply) ---
+  // --- chat (still a canned reply: the AI backend comes later) ---
   const sendChat = (text: string) => {
     edit((p) => ({ ...p, chat: [...p.chat, { id: crypto.randomUUID(), role: "user", text }] }));
     setBusy(true);
     setTimeout(() => {
       edit((p) => ({
         ...p,
-        chat: [
-          ...p.chat,
-          { id: crypto.randomUUID(), role: "assistant", text: t("chat.mockReply"), change: { added: 6, removed: 2 } },
-        ],
+        chat: [...p.chat, { id: crypto.randomUUID(), role: "assistant", text: t("chat.mockReply") }],
       }));
       setBusy(false);
     }, 1400);
   };
+
+  // --- window title, and asking before the window closes with unsaved work ---
+  const title = project ? (path ? baseName(path) : t("file.untitled")) : "";
+  useEffect(() => {
+    if (!inTauri()) return;
+    const name = title ? `${dirty ? "● " : ""}${title} — Frederic Coultier` : "Frederic Coultier";
+    getCurrentWindow().setTitle(name).catch(() => {});
+  }, [title, dirty]);
+
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+  useEffect(() => {
+    if (!inTauri()) return;
+    let off: (() => void) | undefined;
+    getCurrentWindow()
+      .onCloseRequested((e) => {
+        if (!dirtyRef.current) return;
+        e.preventDefault();
+        setPending({ next: () => void getCurrentWindow().destroy() });
+      })
+      .then((u) => (off = u));
+    return () => off?.();
+  }, []);
 
   const open = !!project;
   const menus: Menu[] = useMemo(
@@ -128,10 +254,10 @@ function App() {
         label: t("menu.file"),
         items: [
           { label: t("menu.new"), shortcut: "Ctrl+N", onSelect: newProject },
-          { label: t("menu.open"), shortcut: "Ctrl+O", onSelect: openProject },
+          { label: t("menu.open"), shortcut: "Ctrl+O", onSelect: openDialog },
           { separator: true, label: "" },
-          { label: t("menu.save"), shortcut: "Ctrl+S", onSelect: save, disabled: !open },
-          { label: t("menu.saveAs"), shortcut: "Ctrl+Shift+S", onSelect: openSaveAs, disabled: !open },
+          { label: t("menu.save"), shortcut: "Ctrl+S", onSelect: doSave, disabled: !open },
+          { label: t("menu.saveAs"), shortcut: "Ctrl+Shift+S", onSelect: doSaveAs, disabled: !open },
           { separator: true, label: "" },
           { label: t("menu.export"), shortcut: "Ctrl+E", onSelect: () => setDialog("export"), disabled: !open },
           { separator: true, label: "" },
@@ -141,7 +267,7 @@ function App() {
       {
         id: "project",
         label: t("menu.project"),
-        items: [{ label: t("menu.settings"), shortcut: "Ctrl+,", onSelect: () => setDialog("settings"), disabled: !open }],
+        items: [{ label: t("menu.settings"), onSelect: () => setDialog("settings"), disabled: !open }],
       },
       {
         id: "help",
@@ -150,7 +276,7 @@ function App() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, open, dirty, fileName, project],
+    [t, open, dirty, path, project],
   );
 
   // keyboard shortcuts
@@ -163,11 +289,10 @@ function App() {
         fn();
       };
       if (k === "n") run(newProject);
-      else if (k === "o") run(openProject);
-      else if (k === "s") run(e.shiftKey ? openSaveAs : save);
+      else if (k === "o") run(openDialog);
+      else if (k === "s" && open) run(() => void (e.shiftKey ? doSaveAs() : doSave()));
       else if (k === "e" && open) run(() => setDialog("export"));
       else if (k === "w" && open) run(closeProject);
-      else if (k === ",") open && run(() => setDialog("settings"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -190,15 +315,17 @@ function App() {
     window.addEventListener("pointerup", up);
   };
 
-  const title = project ? (fileName ?? t("file.untitled")) : "";
   const patchSettings = (s: ProjectSettings) => edit((p) => ({ ...p, settings: s }));
 
   const panes = project && {
-    source: <SourcePane source={project.source} />,
+    source: <SourcePane source={project.source} errorLine={render.status === "error" ? render.error?.line : null} />,
     chat: <ChatPane messages={project.chat} busy={busy} onSend={sendChat} />,
     preview: (
       <PreviewPane
+        key={projectId}
         project={project}
+        render={render}
+        onStats={(s) => setTriangles(s ? s.tris : null)}
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
     ),
@@ -209,7 +336,7 @@ function App() {
       <MenuBar menus={menus} title={title} dirty={dirty} />
 
       {!project ? (
-        <Welcome onNew={newProject} onOpen={openProject} onSample={openProject} />
+        <Welcome recents={recents} onNew={newProject} onOpen={openDialog} onOpenRecent={openRecent} onSample={newSample} />
       ) : compact ? (
         <>
           <div className="single">{panes![mobilePane]}</div>
@@ -243,41 +370,25 @@ function App() {
         <SettingsDialog project={project} onChange={patchSettings} onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && project && (
-        <ExportDialog
-          project={project}
-          onClose={() => setDialog(null)}
-          onExport={(f) => {
-            setDialog(null);
-            notify(t("export.done", { file: f }));
+        <ExportDialog project={project} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
+      )}
+      {pending && (
+        <ConfirmDialog
+          name={title}
+          onCancel={() => setPending(null)}
+          onDiscard={() => {
+            const { next } = pending;
+            setPending(null);
+            next();
+          }}
+          onSave={async () => {
+            const { next } = pending;
+            if (await doSave()) {
+              setPending(null);
+              next();
+            }
           }}
         />
-      )}
-      {dialog === "saveAs" && (
-        <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setDialog(null)}>
-          <form
-            className="dialog"
-            onSubmit={(e) => {
-              e.preventDefault();
-              confirmSaveAs();
-            }}
-          >
-            <header className="dialog-head"><h2>{t("menu.saveAs")}</h2></header>
-            <div className="dialog-body">
-              <label className="field">
-                <span className="field-label">{t("file.name")}</span>
-                <span className="field-input">
-                  <input autoFocus value={saveAsName} onChange={(e) => setSaveAsName(e.currentTarget.value)} />
-                  <span className="muted">.fc</span>
-                </span>
-              </label>
-            </div>
-            <footer className="dialog-foot">
-              <span className="grow" />
-              <button type="button" onClick={() => setDialog(null)}>{t("common.cancel")}</button>
-              <button type="submit" className="primary">{t("menu.save")}</button>
-            </footer>
-          </form>
-        </div>
       )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
