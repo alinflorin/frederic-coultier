@@ -60,6 +60,7 @@ export class Viewer {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
   private controls: OrbitControls;
   private metalMat = new THREE.MeshStandardMaterial({ metalness: 1 });
+  private supportMat = new THREE.MeshStandardMaterial({ color: 0xd9534f, metalness: 0.1, roughness: 0.6 });
   private model: THREE.Group | null = null;
   private edges: THREE.LineSegments[] = [];
   private sun = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -184,7 +185,7 @@ export class Viewer {
   }
 
   /** Shows an STL (binary or ASCII). Returns its stats, or null when there is nothing to show. */
-  setMesh(stl: ArrayBuffer | null): ViewerStats | null {
+  setMesh(stl: ArrayBuffer | null, supportsStl: ArrayBuffer | null = null): ViewerStats | null {
     const first = !this.model;
     if (this.model) {
       this.scene.remove(this.model);
@@ -207,6 +208,11 @@ export class Viewer {
     mesh.add(edges);
     this.edges = [edges];
     this.model = new THREE.Group().add(mesh);
+    if (supportsStl && supportsStl.byteLength > 84) {
+      const sup = new THREE.Mesh(new STLLoader().parse(supportsStl), this.supportMat);
+      sup.castShadow = true;
+      this.model.add(sup);
+    }
     this.scene.add(this.model);
 
     this.box.setFromObject(this.model);
@@ -224,6 +230,19 @@ export class Viewer {
       tris: geo.attributes.position.count / 3,
       metalVolumeMm3: meshVolume(geo),
     };
+  }
+
+  /** What is under a screen position: the model or a support, and the point in scene (print) coordinates. */
+  pick(clientX: number, clientY: number): { kind: "model" | "support"; point: [number, number, number] } | null {
+    if (!this.model) return null;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(ndc, this.camera);
+    const hit = rc.intersectObjects(this.model.children, false)[0];
+    if (!hit) return null;
+    const kind = (hit.object as THREE.Mesh).material === this.supportMat ? "support" : "model";
+    return { kind, point: [hit.point.x, hit.point.y, hit.point.z] };
   }
 
   /** Floor grid, shadow catcher and light follow the model's bounds. */
@@ -274,6 +293,7 @@ export class Viewer {
       m.geometry?.dispose();
     });
     this.metalMat.dispose();
+    this.supportMat.dispose();
     this.edgeMat.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

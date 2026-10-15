@@ -41,9 +41,13 @@ export interface ProjectSettings {
       overhangAngle: number;
       spacing: number;
       raftRadius: number;
+      raftThickness: number; // mm, 0 = no raft
+      lift: number; // mm between the piece and the plate
     };
     hollow: { enabled: boolean; wall: number; drain: number };
     sprue: boolean;
+    sprueDiameter: number;
+    sprueLength: number;
   };
   optimization: {
     simplify: boolean;
@@ -60,10 +64,25 @@ export interface ChatMessage {
   change?: { added: number; removed: number };
 }
 
+/** One support contact point, in the model's own coordinates. */
+export interface Support {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  source: "auto" | "manual";
+  tip?: number;
+}
+
+export interface SupportsData {
+  list: Support[];
+  nextId: number;
+}
+
 export interface FcProject {
   formatVersion: 1;
   settings: ProjectSettings;
   source: string; // model.scad
   chat: ChatMessage[];
-  supportCount: { auto: number; manual: number };
+  supports: SupportsData;
 }

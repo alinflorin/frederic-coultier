@@ -18,6 +18,8 @@ const PATHS: Record<string, string> = {
   rotate: "M20 12a8 8 0 11-2.5-5.8M20 4v4h-4",
   layers: "M12 3l9 5-9 5-9-5zM3 12.5l9 5 9-5M3 16.5l9 5 9-5",
   ortho: "M5 8l7-4 7 4v8l-7 4-7-4zM5 8l7 4 7-4M12 12v8",
+  supports: "M3 7h18M12 7v0M6 7v13M12 7v13M18 7v13M3 20h18",
+  plus: "M12 5v14M5 12h14",
   sparkle: "M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z",
 };
 

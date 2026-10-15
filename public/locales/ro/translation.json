@@ -99,7 +99,10 @@
     "rendering": "Se randează…",
     "failed": "Randare eșuată",
     "rendered": "Randat în {{ms}} ms",
-    "messages": "{{count}} mesaje"
+    "messages": "{{count}} mesaje",
+    "printView": "Aspect la printare (înclinat, cu suporturi)",
+    "noFit": "Nu încape pe platformă: {{size}} mm",
+    "editSupports": "Editează suporturile: click pe piesă adaugă unul, click pe un suport îl șterge"
   },
   "settings": {
     "title": "Setările proiectului",
@@ -108,7 +111,8 @@
       "general": "General",
       "material": "Material și randare",
       "printing": "Imprimare",
-      "optimization": "Optimizare"
+      "optimization": "Optimizare",
+      "checks": "Verificări"
     },
     "name": "Nume",
     "notes": "Note",
@@ -152,7 +156,32 @@
     "maxVolume": "Schimbare maximă de volum",
     "maxVolumeHint": "Verificare de siguranță: exportul e refuzat peste această valoare.",
     "trisNow": "Triunghiuri acum",
-    "trisAfter": "După simplificare"
+    "trisAfter": "După simplificare",
+    "raftThickness": "Grosime raft",
+    "raftThicknessHint": "0 = fără raft. Trebuie să fie mai subțire decât înălțarea.",
+    "lift": "Înălțare",
+    "liftHint": "Spațiul dintre piesă și platformă.",
+    "autoDone": "{{added}} suporturi adăugate; {{blocked}} puncte sărite pentru că un stâlp ar trece prin piesă.",
+    "tiltCol": "Înclinare",
+    "overhangCol": "Surplomb mm²",
+    "flatCol": "Plat pe platformă mm²",
+    "sizeCol": "Dimensiuni mm",
+    "noFit": "nu încape",
+    "useTilt": "Folosește",
+    "analyze": "Analizează",
+    "volumeChange": "volum {{pct}}%",
+    "checksIntro": "Verifică piesa pentru probleme care pot strica printul.",
+    "measure": "Măsurători",
+    "surface": "Suprafață",
+    "sprueDiameter": "Diametru tijă",
+    "sprueLength": "Lungime tijă",
+    "rejected": {
+      "volume": "respins: volumul s-ar schimba prea mult",
+      "bbox": "respins: forma s-ar deplasa",
+      "open": "respins: ar deschide găuri",
+      "nonManifold": "respins: ar strica plasa",
+      "stuck": "nu se mai poate reduce"
+    }
   },
   "metal": {
     "silver925": "Argint 925",
@@ -187,7 +216,7 @@
     },
     "supports": "Include suporturile",
     "tilted": "(gata de imprimare, înclinat)",
-    "noSupports": "(niciun suport definit)",
+    "noSupports": "(activează și generează suporturi în Setările proiectului)",
     "simplify": "Simplifică mesh-ul (păstrează {{pct}}%)",
     "hollow": "Gol, pereți de {{wall}} mm",
     "sprue": "Adaugă canal de turnare",
@@ -210,5 +239,38 @@
       "light": "Luminos",
       "dark": "Întunecat"
     }
+  },
+  "findings": {
+    "level": {
+      "pass": "OK",
+      "warn": "Avertisment",
+      "fail": "Problemă",
+      "info": "Info"
+    },
+    "empty": "Modelul este gol.",
+    "size": "Dimensiuni {{detail}}",
+    "counts": "Triunghiuri / corpuri: {{detail}}",
+    "watertight": "Etanș: fiecare muchie aparține exact două triunghiuri.",
+    "inverted": "Normalele sunt inversate: modelul e întors pe dos.",
+    "outward": "Normalele sunt orientate spre exterior.",
+    "open": "{{detail}} muchii deschise (găuri în suprafață).",
+    "nonManifold": "{{detail}} muchii non-manifold.",
+    "winding": "{{detail}} muchii cu orientare inconsistentă.",
+    "degenerate": "{{detail}} triunghiuri degenerate eliminate din verificare.",
+    "shells": "{{detail}} corpuri separate: piesele libere au nevoie fiecare de suport.",
+    "oneShell": "Un singur corp conex.",
+    "tooBig": "Nu încape în volumul imprimantei în nicio orientare.",
+    "fits": "Încape în volumul imprimantei.",
+    "noThin": "Nu există pereți mai subțiri de {{limit}} mm.",
+    "thin": "Pereți subțiri: {{n}} zonă(e), cel mai subțire {{min}} mm, ~{{area}} mm² sub {{limit}} mm. Fragil sau poate să nu se imprime.",
+    "noGaps": "Nu există goluri mai înguste de {{limit}} mm.",
+    "gaps": "Goluri înguste: {{n}} zonă(e), cel mai îngust {{min}} mm, ~{{area}} mm² mai aproape de {{limit}} mm. Se pot umple cu rășină.",
+    "selfIntSkipped": "Verificarea auto-intersecțiilor sărită: {{detail}} triunghiuri (limita 100000).",
+    "noSelfInt": "Nu există triunghiuri care se intersectează.",
+    "selfInt": "{{detail}} perechi de triunghiuri se intersectează: suprafața se taie pe ea însăși.",
+    "fillNoFeed": "Verificarea umplerii sărită: nu există masă mai groasă de {{detail}} mm de la care să curgă metalul.",
+    "fillOk": "Umplere la turnare: fiecare secțiune subțire e aproape de o masă groasă.",
+    "fill": "Umplere la turnare: secțiuni subțiri la până la {{worst}} mm de orice masă groasă (limita {{reach}} mm). Metalul poate îngheța înainte să le umple.",
+    "deepSkipped": "Verificările de grosime, goluri și intersecții sărite: rezolvă întâi problemele de mai sus."
   }
 }

@@ -5,18 +5,21 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   RenderError,
+  type PrintLayout,
   exportModel,
   inTauri,
   openProject,
   pickExportPath,
   pickProjectToOpen,
   pickProjectToSave,
+  printLayout,
+  printParams,
   renderScad,
   saveProject,
 } from "./api";
 import { emptyProject, sampleProject } from "./defaults";
 import { addRecent, baseName, fromWire, getRecents, removeRecent, toWire } from "./project";
-import type { ExportFormat, FcProject, ProjectSettings } from "./types";
+import type { ExportFormat, FcProject, ProjectSettings, SupportsData } from "./types";
 import { MenuBar, type Menu } from "./components/MenuBar";
 import { SourcePane } from "./components/SourcePane";
 import { ChatPane } from "./components/ChatPane";
@@ -25,6 +28,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import type { ExportPick } from "./components/ExportDialog";
 import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
 import "./App.css";
@@ -66,6 +70,8 @@ function App() {
   const [mobilePane, setMobilePane] = useState<PaneId>("chat");
   const [cols, setCols] = useState({ source: 340, preview: 460 });
   const [render, setRender] = useState<RenderState>(IDLE);
+  const [layout, setLayout] = useState<PrintLayout | null>(null);
+  const [printView, setPrintView] = useState(true);
   const [triangles, setTriangles] = useState<number | null>(null);
   const [recents, setRecents] = useState(getRecents);
 
@@ -84,6 +90,7 @@ function App() {
     setPath(filePath);
     setDirty(false);
     setRender(IDLE);
+    setLayout(null);
     setProjectId((n) => n + 1);
   };
 
@@ -111,6 +118,25 @@ function App() {
     }, RENDER_DELAY_MS);
     return () => clearTimeout(timer);
   }, [source, projectId]);
+
+  // --- print layout: tilted piece with supports, refreshed when anything it depends on changes ---
+  const supOpts = project?.settings.printing.supports;
+  const tilt = project?.settings.printing.tilt ?? 0;
+  const supList = project?.supports.list;
+  useEffect(() => {
+    if (!supOpts?.enabled || !source || render.status !== "ok" || !render.mesh) {
+      setLayout(null);
+      return;
+    }
+    let live = true;
+    printLayout(source, printParams(tilt, supOpts), supList ?? [])
+      .then((l) => live && setLayout(l))
+      .catch(() => live && setLayout(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [render.mesh, render.status, supOpts, tilt, supList]);
 
   // --- file actions ---
   const loadPath = async (p: string) => {
@@ -186,13 +212,23 @@ function App() {
       setTriangles(null);
     });
 
-  const doExport = async (format: ExportFormat) => {
+  const doExport = async (format: ExportFormat, pick: ExportPick) => {
     if (!project) return;
     setDialog(null);
     try {
       const target = await pickExportPath(path ? baseName(path).replace(/\.fc$/i, "") : project.settings.general.name, format);
       if (!target) return;
-      await exportModel(project.source, target, format);
+      const pr = project.settings.printing;
+      const o = project.settings.optimization;
+      await exportModel(project.source, target, format, {
+        print:
+          pick.supports && pr.supports.enabled && project.supports.list.length > 0
+            ? { params: printParams(pr.tilt, pr.supports), supports: project.supports.list }
+            : undefined,
+        simplify: pick.simplify ? { keepPercent: o.keepPercent, maxVolumeChange: o.maxVolumeChange } : undefined,
+        hollow: pick.hollow ? { wall: pr.hollow.wall, drain: pr.hollow.drain, tilt: pr.tilt } : undefined,
+        sprue: pick.sprue ? { diameter: pr.sprueDiameter, length: pr.sprueLength } : undefined,
+      });
       notify(t("export.done", { file: baseName(target) }));
     } catch (e) {
       notify(t("file.exportFailed", { error: errorText(e) }));
@@ -319,6 +355,30 @@ function App() {
   };
 
   const patchSettings = (s: ProjectSettings) => edit((p) => ({ ...p, settings: s }));
+  /** A click in support-edit mode: add a manual support on the model, or remove the one clicked. */
+  const pickSupport = (kind: "model" | "support", pt: [number, number, number]) => {
+    if (!project || !layout) return;
+    const tiltDeg = project.settings.printing.tilt;
+    const [s, c] = [Math.sin((tiltDeg * Math.PI) / 180), Math.cos((tiltDeg * Math.PI) / 180)];
+    if (kind === "model") {
+      const z0 = pt[2] - layout.zoff;
+      const sup = { id: project.supports.nextId, x: pt[0], y: pt[1] * c + z0 * s, z: -pt[1] * s + z0 * c, source: "manual" as const };
+      edit((p) => ({ ...p, supports: { list: [...p.supports.list, sup], nextId: sup.id + 1 } }));
+      return;
+    }
+    // nearest support by its position in the plate plane
+    let best: { id: number; d: number } | null = null;
+    for (const sp of project.supports.list) {
+      const y = sp.y * c - sp.z * s;
+      const d = Math.hypot(sp.x - pt[0], y - pt[1]);
+      if (!best || d < best.d) best = { id: sp.id, d };
+    }
+    if (best && best.d < 2) {
+      const id = best.id;
+      edit((p) => ({ ...p, supports: { ...p.supports, list: p.supports.list.filter((x) => x.id !== id) } }));
+    }
+  };
+  const patchSupports = (supports: SupportsData) => edit((p) => ({ ...p, supports }));
 
   const panes = project && {
     source: (
@@ -335,6 +395,10 @@ function App() {
         key={projectId}
         project={project}
         render={render}
+        layout={layout}
+        printView={printView}
+        onTogglePrintView={() => setPrintView((v) => !v)}
+        onPickSupport={pickSupport}
         onStats={(s) => setTriangles(s ? s.tris : null)}
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
@@ -377,7 +441,7 @@ function App() {
       )}
 
       {dialog === "settings" && project && (
-        <SettingsDialog project={project} onChange={patchSettings} onClose={() => setDialog(null)} />
+        <SettingsDialog project={project} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && project && (
         <ExportDialog project={project} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />

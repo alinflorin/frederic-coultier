@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from "./defaults";
-import type { ChatMessage, FcProject } from "./types";
+import type { ChatMessage, FcProject, Support, SupportsData } from "./types";
 
 /** What the Rust side reads from and writes to a .fc file. */
 export interface WireProject {
@@ -24,21 +24,29 @@ function mergeDeep<T>(defaults: T, loaded: unknown): T {
   return out as T;
 }
 
-const count = (v: unknown) => (typeof v === "number" && v >= 0 ? v : 0);
+const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+
+function readSupports(raw: unknown): SupportsData {
+  if (!isObject(raw) || !Array.isArray(raw.list)) return { list: [], nextId: 1 };
+  const list = raw.list.filter(
+    (s): s is Support => isObject(s) && num(s.id) && num(s.x) && num(s.y) && num(s.z),
+  ).map((s) => ({ ...s, source: s.source === "manual" ? "manual" as const : "auto" as const }));
+  const nextId = Math.max(num(raw.nextId) ? (raw.nextId as number) : 1, ...list.map((s) => s.id + 1));
+  return { list, nextId };
+}
 
 export function fromWire(w: WireProject): FcProject {
-  const sup = isObject(w.supports) ? w.supports : {};
   return {
     formatVersion: 1,
     source: w.source,
     settings: mergeDeep(DEFAULT_SETTINGS, w.settings),
     chat: Array.isArray(w.chat) ? (w.chat as ChatMessage[]) : [],
-    supportCount: { auto: count(sup.auto), manual: count(sup.manual) },
+    supports: readSupports(w.supports),
   };
 }
 
 export function toWire(p: FcProject): WireProject {
-  return { source: p.source, settings: p.settings, chat: p.chat, supports: p.supportCount };
+  return { source: p.source, settings: p.settings, chat: p.chat, supports: p.supports };
 }
 
 export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;

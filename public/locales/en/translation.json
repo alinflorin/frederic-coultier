@@ -99,7 +99,10 @@
     "rendering": "Rendering…",
     "failed": "Render failed",
     "rendered": "Rendered in {{ms}} ms",
-    "messages": "{{count}} messages"
+    "messages": "{{count}} messages",
+    "printView": "Print layout (tilted, with supports)",
+    "noFit": "Does not fit the plate: {{size}} mm",
+    "editSupports": "Edit supports: click the piece to add one, click a support to remove it"
   },
   "settings": {
     "title": "Project settings",
@@ -108,7 +111,8 @@
       "general": "General",
       "material": "Material & render",
       "printing": "Printing",
-      "optimization": "Optimization"
+      "optimization": "Optimization",
+      "checks": "Checks"
     },
     "name": "Name",
     "notes": "Notes",
@@ -152,7 +156,32 @@
     "maxVolume": "Max volume change",
     "maxVolumeHint": "Safety check: the export is refused above this.",
     "trisNow": "Triangles now",
-    "trisAfter": "After simplify"
+    "trisAfter": "After simplify",
+    "raftThickness": "Raft thickness",
+    "raftThicknessHint": "0 = no raft. Must be thinner than the lift.",
+    "lift": "Lift",
+    "liftHint": "Gap between the piece and the plate.",
+    "autoDone": "{{added}} supports added; {{blocked}} spots skipped because a pillar would cross the piece.",
+    "tiltCol": "Tilt",
+    "overhangCol": "Overhang mm²",
+    "flatCol": "Flat on plate mm²",
+    "sizeCol": "Size mm",
+    "noFit": "does not fit",
+    "useTilt": "Use",
+    "analyze": "Analyze",
+    "volumeChange": "volume {{pct}}%",
+    "checksIntro": "Checks the piece for problems that can ruin a print.",
+    "measure": "Measurements",
+    "surface": "Surface",
+    "sprueDiameter": "Sprue diameter",
+    "sprueLength": "Sprue length",
+    "rejected": {
+      "volume": "rejected: volume would change too much",
+      "bbox": "rejected: shape would move",
+      "open": "rejected: would open holes",
+      "nonManifold": "rejected: would break the mesh",
+      "stuck": "cannot reduce further"
+    }
   },
   "metal": {
     "silver925": "Silver 925",
@@ -187,7 +216,7 @@
     },
     "supports": "Include supports",
     "tilted": "(print-ready, tilted)",
-    "noSupports": "(none defined)",
+    "noSupports": "(enable and generate supports in Project settings)",
     "simplify": "Simplify mesh (keep {{pct}}%)",
     "hollow": "Hollow, {{wall}} mm walls",
     "sprue": "Add sprue",
@@ -210,5 +239,38 @@
       "light": "Light",
       "dark": "Dark"
     }
+  },
+  "findings": {
+    "level": {
+      "pass": "OK",
+      "warn": "Warning",
+      "fail": "Problem",
+      "info": "Info"
+    },
+    "empty": "The model is empty.",
+    "size": "Size {{detail}}",
+    "counts": "Triangles / shells: {{detail}}",
+    "watertight": "Watertight: every edge is shared by exactly two triangles.",
+    "inverted": "Normals are inverted: the model is inside-out.",
+    "outward": "Normals point outward.",
+    "open": "{{detail}} open edges (holes in the surface).",
+    "nonManifold": "{{detail}} non-manifold edges.",
+    "winding": "{{detail}} edges with inconsistent winding.",
+    "degenerate": "{{detail}} degenerate triangles removed from the check.",
+    "shells": "{{detail}} separate shells: loose parts each need support.",
+    "oneShell": "Single connected shell.",
+    "tooBig": "Does not fit the printer volume in any orientation.",
+    "fits": "Fits the printer volume.",
+    "noThin": "No walls thinner than {{limit}} mm found.",
+    "thin": "Thin walls: {{n}} region(s), thinnest {{min}} mm, ~{{area}} mm² below {{limit}} mm. Brittle or may not print.",
+    "noGaps": "No gaps narrower than {{limit}} mm found.",
+    "gaps": "Narrow gaps: {{n}} region(s), narrowest {{min}} mm, ~{{area}} mm² closer than {{limit}} mm. May fill with resin.",
+    "selfIntSkipped": "Self-intersection check skipped: {{detail}} triangles (limit 100000).",
+    "noSelfInt": "No self-intersecting triangles found.",
+    "selfInt": "{{detail}} pair(s) of crossing triangles: the surface cuts through itself.",
+    "fillNoFeed": "Casting fill check skipped: no mass thicker than {{detail}} mm to feed from.",
+    "fillOk": "Casting fill: every thin section is close to a thick mass.",
+    "fill": "Casting fill: thin sections up to {{worst}} mm from any thick mass (limit {{reach}} mm). The metal may freeze before filling them.",
+    "deepSkipped": "Thickness, gap and intersection checks skipped: fix the problems above first."
   }
 }

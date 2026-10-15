@@ -10,9 +10,9 @@ use openrscad_geom::{render_cached_warns, GeomCache, Mesh};
 use serde::Serialize;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use openrscad_geom::ManifoldKernel as Kernel;
+pub use openrscad_geom::ManifoldKernel as Kernel;
 #[cfg(any(target_os = "android", target_os = "ios"))]
-use openrscad_geom::RustManifoldKernel as Kernel;
+pub use openrscad_geom::RustManifoldKernel as Kernel;
 
 /// Evaluation fuel. Stops runaway scripts (an unbounded `for`, deep
 /// recursion) instead of hanging the app; generous for real jewelry models.
@@ -181,6 +181,26 @@ mod tests {
         assert!(size[2] > 20.0, "z {size:?}");
         assert!(r.mesh.volume() > 50.0);
         assert!(r.mesh.to_binary_stl().len() > 84);
+    }
+
+    #[test]
+    fn sample_ring_survives_the_whole_pipeline() {
+        use crate::{hollow, meshtools, supports};
+        let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
+        let t = std::time::Instant::now();
+        let spec = hollow::HollowSpec { wall: 0.8, drain: 1.0, tilt: 30.0 };
+        let hollowed = hollow::hollow(&r.mesh, &spec).expect("hollow ok");
+        eprintln!("hollow: {:?} in {:?}", hollowed.as_ref().map(|h| &h.1), t.elapsed());
+        let base = hollowed.map_or((*r.mesh).clone(), |h| h.0);
+        assert!(base.volume() <= r.mesh.volume());
+        let (_, rep) = meshtools::simplify(&base, &meshtools::SimplifySpec { keep_percent: 60.0, max_volume_change: 1.0 });
+        eprintln!("simplify: {rep:?}");
+        let p = supports::PrintParams { tilt: 30.0, lift: 3.0, tip: 0.2, base: 0.8, raft: 1.0, raft_radius: 3.0 };
+        let auto = supports::AutoParams { angle: 45.0, spacing: 4.0, step: 1.0, bias: 3.0 };
+        let sup = supports::auto_supports(&base, &p, &auto, &[], 1).unwrap();
+        let baked = supports::bake(&base, &sup.supports, &p).unwrap();
+        eprintln!("supports {} baked tris {} total {:?}", sup.supports.len(), baked.tris.len(), t.elapsed());
+        assert!(baked.tris.len() > base.tris.len());
     }
 
     #[test]

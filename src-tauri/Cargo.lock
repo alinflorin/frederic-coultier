@@ -1224,6 +1224,7 @@ dependencies = [
 name = "frederic-coultier"
 version = "0.1.1"
 dependencies = [
+ "meshopt-rs",
  "openrscad-eval",
  "openrscad-geom",
  "openrscad-syntax",
@@ -2483,6 +2484,12 @@ checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "meshopt-rs"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3e1e0ce77ff0b408e7d8a822cc5181997309a3825b4e9bfe0b6a04fd9c92f05"
 
 [[package]]
 name = "mime"

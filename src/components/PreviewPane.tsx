@@ -4,7 +4,7 @@ import type { FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
 import { Viewer, type ViewerStats } from "./viewer/Viewer";
 import { Gizmo } from "./viewer/Gizmo";
-import type { Diagnostic, RenderError } from "../api";
+import type { Diagnostic, PrintLayout, RenderError } from "../api";
 import { Icon } from "./Icon";
 
 const MODES: ShadingMode[] = ["shaded", "edges", "wireframe", "xray"];
@@ -21,11 +21,21 @@ export interface RenderState {
 export function PreviewPane({
   project,
   render,
+  layout,
+  printView,
+  onTogglePrintView,
+  onPickSupport,
   onPatchRender,
   onStats,
 }: {
   project: FcProject;
   render: RenderState;
+  /** The piece as printed (tilted, with supports), when supports are enabled. */
+  layout: PrintLayout | null;
+  printView: boolean;
+  onTogglePrintView: () => void;
+  /** Support editing: a click on the model (add) or on a support (remove), in print coordinates. */
+  onPickSupport: (kind: "model" | "support", point: [number, number, number]) => void;
   onPatchRender: (p: Partial<FcProject["settings"]["render"]>) => void;
   onStats: (s: ViewerStats | null) => void;
 }) {
@@ -38,9 +48,13 @@ export function PreviewPane({
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
   const [console_, setConsole] = useState(false);
+  const [editSup, setEditSup] = useState(false);
+  const down = useRef<{ x: number; y: number } | null>(null);
 
   const { render: r, material } = project.settings;
-  const supTotal = project.supportCount.auto + project.supportCount.manual;
+  const supTotal = project.supports.list.length;
+  const supOn = project.settings.printing.supports.enabled;
+  const showLayout = supOn && printView && layout;
 
   useEffect(() => {
     if (!host.current) return;
@@ -71,11 +85,11 @@ export function PreviewPane({
 
   useEffect(() => {
     if (!viewer) return;
-    const st = viewer.setMesh(render.mesh);
+    const st = showLayout ? viewer.setMesh(layout.model, layout.supports) : viewer.setMesh(render.mesh);
     setStats(st);
     onStats(st);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewer, render.mesh]);
+  }, [viewer, render.mesh, layout, showLayout]);
 
   useEffect(() => {
     if (!menu) return;
@@ -99,7 +113,20 @@ export function PreviewPane({
 
   return (
     <section className="pane preview-pane" aria-label={t("preview.title")}>
-      <div className="viewport" tabIndex={0} onKeyDown={onKey}>
+      <div
+        className={`viewport${editSup ? " editing" : ""}`}
+        tabIndex={0}
+        onKeyDown={onKey}
+        onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
+        onPointerUp={(e) => {
+          const d = down.current;
+          down.current = null;
+          if (!editSup || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+          if ((e.target as HTMLElement).closest(".vp-tools")) return;
+          const hit = viewer?.pick(e.clientX, e.clientY);
+          if (hit) onPickSupport(hit.kind, hit.point);
+        }}
+      >
         <div className="vp-host" ref={host} />
         <Gizmo viewer={viewer} />
 
@@ -147,6 +174,28 @@ export function PreviewPane({
               </ul>
             )}
           </div>
+          {supOn && (
+            <button
+              className={`vp-btn${printView ? " on" : ""}`}
+              aria-pressed={printView}
+              onClick={onTogglePrintView}
+              title={t("preview.printView")}
+              aria-label={t("preview.printView")}
+            >
+              <Icon name="supports" size={18} />
+            </button>
+          )}
+          {supOn && printView && (
+            <button
+              className={`vp-btn${editSup ? " on" : ""}`}
+              aria-pressed={editSup}
+              onClick={() => setEditSup((v) => !v)}
+              title={t("preview.editSupports")}
+              aria-label={t("preview.editSupports")}
+            >
+              <Icon name="plus" size={18} />
+            </button>
+          )}
           <span className="vp-sep" />
           <button className={`vp-btn${grid ? " on" : ""}`} aria-pressed={grid} onClick={() => setGrid(!grid)} title={t("preview.grid")} aria-label={t("preview.grid")}>
             <Icon name="grid" size={18} />
@@ -197,7 +246,8 @@ export function PreviewPane({
         {stats && <span>{stats.tris.toLocaleString()} {t("preview.tris")}</span>}
         {stats && <span>{t("preview.volume")} {(stats.metalVolumeMm3 / 1000).toFixed(2)} cm³</span>}
         {stats && <span>{t("preview.weight")} ≈ {grams.toFixed(1)} g</span>}
-        {project.settings.printing.supports.enabled && <span>{t("preview.supports", { count: supTotal })}</span>}
+        {supOn && <span>{t("preview.supports", { count: supTotal })}</span>}
+        {showLayout && !layout.fits && <span className="bad"><Icon name="warn" size={13} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</span>}
         {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
           <button className="link" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>
             {t("preview.messages", { count: render.diagnostics.length + render.echoes.length })}

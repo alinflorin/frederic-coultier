@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { ExportFormat } from "./types";
+import type { ExportFormat, FcProject, Support } from "./types";
 import { safeName, type WireProject } from "./project";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -97,5 +97,148 @@ export function pickExportPath(name: string, format: ExportFormat): Promise<stri
   });
 }
 
-export const exportModel = (source: string, path: string, format: ExportFormat) =>
-  invoke<void>("export_model", { source, path, format });
+export interface ExportOptions {
+  print?: PrintSpec;
+  simplify?: { keepPercent: number; maxVolumeChange: number };
+  sprue?: { diameter: number; length: number };
+  hollow?: { wall: number; drain: number; tilt: number };
+}
+
+export const exportModel = (source: string, path: string, format: ExportFormat, o: ExportOptions = {}) =>
+  invoke<void>("export_model", {
+    source,
+    path,
+    format,
+    print: o.print ?? null,
+    simplify: o.simplify ?? null,
+    sprue: o.sprue ?? null,
+    hollow: o.hollow ?? null,
+  });
+
+// --- analysis ---
+
+export interface MeshStats {
+  triangles: number;
+  vertices: number;
+  volume: number;
+  area: number;
+  size: [number, number, number];
+  shells: number;
+  openEdges: number;
+  nonManifoldEdges: number;
+  windingEdges: number;
+  degenerate: number;
+}
+
+export interface Finding {
+  level: "pass" | "warn" | "fail" | "info";
+  code: string;
+  detail: string;
+  /** Where the problem is, in model coordinates. */
+  at?: [number, number, number][];
+}
+
+export interface SimplifyReport {
+  before: number;
+  after: number;
+  accepted: boolean;
+  reason: string | null;
+  volumeChange: number;
+}
+
+export interface MeshReport {
+  stats: MeshStats;
+  findings: Finding[];
+  simplify: SimplifyReport | null;
+}
+
+export const meshReport = (
+  source: string,
+  simplify?: { keepPercent: number; maxVolumeChange: number },
+  checks?: { minWall: number; minGap: number },
+) => invoke<MeshReport>("mesh_report", { source, simplify: simplify ?? null, checks: checks ?? null });
+
+// --- supports ---
+
+type SupportSettings = FcProject["settings"]["printing"]["supports"];
+
+export interface PrintParams {
+  tilt: number;
+  lift: number;
+  tip: number;
+  base: number;
+  raft: number;
+  raftRadius: number;
+}
+
+export interface PrintSpec {
+  params: PrintParams;
+  supports: Support[];
+}
+
+export function printParams(tilt: number, s: SupportSettings): PrintParams {
+  return { tilt, lift: s.lift, tip: s.tipRadius, base: s.baseRadius, raft: s.raftThickness, raftRadius: s.raftRadius };
+}
+
+export interface TiltRow {
+  tilt: number;
+  overhang: number;
+  flat: number;
+  size: [number, number, number];
+  fits: boolean;
+}
+
+export const suggestTilt = (source: string, angle: number, lift: number) =>
+  invoke<TiltRow[]>("suggest_tilt", { source, min: 0, max: 60, step: 5, angle, lift });
+
+export interface AutoResult {
+  supports: Support[];
+  nextId: number;
+  stats: { overhangFaces: number; samples: number; added: number; kept: number; blocked: number };
+}
+
+export const autoSupports = (
+  source: string,
+  print: PrintParams,
+  s: SupportSettings,
+  manual: Support[],
+  nextId: number,
+) =>
+  invoke<AutoResult>("auto_supports", {
+    source,
+    print,
+    auto: { angle: s.overhangAngle, spacing: s.spacing, step: 1, bias: 3 },
+    manual,
+    nextId,
+  });
+
+export interface PrintLayout {
+  model: ArrayBuffer;
+  /** Supports and raft, null when there are none. */
+  supports: ArrayBuffer | null;
+  size: [number, number, number];
+  fits: boolean;
+  /** Lift applied to the tilted model, to map clicks back to model coordinates. */
+  zoff: number;
+}
+
+/** Reply layout: u32 LE JSON length | JSON | model STL | supports STL. */
+export async function printLayout(source: string, print: PrintParams, supports: Support[]): Promise<PrintLayout> {
+  const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports });
+  const n = new DataView(buf).getUint32(0, true);
+  const info = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as {
+    size: [number, number, number];
+    fits: boolean;
+    modelLen: number;
+    zoff: number;
+  };
+  const start = 4 + n;
+  const rest = buf.slice(start + info.modelLen);
+  return {
+    model: buf.slice(start, start + info.modelLen),
+    supports: rest.byteLength > 84 ? rest : null,
+    size: info.size,
+    fits: info.fits,
+    zoff: info.zoff,
+  };
+}

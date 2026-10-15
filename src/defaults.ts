@@ -23,9 +23,13 @@ export const DEFAULT_SETTINGS: FcProject["settings"] = {
       overhangAngle: 45,
       spacing: 4,
       raftRadius: 3,
+      raftThickness: 1,
+      lift: 3,
     },
     hollow: { enabled: false, wall: 1, drain: 1 },
     sprue: false,
+    sprueDiameter: 2,
+    sprueLength: 5,
   },
   optimization: { simplify: false, keepPercent: 60, maxVolumeChange: 0.5 },
 };
@@ -36,7 +40,7 @@ export function emptyProject(name: string): FcProject {
     settings: { ...DEFAULT_SETTINGS, general: { ...DEFAULT_SETTINGS.general, name } },
     source: "// New project\n$fn = 128;\n",
     chat: [],
-    supportCount: { auto: 0, manual: 0 },
+    supports: { list: [], nextId: 1 },
   };
 }
 

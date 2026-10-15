@@ -1,12 +1,20 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { FcProject, Finish, Metal, ProjectSettings } from "../types";
+import type { FcProject, Finish, Metal, ProjectSettings, SupportsData } from "../types";
+import { autoSupports, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
+import { DENSITY } from "../materials";
 import { Dialog } from "./Dialog";
 
-type Tab = "general" | "material" | "printing" | "optimization";
-const TABS: Tab[] = ["general", "material", "printing", "optimization"];
+type Tab = "general" | "material" | "printing" | "optimization" | "checks";
+const TABS: Tab[] = ["general", "material", "printing", "optimization", "checks"];
 const METALS: Metal[] = ["silver925", "gold18y", "gold18r", "gold18w", "platinum", "resin"];
 const FINISHES: Finish[] = ["polished", "satin", "matte"];
+
+/** Findings carry either one value or "a|b|c|d"; the translations use whichever they need. */
+function findingParams(detail: string) {
+  const [a, b, c, d] = detail.split("|");
+  return { detail, n: a, min: b, area: c, limit: d, worst: a, reach: b };
+}
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -60,17 +68,65 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: (v: b
 export function SettingsDialog({
   project,
   onChange,
+  onSupports,
   onClose,
 }: {
   project: FcProject;
   onChange: (s: ProjectSettings) => void;
+  onSupports: (s: SupportsData) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("general");
   const s = project.settings;
   const sup = s.printing.supports;
-  const supTotal = project.supportCount.auto + project.supportCount.manual;
+  const list = project.supports.list;
+  const nAuto = list.filter((x) => x.source === "auto").length;
+  const nManual = list.length - nAuto;
+  const [working, setWorking] = useState<"tilt" | "auto" | null>(null);
+  const [rows, setRows] = useState<TiltRow[] | null>(null);
+  const [report, setReport] = useState<MeshReport | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const analyze = async () => {
+    setAnalyzing(true);
+    setReportError(null);
+    try {
+      setReport(
+        await meshReport(project.source, s.optimization.simplify ? { keepPercent: s.optimization.keepPercent, maxVolumeChange: s.optimization.maxVolumeChange } : undefined,
+          tab === "checks" ? { minWall: s.printing.minWall, minGap: 0.3 } : undefined,
+        ),
+      );
+    } catch (e) {
+      setReportError(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+  const [note, setNote] = useState<string | null>(null);
+
+  const guard = async (kind: "tilt" | "auto", fn: () => Promise<void>) => {
+    setWorking(kind);
+    setNote(null);
+    try {
+      await fn();
+    } catch (e) {
+      setNote(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorking(null);
+    }
+  };
+  const runTilt = () =>
+    guard("tilt", async () => {
+      setRows((await suggestTilt(project.source, sup.overhangAngle, sup.lift)).slice(0, 5));
+    });
+  const runAuto = () =>
+    guard("auto", async () => {
+      const manual = list.filter((x) => x.source === "manual");
+      const r = await autoSupports(project.source, printParams(s.printing.tilt, sup), sup, manual, project.supports.nextId);
+      onSupports({ list: r.supports, nextId: r.nextId });
+      setNote(t("settings.autoDone", { added: r.stats.added, blocked: r.stats.blocked }));
+    });
 
   const setP = (p: Partial<ProjectSettings["printing"]>) => onChange({ ...s, printing: { ...s.printing, ...p } });
   const setSup = (p: Partial<typeof sup>) => setP({ supports: { ...sup, ...p } });
@@ -169,14 +225,47 @@ export function SettingsDialog({
                 <Field label={t("settings.raft")}>
                   <Num value={sup.raftRadius} min={0} max={10} step={0.5} onChange={(v) => setSup({ raftRadius: v })} unit="mm" />
                 </Field>
+                <Field label={t("settings.raftThickness")} hint={t("settings.raftThicknessHint")}>
+                  <Num value={sup.raftThickness} min={0} max={Math.max(0, sup.lift - 0.1)} step={0.1} onChange={(v) => setSup({ raftThickness: v })} unit="mm" />
+                </Field>
+                <Field label={t("settings.lift")} hint={t("settings.liftHint")}>
+                  <Num value={sup.lift} min={1} max={10} step={0.5} onChange={(v) => setSup({ lift: v })} unit="mm" />
+                </Field>
                 <div className="support-actions">
                   <span className="muted grow">
-                    {t("settings.supportCount", { count: supTotal, auto: project.supportCount.auto, manual: project.supportCount.manual })}
+                    {t("settings.supportCount", { count: list.length, auto: nAuto, manual: nManual })}
                   </span>
-                  <button>{t("settings.suggestTilt")}</button>
-                  <button>{t("settings.autoSupports")}</button>
-                  <button>{t("settings.clearSupports")}</button>
+                  <button disabled={working !== null} onClick={runTilt}>{working === "tilt" ? "…" : t("settings.suggestTilt")}</button>
+                  <button disabled={working !== null} onClick={runAuto}>{working === "auto" ? "…" : t("settings.autoSupports")}</button>
+                  <button disabled={working !== null || nAuto === 0} onClick={() => onSupports({ ...project.supports, list: list.filter((x) => x.source === "manual") })}>
+                    {t("settings.clearSupports")}
+                  </button>
                 </div>
+                {note && <p className="muted" role="status">{note}</p>}
+                {rows && (
+                  <table className="tilt-table">
+                    <thead>
+                      <tr>
+                        <th>{t("settings.tiltCol")}</th>
+                        <th>{t("settings.overhangCol")}</th>
+                        <th>{t("settings.flatCol")}</th>
+                        <th>{t("settings.sizeCol")}</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.tilt} className={i === 0 ? "best" : ""}>
+                          <td>{r.tilt}°</td>
+                          <td>{r.overhang.toFixed(1)}</td>
+                          <td>{r.flat.toFixed(1)}</td>
+                          <td>{r.fits ? r.size.map((n) => n.toFixed(0)).join(" × ") : t("settings.noFit")}</td>
+                          <td><button disabled={s.printing.tilt === r.tilt} onClick={() => setP({ tilt: r.tilt })}>{t("settings.useTilt")}</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </fieldset>
 
               <h3>{t("settings.hollowTitle")}</h3>
@@ -190,6 +279,14 @@ export function SettingsDialog({
                 </Field>
               </fieldset>
               <Check checked={s.printing.sprue} onChange={(v) => setP({ sprue: v })} label={t("settings.sprue")} />
+              <fieldset disabled={!s.printing.sprue}>
+                <Field label={t("settings.sprueDiameter")}>
+                  <Num value={s.printing.sprueDiameter} min={0.5} max={6} onChange={(v) => setP({ sprueDiameter: v })} unit="mm" />
+                </Field>
+                <Field label={t("settings.sprueLength")}>
+                  <Num value={s.printing.sprueLength} min={1} max={20} step={0.5} onChange={(v) => setP({ sprueLength: v })} unit="mm" />
+                </Field>
+              </fieldset>
             </>
           )}
 
@@ -208,10 +305,59 @@ export function SettingsDialog({
                   <Num value={s.optimization.maxVolumeChange} min={0.1} max={5} onChange={(v) => onChange({ ...s, optimization: { ...s.optimization, maxVolumeChange: v } })} unit="%" />
                 </Field>
               </fieldset>
-              <div className="stat-row">
-                <div><span className="muted">{t("settings.trisNow")}</span><b>48 212</b></div>
-                <div><span className="muted">{t("settings.trisAfter")}</span><b>{s.optimization.simplify ? Math.round(48212 * s.optimization.keepPercent / 100).toLocaleString() : "48 212"}</b></div>
+              <div className="support-actions">
+                <button disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</button>
               </div>
+              {reportError && <p className="bad" role="alert">{reportError}</p>}
+              {report && (
+                <div className="stat-row">
+                  <div><span className="muted">{t("settings.trisNow")}</span><b>{report.stats.triangles.toLocaleString()}</b></div>
+                  {report.simplify && (
+                    <div>
+                      <span className="muted">{t("settings.trisAfter")}</span>
+                      <b>{report.simplify.accepted ? report.simplify.after.toLocaleString() : "—"}</b>
+                      <span className="muted">
+                        {report.simplify.accepted
+                          ? t("settings.volumeChange", { pct: report.simplify.volumeChange.toFixed(3) })
+                          : t(`settings.rejected.${report.simplify.reason}`)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "checks" && (
+            <>
+              <p className="muted">{t("settings.checksIntro")}</p>
+              <div className="support-actions">
+                <button disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</button>
+              </div>
+              {reportError && <p className="bad" role="alert">{reportError}</p>}
+              {report && (
+                <>
+                  <ul className="findings">
+                    {report.findings.map((f, i) => (
+                      <li key={i} className={f.level}>
+                        <b>{t(`findings.level.${f.level}`)}</b> {t(`findings.${f.code}`, findingParams(f.detail))}
+                        {f.at && f.at.length > 0 && (
+                          <span className="muted at">
+                            {" "}
+                            {f.at.map((p) => `(${p.map((n) => n.toFixed(1)).join(", ")})`).join(" ")}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <h3>{t("settings.measure")}</h3>
+                  <div className="stat-row">
+                    <div><span className="muted">{t("preview.volume")}</span><b>{(report.stats.volume / 1000).toFixed(3)} cm³</b></div>
+                    <div><span className="muted">{t("settings.surface")}</span><b>{report.stats.area.toFixed(1)} mm²</b></div>
+                    <div><span className="muted">{t("preview.weight")} ({t(`metal.${s.material.metal}`)})</span><b>{((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(2)} g</b></div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
