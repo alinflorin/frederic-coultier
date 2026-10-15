@@ -279,6 +279,44 @@ fn check(welded: &Mesh, a: &MeshStats, result: &Mesh, spec: &SimplifySpec) -> Re
 pub struct SprueSpec {
     pub diameter: f64,
     pub length: f64,
+    /// Manual spot, in the mesh's own coordinates; snapped to the closest point of the surface.
+    #[serde(default)]
+    pub at: Option<V3>,
+}
+
+/// Closest point to `p` on triangle `abc` (Ericson, Real-Time Collision Detection).
+fn closest_on_tri(p: V3, a: V3, b: V3, c: V3) -> V3 {
+    let add = |u: V3, v: V3, k: f64| [u[0] + v[0] * k, u[1] + v[1] * k, u[2] + v[2] * k];
+    let (ab, ac, ap) = (sub(b, a), sub(c, a), sub(p, a));
+    let (d1, d2) = (dot(ab, ap), dot(ac, ap));
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return a;
+    }
+    let bp = sub(p, b);
+    let (d3, d4) = (dot(ab, bp), dot(ac, bp));
+    if d3 >= 0.0 && d4 <= d3 {
+        return b;
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        return add(a, ab, d1 / (d1 - d3));
+    }
+    let cp = sub(p, c);
+    let (d5, d6) = (dot(ab, cp), dot(ac, cp));
+    if d6 >= 0.0 && d5 <= d6 {
+        return c;
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        return add(a, ac, d2 / (d2 - d6));
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && d4 - d3 >= 0.0 && d5 - d6 >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return add(b, sub(c, b), w);
+    }
+    let denom = 1.0 / (va + vb + vc);
+    add(add(a, ab, vb * denom), ac, vc * denom)
 }
 
 /// Distance along the ray `p + t d` to the nearest triangle (Möller–Trumbore), skipping `skip`.
@@ -361,11 +399,36 @@ fn stub(p: V3, n: V3, spec: &SprueSpec) -> Mesh {
 /// centre; the first one with free air in front of it wins.
 /// Returns the stub mesh (to be fused with the piece) and the metal thickness behind it.
 pub fn plan_sprue(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64)> {
+    plan_sprue_at(mesh, spec).map(|(m, t, _)| (m, t))
+}
+
+/// Like [`plan_sprue`], also returning where the stub sits (the manual spot, snapped to the surface).
+pub fn plan_sprue_at(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64, V3)> {
     let m = mesh.welded(WELD_EPS);
     if m.tris.is_empty() {
         return None;
     }
     let max_d = (1.5 * spec.diameter).max(2.5);
+
+    if let Some(want) = spec.at {
+        let mut best: Option<(f64, V3, V3)> = None;
+        for t in &m.tris {
+            let [a, b, c] = t.map(|k| m.verts[k as usize]);
+            let cr = cross(sub(b, a), sub(c, a));
+            let l = norm(cr);
+            if l < 1e-9 {
+                continue;
+            }
+            let q = closest_on_tri(want, a, b, c);
+            let d = norm(sub(q, want));
+            if best.is_none_or(|b| d < b.0) {
+                best = Some((d, q, cr.map(|x| x / l)));
+            }
+        }
+        let (_, q, n) = best?;
+        let thick = ray_hit(&m, q, n.map(|x| -x), usize::MAX, max_d).unwrap_or(max_d);
+        return Some((stub(q, n, spec), thick, q));
+    }
 
     let mut centre = [0.0; 3];
     let mut asum = 0.0;
@@ -410,7 +473,7 @@ pub fn plan_sprue(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64)> {
             continue; // the stub would run into the piece
         }
         let thick = ray_hit(&m, cen, n.map(|x| -x), i, max_d).unwrap_or(max_d);
-        return Some((stub(cen, n, spec), thick));
+        return Some((stub(cen, n, spec), thick, cen));
     }
     None
 }
@@ -486,7 +549,7 @@ mod tests {
     #[test]
     fn sprue_sticks_out_of_the_surface() {
         let m = sphere(5.0, 24, 32);
-        let (stub, thick) = plan_sprue(&m, &SprueSpec { diameter: 2.0, length: 5.0 }).unwrap();
+        let (stub, thick) = plan_sprue(&m, &SprueSpec { diameter: 2.0, length: 5.0, at: None }).unwrap();
         assert!(thick > 1.0);
         let (lo, hi) = stub.bbox().unwrap();
         let reach = (0..3).map(|k| lo[k].abs().max(hi[k].abs())).fold(0.0, f64::max);

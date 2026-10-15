@@ -14,7 +14,7 @@
   },
   "menu": {
     "file": "File",
-    "project": "Project",
+    "project": "Project settings",
     "help": "Help",
     "new": "New project",
     "open": "Open…",
@@ -102,6 +102,7 @@
     "messages": "{{count}} messages",
     "printView": "Print layout (tilted, with supports)",
     "noFit": "Does not fit the plate: {{size}} mm",
+    "moveSprue": "Move the sprue: click the piece to place it there",
     "editSupports": "Edit supports: click the piece to add one, click a support to remove it",
     "layoutFailed": "Could not build the print layout: {{error}}"
   },
@@ -182,6 +183,17 @@
       "open": "rejected: would open holes",
       "nonManifold": "rejected: would break the mesh",
       "stuck": "cannot reduce further"
+    },
+    "supportList": "Support list",
+    "addSupport": "Add support",
+    "removeSupport": "Remove support",
+    "spruePos": "Sprue position (X, Y, Z)",
+    "sprueManual": "Manual position. You can also move the sprue in the preview.",
+    "sprueAuto": "Automatic position. Edit it, or move the sprue in the preview.",
+    "sprueReset": "Auto",
+    "source": {
+      "auto": "auto",
+      "manual": "manual"
     }
   },
   "metal": {

@@ -14,7 +14,7 @@
   },
   "menu": {
     "file": "Fișier",
-    "project": "Proiect",
+    "project": "Setări proiect",
     "help": "Ajutor",
     "new": "Proiect nou",
     "open": "Deschide…",
@@ -102,6 +102,7 @@
     "messages": "{{count}} mesaje",
     "printView": "Aspect la printare (înclinat, cu suporturi)",
     "noFit": "Nu încape pe platformă: {{size}} mm",
+    "moveSprue": "Mută canalul de turnare: click pe piesă pentru a-l plasa acolo",
     "editSupports": "Editează suporturile: click pe piesă adaugă unul, click pe un suport îl șterge",
     "layoutFailed": "Nu am putut construi aspectul de printare: {{error}}"
   },
@@ -182,6 +183,17 @@
       "open": "respins: ar deschide găuri",
       "nonManifold": "respins: ar strica plasa",
       "stuck": "nu se mai poate reduce"
+    },
+    "supportList": "Lista suporturilor",
+    "addSupport": "Adaugă suport",
+    "removeSupport": "Șterge suportul",
+    "spruePos": "Poziție canal (X, Y, Z)",
+    "sprueManual": "Poziție manuală. Poți muta canalul și din previzualizare.",
+    "sprueAuto": "Poziție automată. Editează sau mută canalul în previzualizare.",
+    "sprueReset": "Automat",
+    "source": {
+      "auto": "automat",
+      "manual": "manual"
     }
   },
   "metal": {

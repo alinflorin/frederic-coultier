@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: FcProject["settings"] = {
     sprue: false,
     sprueDiameter: 2,
     sprueLength: 5,
+    sprueAt: null,
   },
   optimization: { simplify: false, keepPercent: 60, maxVolumeChange: 0.5 },
 };

@@ -97,10 +97,16 @@ export function pickExportPath(name: string, format: ExportFormat): Promise<stri
   });
 }
 
+export interface SprueOpts {
+  diameter: number;
+  length: number;
+  at?: [number, number, number] | null;
+}
+
 export interface ExportOptions {
   print?: PrintSpec;
   simplify?: { keepPercent: number; maxVolumeChange: number };
-  sprue?: { diameter: number; length: number };
+  sprue?: SprueOpts;
   hollow?: { wall: number; drain: number; tilt: number };
 }
 
@@ -218,6 +224,8 @@ export interface PrintLayout {
   supports: ArrayBuffer | null;
   /** The casting sprue, null when off or no spot was found. */
   sprue: ArrayBuffer | null;
+  /** Where the sprue sits, in model coordinates (the manual spot or the automatic pick). */
+  sprueAt: [number, number, number] | null;
   size: [number, number, number];
   fits: boolean;
   /** Lift applied to the tilted model, to map clicks back to model coordinates. */
@@ -229,7 +237,7 @@ export async function printLayout(
   source: string,
   print: PrintParams,
   supports: Support[],
-  sprue?: { diameter: number; length: number },
+  sprue?: SprueOpts,
 ): Promise<PrintLayout> {
   const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports, sprue: sprue ?? null });
   const n = new DataView(buf).getUint32(0, true);
@@ -239,6 +247,7 @@ export async function printLayout(
     modelLen: number;
     supportsLen: number;
     zoff: number;
+    sprueAt: [number, number, number] | null;
   };
   const start = 4 + n;
   const supStart = start + info.modelLen;
@@ -250,5 +259,6 @@ export async function printLayout(
     size: info.size,
     fits: info.fits,
     zoff: info.zoff,
+    sprueAt: info.sprueAt,
   };
 }

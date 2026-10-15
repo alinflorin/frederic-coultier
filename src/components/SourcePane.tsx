@@ -68,6 +68,7 @@ export function SourcePane({
           basicSetup,
           keymap.of([indentWithTab]),
           openscadLanguage,
+          EditorView.lineWrapping,
           errorLineField,
           theme,
           EditorView.updateListener.of((u) => {

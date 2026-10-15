@@ -68,7 +68,11 @@ function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mobilePane, setMobilePane] = useState<PaneId>("chat");
-  const [cols, setCols] = useState({ source: 340, preview: 460 });
+  const [cols, setCols] = useState(() => {
+    // chat (middle) stays narrow by default; source and preview share the rest
+    const side = Math.max(300, Math.floor((window.innerWidth - 360 - 12) / 2));
+    return { source: side, preview: side };
+  });
   const [render, setRender] = useState<RenderState>(IDLE);
   const [layout, setLayout] = useState<PrintLayout | null>(null);
   const [printView, setPrintView] = useState(true);
@@ -126,6 +130,7 @@ function App() {
   const sprueOn = project?.settings.printing.sprue ?? false;
   const sprueD = project?.settings.printing.sprueDiameter ?? 2;
   const sprueL = project?.settings.printing.sprueLength ?? 5;
+  const sprueAt = project?.settings.printing.sprueAt ?? null;
   useEffect(() => {
     if (!supOpts || !(supOpts.enabled || sprueOn) || !source || render.status !== "ok" || !render.mesh) {
       setLayout(null);
@@ -134,7 +139,7 @@ function App() {
     let live = true;
     // without supports the piece stays as modelled; the layout then only adds the sprue
     const params = supOpts.enabled ? printParams(tilt, supOpts) : { ...printParams(0, supOpts), lift: 0, raft: 0 };
-    printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL } : undefined)
+    printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL, at: sprueAt } : undefined)
       .then((l) => live && setLayout(l))
       .catch((e) => {
         if (!live) return;
@@ -146,7 +151,7 @@ function App() {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [render.mesh, render.status, supOpts, tilt, supList, sprueOn, sprueD, sprueL]);
+  }, [render.mesh, render.status, supOpts, tilt, supList, sprueOn, sprueD, sprueL, sprueAt]);
 
   // --- file actions ---
   const loadPath = async (p: string) => {
@@ -237,7 +242,7 @@ function App() {
             : undefined,
         simplify: pick.simplify ? { keepPercent: o.keepPercent, maxVolumeChange: o.maxVolumeChange } : undefined,
         hollow: pick.hollow ? { wall: pr.hollow.wall, drain: pr.hollow.drain, tilt: pr.tilt } : undefined,
-        sprue: pick.sprue ? { diameter: pr.sprueDiameter, length: pr.sprueLength } : undefined,
+        sprue: pick.sprue ? { diameter: pr.sprueDiameter, length: pr.sprueLength, at: pr.sprueAt } : undefined,
       });
       notify(t("export.done", { file: baseName(target) }));
     } catch (e) {
@@ -314,7 +319,7 @@ function App() {
       {
         id: "project",
         label: t("menu.project"),
-        items: [{ label: t("menu.settings"), onSelect: () => setDialog("settings"), disabled: !open }],
+        onSelect: () => open && setDialog("settings"),
       },
       { id: "prefs", label: t("menu.preferences"), onSelect: () => setDialog("prefs") },
       {
@@ -353,7 +358,7 @@ function App() {
     const start = cols[side];
     const move = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
-      const next = Math.max(220, Math.min(720, start + (side === "source" ? dx : -dx)));
+      const next = Math.max(220, Math.min(1600, start + (side === "source" ? dx : -dx)));
       setCols((c) => ({ ...c, [side]: next }));
     };
     const up = () => {
@@ -388,6 +393,16 @@ function App() {
       edit((p) => ({ ...p, supports: { ...p.supports, list: p.supports.list.filter((x) => x.id !== id) } }));
     }
   };
+  /** A click in sprue-move mode: put the sprue where the piece was clicked (print -> model coordinates). */
+  const pickSprue = (pt: [number, number, number]) => {
+    if (!project || !layout) return;
+    const pr = project.settings.printing;
+    const tiltDeg = pr.supports.enabled ? pr.tilt : 0;
+    const [s, c] = [Math.sin((tiltDeg * Math.PI) / 180), Math.cos((tiltDeg * Math.PI) / 180)];
+    const z0 = pt[2] - layout.zoff;
+    const at: [number, number, number] = [pt[0], pt[1] * c + z0 * s, -pt[1] * s + z0 * c];
+    edit((p) => ({ ...p, settings: { ...p.settings, printing: { ...p.settings.printing, sprueAt: at } } }));
+  };
   const patchSupports = (supports: SupportsData) => edit((p) => ({ ...p, supports }));
 
   const panes = project && {
@@ -409,6 +424,7 @@ function App() {
         printView={printView}
         onTogglePrintView={() => setPrintView((v) => !v)}
         onPickSupport={pickSupport}
+        onPickSprue={pickSprue}
         onStats={(s) => setTriangles(s ? s.tris : null)}
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
@@ -440,7 +456,7 @@ function App() {
       ) : (
         <div
           className="workspace"
-          style={{ gridTemplateColumns: `${cols.source}px 6px minmax(300px, 1fr) 6px ${cols.preview}px` }}
+          style={{ gridTemplateColumns: `${cols.source}px 6px minmax(260px, 1fr) 6px ${cols.preview}px` }}
         >
           {panes!.source}
           <div className="splitter" onPointerDown={startDrag("source")} role="separator" aria-orientation="vertical" />
@@ -451,7 +467,7 @@ function App() {
       )}
 
       {dialog === "settings" && project && (
-        <SettingsDialog project={project} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
+        <SettingsDialog project={project} layout={layout} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && project && (
         <ExportDialog project={project} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />

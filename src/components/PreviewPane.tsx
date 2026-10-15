@@ -25,6 +25,7 @@ export function PreviewPane({
   printView,
   onTogglePrintView,
   onPickSupport,
+  onPickSprue,
   onPatchRender,
   onStats,
 }: {
@@ -36,6 +37,8 @@ export function PreviewPane({
   onTogglePrintView: () => void;
   /** Support editing: a click on the model (add) or on a support (remove), in print coordinates. */
   onPickSupport: (kind: "model" | "support", point: [number, number, number]) => void;
+  /** Sprue-move mode: a click on the piece, in print coordinates. */
+  onPickSprue: (point: [number, number, number]) => void;
   onPatchRender: (p: Partial<FcProject["settings"]["render"]>) => void;
   onStats: (s: ViewerStats | null) => void;
 }) {
@@ -48,13 +51,17 @@ export function PreviewPane({
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
   const [console_, setConsole] = useState(false);
-  const [editSup, setEditSup] = useState(false);
+  const [editMode, setEditMode] = useState<"supports" | "sprue" | null>(null);
+  const toggleEdit = (m: "supports" | "sprue") => setEditMode((v) => (v === m ? null : m));
   const down = useRef<{ x: number; y: number } | null>(null);
 
   const { render: r, material } = project.settings;
   const supTotal = project.supports.list.length;
   const supOn = project.settings.printing.supports.enabled;
+  const sprueOn = project.settings.printing.sprue;
   const showLayout = layout && (!supOn || printView);
+  const editSup = editMode === "supports" && supOn && printView;
+  const editSprue = editMode === "sprue" && sprueOn && !!showLayout;
 
   useEffect(() => {
     if (!host.current) return;
@@ -114,17 +121,20 @@ export function PreviewPane({
   return (
     <section className="pane preview-pane" aria-label={t("preview.title")}>
       <div
-        className={`viewport${editSup ? " editing" : ""}`}
+        className={`viewport${editSup || editSprue ? " editing" : ""}`}
         tabIndex={0}
         onKeyDown={onKey}
         onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
         onPointerUp={(e) => {
           const d = down.current;
           down.current = null;
-          if (!editSup || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+          if (!(editSup || editSprue) || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
           if ((e.target as HTMLElement).closest(".vp-tools")) return;
           const hit = viewer?.pick(e.clientX, e.clientY);
-          if (hit) onPickSupport(hit.kind, hit.point);
+          if (!hit) return;
+          if (editSprue) {
+            if (hit.kind === "model") onPickSprue(hit.point);
+          } else onPickSupport(hit.kind, hit.point);
         }}
       >
         <div className="vp-host" ref={host} />
@@ -189,11 +199,22 @@ export function PreviewPane({
             <button
               className={`vp-btn${editSup ? " on" : ""}`}
               aria-pressed={editSup}
-              onClick={() => setEditSup((v) => !v)}
+              onClick={() => toggleEdit("supports")}
               title={t("preview.editSupports")}
               aria-label={t("preview.editSupports")}
             >
               <Icon name="plus" size={18} />
+            </button>
+          )}
+          {sprueOn && showLayout && (
+            <button
+              className={`vp-btn${editSprue ? " on" : ""}`}
+              aria-pressed={editSprue}
+              onClick={() => toggleEdit("sprue")}
+              title={t("preview.moveSprue")}
+              aria-label={t("preview.moveSprue")}
+            >
+              <Icon name="sprue" size={18} />
             </button>
           )}
           <span className="vp-sep" />

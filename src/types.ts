@@ -48,6 +48,8 @@ export interface ProjectSettings {
     sprue: boolean;
     sprueDiameter: number;
     sprueLength: number;
+    /** Manual sprue spot in model coordinates; null = placed automatically. */
+    sprueAt: [number, number, number] | null;
   };
   optimization: {
     simplify: boolean;

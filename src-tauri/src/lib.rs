@@ -168,7 +168,9 @@ async fn print_layout(
     tauri::async_runtime::spawn_blocking(move || {
         let mut mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         // show the casting sprue too: stub added as a separate shell, enough for a preview
-        let stub = sprue.and_then(|s| meshtools::plan_sprue(&mesh, &s)).map(|(m, _)| m);
+        let planned = sprue.and_then(|s| meshtools::plan_sprue_at(&mesh, &s));
+        let sprue_at = planned.as_ref().map(|p| p.2);
+        let stub = planned.map(|(m, _, _)| m);
         let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
         let model = supports::tilted_model(&mesh, &print, zoff).to_binary_stl();
         let sprue_stl = stub
@@ -176,7 +178,7 @@ async fn print_layout(
             .unwrap_or_default();
         let sup = if supports.is_empty() { Vec::new() } else { supports::support_mesh(&supports, &print, zoff).to_binary_stl() };
         let info = serde_json::to_vec(&serde_json::json!({
-            "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff,
+            "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff, "sprueAt": sprue_at,
         }))
         .map_err(|e| e.to_string())?;
         let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len() + sprue_stl.len());

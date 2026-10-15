@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { FcProject, Finish, Metal, ProjectSettings, SupportsData } from "../types";
-import { autoSupports, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
+import type { FcProject, Finish, Metal, ProjectSettings, Support, SupportsData } from "../types";
+import { autoSupports, type PrintLayout, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
 import { DENSITY } from "../materials";
 import { Dialog } from "./Dialog";
+import { Icon } from "./Icon";
 
 type Tab = "general" | "material" | "printing" | "optimization" | "checks";
 const TABS: Tab[] = ["general", "material", "printing", "optimization", "checks"];
@@ -67,11 +68,13 @@ function Check({ checked, onChange, label }: { checked: boolean; onChange: (v: b
 
 export function SettingsDialog({
   project,
+  layout,
   onChange,
   onSupports,
   onClose,
 }: {
   project: FcProject;
+  layout: PrintLayout | null;
   onChange: (s: ProjectSettings) => void;
   onSupports: (s: SupportsData) => void;
   onClose: () => void;
@@ -127,6 +130,21 @@ export function SettingsDialog({
       onSupports({ list: r.supports, nextId: r.nextId });
       setNote(t("settings.autoDone", { added: r.stats.added, blocked: r.stats.blocked }));
     });
+
+  const setSupport = (id: number, p: Partial<Support>) =>
+    onSupports({ ...project.supports, list: list.map((x) => (x.id === id ? { ...x, ...p, source: "manual" } : x)) });
+  const addSupport = () =>
+    onSupports({
+      list: [...list, { id: project.supports.nextId, x: 0, y: 0, z: 0, source: "manual" }],
+      nextId: project.supports.nextId + 1,
+    });
+  const removeSupport = (id: number) => onSupports({ ...project.supports, list: list.filter((x) => x.id !== id) });
+  const spruePos = s.printing.sprueAt ?? layout?.sprueAt ?? null;
+  const setSpruePos = (axis: 0 | 1 | 2, v: number) => {
+    const at: [number, number, number] = [...(spruePos ?? [0, 0, 0])];
+    at[axis] = v;
+    setP({ sprueAt: at });
+  };
 
   const setP = (p: Partial<ProjectSettings["printing"]>) => onChange({ ...s, printing: { ...s.printing, ...p } });
   const setSup = (p: Partial<typeof sup>) => setP({ supports: { ...sup, ...p } });
@@ -242,6 +260,30 @@ export function SettingsDialog({
                   </button>
                 </div>
                 {note && <p className="muted" role="status">{note}</p>}
+                <div className="support-actions">
+                  <h4 className="grow">{t("settings.supportList")}</h4>
+                  <button onClick={addSupport}>{t("settings.addSupport")}</button>
+                </div>
+                {list.length > 0 && (
+                  <table className="support-table">
+                    <thead>
+                      <tr><th>#</th><th>X</th><th>Y</th><th>Z</th><th /></tr>
+                    </thead>
+                    <tbody>
+                      {list.map((sp) => (
+                        <tr key={sp.id}>
+                          <td className="muted" title={t(`settings.source.${sp.source}`)}>{sp.id}{sp.source === "manual" ? "*" : ""}</td>
+                          {(["x", "y", "z"] as const).map((k) => (
+                            <td key={k}>
+                              <input type="number" step={0.1} value={Number(sp[k].toFixed(2))} onChange={(e) => setSupport(sp.id, { [k]: Number(e.currentTarget.value) })} />
+                            </td>
+                          ))}
+                          <td><button className="icon-btn" onClick={() => removeSupport(sp.id)} title={t("settings.removeSupport")} aria-label={t("settings.removeSupport")}><Icon name="close" size={14} /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 {rows && (
                   <table className="tilt-table">
                     <thead>
@@ -285,6 +327,14 @@ export function SettingsDialog({
                 </Field>
                 <Field label={t("settings.sprueLength")}>
                   <Num value={s.printing.sprueLength} min={1} max={20} step={0.5} onChange={(v) => setP({ sprueLength: v })} unit="mm" />
+                </Field>
+                <Field label={t("settings.spruePos")} hint={s.printing.sprueAt ? t("settings.sprueManual") : t("settings.sprueAuto")}>
+                  <span className="num xyz">
+                    {([0, 1, 2] as const).map((i) => (
+                      <input key={i} type="number" step={0.1} disabled={!spruePos} value={spruePos ? Number(spruePos[i].toFixed(2)) : ""} onChange={(e) => setSpruePos(i, Number(e.currentTarget.value))} />
+                    ))}
+                    <button disabled={!s.printing.sprueAt} onClick={() => setP({ sprueAt: null })}>{t("settings.sprueReset")}</button>
+                  </span>
                 </Field>
               </fieldset>
             </>

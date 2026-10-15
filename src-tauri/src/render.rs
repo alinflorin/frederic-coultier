@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn sprue_on_the_sample_ring() {
         let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
-        let spec = crate::meshtools::SprueSpec { diameter: 2.0, length: 5.0 };
+        let spec = crate::meshtools::SprueSpec { diameter: 2.0, length: 5.0, at: None };
         let t = std::time::Instant::now();
         let got = crate::meshtools::plan_sprue(&r.mesh, &spec);
         eprintln!("sprue: {:?} in {:?}", got.as_ref().map(|g| (g.0.tris.len(), g.1, g.0.bbox())), t.elapsed());
