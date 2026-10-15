@@ -347,3 +347,7 @@ fieldset:disabled { opacity: 0.45; }
 .num.xyz input[type="number"] { width: 66px; }
 .vp-tick { position: absolute; left: 0; top: 0; font: 600 10px ui-monospace, Menlo, monospace; color: var(--text); white-space: nowrap; text-shadow: 0 0 3px var(--vp-bg), 0 0 3px var(--vp-bg); }
 .vp-tick[data-axis="x"] { color: #e0524d; } .vp-tick[data-axis="y"] { color: #52b86a; } .vp-tick[data-axis="z"] { color: #4b8fe0; }
+.vp-section { position: absolute; left: 12px; bottom: 44px; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); z-index: 5; }
+.vp-section button { padding: 2px 8px; }
+.vp-section button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.vp-section input[type="range"] { width: 160px; accent-color: var(--accent); }

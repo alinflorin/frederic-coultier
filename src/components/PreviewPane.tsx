@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
-import { Viewer, type ViewerStats } from "./viewer/Viewer";
+import { Viewer, type Section, type ViewerStats } from "./viewer/Viewer";
 import { Gizmo } from "./viewer/Gizmo";
 import type { Diagnostic, PrintLayout, RenderError } from "../api";
 import { Icon } from "./Icon";
@@ -49,6 +49,8 @@ export function PreviewPane({
   const [grid, setGrid] = useState(true);
   const [dimensions, setDimensions] = useState(false);
   const [axes, setAxes] = useState(false);
+  const [cut, setCut] = useState(false);
+  const [section, setSection] = useState<Section>({ axis: "z", t: 0.5, flip: false });
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
   const [console_, setConsole] = useState(false);
@@ -93,6 +95,10 @@ export function PreviewPane({
   }, [viewer, r, grid, dimensions, axes, turntable]);
 
   useEffect(() => {
+    viewer?.setSection(cut ? section : null);
+  }, [viewer, cut, section]);
+
+  useEffect(() => {
     if (!viewer) return;
     const st = showLayout ? viewer.setMesh(layout.model, layout.supports, layout.sprue) : viewer.setMesh(render.mesh);
     setStats(st);
@@ -131,7 +137,7 @@ export function PreviewPane({
           const d = down.current;
           down.current = null;
           if (!(editSup || editSprue) || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
-          if ((e.target as HTMLElement).closest(".vp-tools")) return;
+          if ((e.target as HTMLElement).closest(".vp-tools, .vp-section")) return;
           const hit = viewer?.pick(e.clientX, e.clientY);
           if (!hit) return;
           if (editSprue) {
@@ -229,11 +235,36 @@ export function PreviewPane({
           <button className={`vp-btn${axes ? " on" : ""}`} aria-pressed={axes} onClick={() => setAxes(!axes)} title={t("preview.axes")} aria-label={t("preview.axes")}>
             <Icon name="axes" size={18} />
           </button>
+          <button className={`vp-btn${cut ? " on" : ""}`} aria-pressed={cut} onClick={() => setCut(!cut)} title={t("preview.section")} aria-label={t("preview.section")}>
+            <Icon name="section" size={18} />
+          </button>
           <button className={`vp-btn${turntable ? " on" : ""}`} aria-pressed={turntable} onClick={() => setTurntable(!turntable)} title={t("preview.turntable")} aria-label={t("preview.turntable")}>
             <Icon name="rotate" size={18} />
           </button>
         </div>
       </div>
+
+      {cut && (
+        <div className="vp-section" onPointerDown={(e) => e.stopPropagation()}>
+          {(["x", "y", "z"] as const).map((a) => (
+            <button key={a} className={section.axis === a ? "on" : ""} onClick={() => setSection({ ...section, axis: a })}>
+              {a.toUpperCase()}
+            </button>
+          ))}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.005}
+            value={section.t}
+            aria-label={t("preview.section")}
+            onChange={(e) => setSection({ ...section, t: Number(e.currentTarget.value) })}
+          />
+          <button className={section.flip ? "on" : ""} aria-pressed={section.flip} onClick={() => setSection({ ...section, flip: !section.flip })}>
+            {t("preview.sectionFlip")}
+          </button>
+        </div>
+      )}
 
       {render.status === "error" && render.error && (
         <div className="vp-banner error" role="alert">

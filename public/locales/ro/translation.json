@@ -105,7 +105,9 @@
     "moveSprue": "Mută canalul de turnare: click pe piesă pentru a-l plasa acolo",
     "editSupports": "Editează suporturile: click pe piesă adaugă unul, click pe un suport îl șterge",
     "layoutFailed": "Nu am putut construi aspectul de printare: {{error}}",
-    "axes": "Axe cu gradații (X, Y pe podea, Z în aer)"
+    "axes": "Axe cu gradații (X, Y pe podea, Z în aer)",
+    "section": "Secțiune transversală",
+    "sectionFlip": "Inversează"
   },
   "settings": {
     "title": "Setările proiectului",

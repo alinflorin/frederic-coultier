@@ -19,6 +19,13 @@ export interface ViewerStyle {
   turntable: boolean;
 }
 
+/** Cross-section: keeps the part of the piece at or above `t` (0..1 of its extent) along `axis`. */
+export interface Section {
+  axis: "x" | "y" | "z";
+  t: number;
+  flip: boolean;
+}
+
 export interface ViewerStats {
   size: [number, number, number];
   tris: number;
@@ -71,6 +78,8 @@ export class Viewer {
   private shadow: THREE.Mesh;
   private boxHelper: THREE.Box3Helper;
   private labels: HTMLElement[] = [];
+  private section: Section | null = null;
+  private clip = new THREE.Plane();
   private axesLines: THREE.LineSegments | null = null;
   private axesKey = "";
   private ticks: HTMLElement[] = [];
@@ -93,6 +102,7 @@ export class Viewer {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.prepend(this.renderer.domElement);
@@ -194,6 +204,30 @@ export class Viewer {
     this.dirty = true;
   }
 
+  /** Cuts the piece open along a plane (null = whole piece). Inner faces stay visible, without a cap. */
+  setSection(s: Section | null) {
+    this.section = s;
+    this.applySection();
+  }
+
+  private applySection() {
+    const s = this.section;
+    const mats = [this.metalMat, this.sprueMat, this.supportMat, this.edgeMat];
+    for (const m of mats) {
+      m.clippingPlanes = s ? [this.clip] : null;
+      if ("clipShadows" in m) m.clipShadows = true;
+      if ("side" in m) m.side = s ? THREE.DoubleSide : THREE.FrontSide;
+      m.needsUpdate = true;
+    }
+    if (s) {
+      const i = { x: 0, y: 1, z: 2 }[s.axis];
+      const v = this.box.min.getComponent(i) + s.t * (this.box.max.getComponent(i) - this.box.min.getComponent(i));
+      const n = new THREE.Vector3().setComponent(i, s.flip ? -1 : 1);
+      this.clip.set(n, s.flip ? v : -v);
+    }
+    this.dirty = true;
+  }
+
   /** Shows an STL (binary or ASCII). Returns its stats, or null when there is nothing to show. */
   setMesh(stl: ArrayBuffer | null, supportsStl: ArrayBuffer | null = null, sprueStl: ArrayBuffer | null = null): ViewerStats | null {
     const first = !this.model;
@@ -236,6 +270,7 @@ export class Viewer {
     this.controls.minDistance = this.radius * 0.4;
     this.controls.maxDistance = this.radius * 40;
     this.layoutStage();
+    this.applySection();
     if (this.style) this.setStyle(this.style);
     if (first) this.fit(false);
 
@@ -426,12 +461,12 @@ export class Viewer {
     const ylo = Math.min(c.y - half, 0), yhi = Math.max(c.y + half, 0);
     const zhi = Math.max(this.box.max.z, floor) + half;
 
-    const raw = this.distance() / 6;
+    const raw = this.distance() / 14;
     const pow = Math.pow(10, Math.floor(Math.log10(raw)));
     const f = raw / pow;
     const step = pow * (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10);
     const tg = this.controls.target;
-    const win = step * 8;
+    const win = step * 14;
     const range = (lo: number, hi: number, near: number) => {
       const out: number[] = [];
       const a = Math.max(lo, near - win), b = Math.min(hi, near + win);
