@@ -16,6 +16,8 @@
   --tok-num: #1f6fb2;
   --tok-var: #b05a1c;
   --tok-com: #8a8780;
+  --tok-fn: #1a7f7a;
+  --tok-str: #2f7d32;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
 
   font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -47,6 +49,8 @@
     --tok-num: #7ab8f0;
     --tok-var: #e8a35f;
     --tok-com: #7d7971;
+    --tok-fn: #5cc7bf;
+    --tok-str: #8fcf8a;
     --shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }
@@ -87,7 +91,7 @@ input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, te
   padding: 5px 8px;
   min-width: 0;
 }
-input:focus, select:focus, textarea:focus, button:focus-visible, .code:focus-visible {
+input:focus, select:focus, textarea:focus, button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -153,26 +157,11 @@ fieldset:disabled { opacity: 0.45; }
 }
 .pane-head.wrap { flex-wrap: wrap; }
 .file-tab { display: flex; align-items: center; gap: 6px; font-weight: 600; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; }
-.readonly { margin-left: auto; font-size: 12px; }
+.push { margin-left: auto; }
 
 /* source */
-.code {
-  flex: 1;
-  margin: 0;
-  overflow: auto;
-  padding: 8px 0;
-  background: var(--code-bg);
-  font: 12.5px/1.6 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-  tab-size: 2;
-}
-.line { display: flex; min-width: max-content; }
-.line:hover { background: var(--accent-soft); }
-.ln { width: 44px; flex: none; text-align: right; padding-right: 12px; color: var(--muted); opacity: 0.6; user-select: none; }
-.lc { white-space: pre; padding-right: 16px; }
-.tok-kw { color: var(--tok-kw); }
-.tok-num { color: var(--tok-num); }
-.tok-var { color: var(--tok-var); }
-.tok-com { color: var(--tok-com); font-style: italic; }
+.editor { flex: 1; min-height: 0; overflow: hidden; }
+.editor .cm-editor { height: 100%; }
 
 /* chat */
 .messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -314,4 +303,3 @@ fieldset:disabled { opacity: 0.45; }
 .statusbar .link { margin-left: auto; padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; }
 .diag { margin: 0; padding: 6px 12px; max-height: 140px; overflow: auto; list-style: none; border-top: 1px solid var(--border); font: 12px/1.5 ui-monospace, Menlo, monospace; flex: none; background: var(--code-bg); }
 .diag .error { color: var(--bad); } .diag .warning { color: var(--accent); } .diag .echo { color: var(--muted); }
-.line.err { background: color-mix(in srgb, var(--bad) 22%, transparent); box-shadow: inset 3px 0 0 var(--bad); }

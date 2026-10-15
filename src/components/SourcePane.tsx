@@ -1,33 +1,101 @@
-import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView, keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
+import { basicSetup } from "codemirror";
+import { openscadLanguage } from "./openscad";
 import { Icon } from "./Icon";
 
-const KEYWORDS = /\b(module|function|for|if|else|let|difference|union|intersection|translate|rotate|scale|mirror|cylinder|cube|sphere|polygon|linear_extrude|rotate_extrude|hull|true|false)\b/g;
+const setErrorLine = StateEffect.define<number | null>();
 
-function highlight(line: string) {
-  const ci = line.indexOf("//");
-  const code = ci >= 0 ? line.slice(0, ci) : line;
-  const comment = ci >= 0 ? line.slice(ci) : "";
-  const parts: ReactNode[] = [];
-  let last = 0;
-  const re = new RegExp(`${KEYWORDS.source}|\\b\\d+(?:\\.\\d+)?\\b|\\$[a-z_]+`, "g");
-  for (const m of code.matchAll(re)) {
-    if (m.index > last) parts.push(code.slice(last, m.index));
-    const cls = /^\d/.test(m[0]) ? "tok-num" : m[0].startsWith("$") ? "tok-var" : "tok-kw";
-    parts.push(<span key={m.index} className={cls}>{m[0]}</span>);
-    last = m.index + m[0].length;
-  }
-  parts.push(code.slice(last));
-  if (comment) parts.push(<span key="c" className="tok-com">{comment}</span>);
-  return parts;
-}
+/** Marks the line the renderer complained about. */
+const errorLineField = StateField.define({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setErrorLine)) continue;
+      const n = e.value;
+      deco =
+        n && n >= 1 && n <= tr.state.doc.lines
+          ? Decoration.set([Decoration.line({ class: "cm-errorLine" }).range(tr.state.doc.line(n).from)])
+          : Decoration.none;
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
-export function SourcePane({ source, errorLine }: { source: string; errorLine?: number | null }) {
+const theme = EditorView.theme({
+  "&": { height: "100%", background: "var(--code-bg)", color: "var(--text)", fontSize: "12.5px" },
+  ".cm-scroller": { fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace', lineHeight: "1.6" },
+  ".cm-content": { caretColor: "var(--accent)" },
+  ".cm-cursor": { borderLeftColor: "var(--accent)" },
+  ".cm-gutters": { background: "var(--code-bg)", color: "var(--muted)", border: "none" },
+  ".cm-activeLine": { background: "var(--accent-soft)" },
+  ".cm-activeLineGutter": { background: "transparent", color: "var(--text)" },
+  "&.cm-focused": { outline: "none" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { background: "var(--accent-soft)" },
+  ".cm-selectionMatch": { background: "var(--accent-soft)" },
+  ".cm-errorLine": { background: "color-mix(in srgb, var(--bad) 22%, transparent)", boxShadow: "inset 3px 0 0 var(--bad)" },
+  ".cm-panels": { background: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" },
+  ".cm-tooltip": { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" },
+});
+
+export function SourcePane({
+  source,
+  errorLine,
+  onChange,
+}: {
+  source: string;
+  errorLine?: number | null;
+  onChange: (source: string) => void;
+}) {
   const { t } = useTranslation();
+  const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [copied, setCopied] = useState(false);
-  const lines = source.split("\n");
-  if (lines[lines.length - 1] === "") lines.pop();
+
+  useEffect(() => {
+    const v = new EditorView({
+      parent: host.current!,
+      state: EditorState.create({
+        doc: source,
+        extensions: [
+          basicSetup,
+          keymap.of([indentWithTab]),
+          openscadLanguage,
+          errorLineField,
+          theme,
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+          }),
+        ],
+      }),
+    });
+    view.current = v;
+    return () => {
+      v.destroy();
+      view.current = null;
+    };
+    // The editor owns its document after creation; `source` is synced in the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Source changed from outside the editor (e.g. the AI edited it): replace the document.
+  useEffect(() => {
+    const v = view.current;
+    if (v && v.state.doc.toString() !== source) {
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: source } });
+    }
+  }, [source]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setErrorLine.of(errorLine ?? null) });
+  }, [errorLine, source]);
 
   function copy() {
     navigator.clipboard?.writeText(source).then(() => {
@@ -42,19 +110,11 @@ export function SourcePane({ source, errorLine }: { source: string; errorLine?: 
         <div className="file-tab">
           <Icon name="code" /> model.scad
         </div>
-        <span className="muted readonly">{t("source.readonly")}</span>
-        <button className="icon-btn" onClick={copy} title={t("source.copy")} aria-label={t("source.copy")}>
+        <button className="icon-btn push" onClick={copy} title={t("source.copy")} aria-label={t("source.copy")}>
           <Icon name={copied ? "check" : "copy"} />
         </button>
       </header>
-      <pre className="code" tabIndex={0}>
-        {lines.map((l, i) => (
-          <div className={`line${errorLine === i + 1 ? " err" : ""}`} key={i}>
-            <span className="ln">{i + 1}</span>
-            <span className="lc">{highlight(l)}</span>
-          </div>
-        ))}
-      </pre>
+      <div className="editor" ref={host} />
     </section>
   );
 }

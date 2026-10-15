@@ -318,7 +318,14 @@ function App() {
   const patchSettings = (s: ProjectSettings) => edit((p) => ({ ...p, settings: s }));
 
   const panes = project && {
-    source: <SourcePane source={project.source} errorLine={render.status === "error" ? render.error?.line : null} />,
+    source: (
+      <SourcePane
+        key={projectId}
+        source={project.source}
+        errorLine={render.status === "error" ? render.error?.line : null}
+        onChange={(src) => edit((p) => (p.source === src ? p : { ...p, source: src }))}
+      />
+    ),
     chat: <ChatPane messages={project.chat} busy={busy} onSend={sendChat} />,
     preview: (
       <PreviewPane

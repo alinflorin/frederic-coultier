@@ -45,7 +45,6 @@
   },
   "source": {
     "title": "Source",
-    "readonly": "read-only",
     "copy": "Copy source"
   },
   "chat": {
