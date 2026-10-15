@@ -123,20 +123,25 @@ function App() {
   const supOpts = project?.settings.printing.supports;
   const tilt = project?.settings.printing.tilt ?? 0;
   const supList = project?.supports.list;
+  const sprueOn = project?.settings.printing.sprue ?? false;
+  const sprueD = project?.settings.printing.sprueDiameter ?? 2;
+  const sprueL = project?.settings.printing.sprueLength ?? 5;
   useEffect(() => {
-    if (!supOpts?.enabled || !source || render.status !== "ok" || !render.mesh) {
+    if (!supOpts || !(supOpts.enabled || sprueOn) || !source || render.status !== "ok" || !render.mesh) {
       setLayout(null);
       return;
     }
     let live = true;
-    printLayout(source, printParams(tilt, supOpts), supList ?? [])
+    // without supports the piece stays as modelled; the layout then only adds the sprue
+    const params = supOpts.enabled ? printParams(tilt, supOpts) : { ...printParams(0, supOpts), lift: 0, raft: 0 };
+    printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL } : undefined)
       .then((l) => live && setLayout(l))
       .catch(() => live && setLayout(null));
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [render.mesh, render.status, supOpts, tilt, supList]);
+  }, [render.mesh, render.status, supOpts, tilt, supList, sprueOn, sprueD, sprueL]);
 
   // --- file actions ---
   const loadPath = async (p: string) => {

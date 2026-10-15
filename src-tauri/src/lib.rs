@@ -161,11 +161,20 @@ async fn print_layout(
     source: String,
     print: PrintParams,
     supports: Vec<Support>,
+    sprue: Option<SprueSpec>,
     cache: State<'_, RenderCache>,
 ) -> Result<Response, String> {
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+        let mut mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+        // show the casting sprue too: stub added as a separate shell, enough for a preview
+        if let Some((stub, _)) = sprue.and_then(|s| meshtools::plan_sprue(&mesh, &s)) {
+            let mut with = (*mesh).clone();
+            let base = with.verts.len() as u32;
+            with.verts.extend(stub.verts);
+            with.tris.extend(stub.tris.into_iter().map(|t| t.map(|i| i + base)));
+            mesh = std::sync::Arc::new(with);
+        }
         let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
         let model = supports::tilted_model(&mesh, &print, zoff).to_binary_stl();
         let sup = if supports.is_empty() { Vec::new() } else { supports::support_mesh(&supports, &print, zoff).to_binary_stl() };

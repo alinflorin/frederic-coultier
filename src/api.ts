@@ -223,8 +223,13 @@ export interface PrintLayout {
 }
 
 /** Reply layout: u32 LE JSON length | JSON | model STL | supports STL. */
-export async function printLayout(source: string, print: PrintParams, supports: Support[]): Promise<PrintLayout> {
-  const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports });
+export async function printLayout(
+  source: string,
+  print: PrintParams,
+  supports: Support[],
+  sprue?: { diameter: number; length: number },
+): Promise<PrintLayout> {
+  const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports, sprue: sprue ?? null });
   const n = new DataView(buf).getUint32(0, true);
   const info = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as {
     size: [number, number, number];

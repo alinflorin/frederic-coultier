@@ -54,7 +54,7 @@ export function PreviewPane({
   const { render: r, material } = project.settings;
   const supTotal = project.supports.list.length;
   const supOn = project.settings.printing.supports.enabled;
-  const showLayout = supOn && printView && layout;
+  const showLayout = layout && (!supOn || printView);
 
   useEffect(() => {
     if (!host.current) return;
