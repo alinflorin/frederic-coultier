@@ -104,7 +104,8 @@
     "noFit": "Nu încape pe platformă: {{size}} mm",
     "moveSprue": "Mută canalul de turnare: click pe piesă pentru a-l plasa acolo",
     "editSupports": "Editează suporturile: click pe piesă adaugă unul, click pe un suport îl șterge",
-    "layoutFailed": "Nu am putut construi aspectul de printare: {{error}}"
+    "layoutFailed": "Nu am putut construi aspectul de printare: {{error}}",
+    "axes": "Axe cu gradații (X, Y pe podea, Z în aer)"
   },
   "settings": {
     "title": "Setările proiectului",

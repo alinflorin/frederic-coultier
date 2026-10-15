@@ -15,6 +15,7 @@ export interface ViewerStyle {
   ortho: boolean;
   grid: boolean;
   dimensions: boolean;
+  axes: boolean;
   turntable: boolean;
 }
 
@@ -70,6 +71,10 @@ export class Viewer {
   private shadow: THREE.Mesh;
   private boxHelper: THREE.Box3Helper;
   private labels: HTMLElement[] = [];
+  private axesLines: THREE.LineSegments | null = null;
+  private axesKey = "";
+  private ticks: HTMLElement[] = [];
+  private tickLayer: HTMLElement;
   private box = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
   private center = new THREE.Vector3();
   private radius = 17;
@@ -120,6 +125,9 @@ export class Viewer {
       this.labels.push(l);
     }
     host.appendChild(overlay);
+    this.tickLayer = document.createElement("div");
+    this.tickLayer.className = "vp-labels vp-ticks";
+    host.appendChild(this.tickLayer);
 
     this.persp.up.set(0, 0, 1);
     this.ortho.up.set(0, 0, 1);
@@ -180,6 +188,7 @@ export class Viewer {
     this.boxHelper.visible = s.dimensions && !!this.model;
     for (const l of this.labels) l.style.display = s.dimensions && this.model ? "" : "none";
     this.controls.autoRotate = s.turntable;
+    if (!s.axes || !this.model) this.hideAxes();
     this.applyTheme();
     if (prev?.ortho !== s.ortho) this.setOrtho(s.ortho);
     this.dirty = true;
@@ -304,7 +313,8 @@ export class Viewer {
     this.edgeMat.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
-    this.host.querySelector(".vp-labels")?.remove();
+    this.host.querySelectorAll(".vp-labels").forEach((e) => e.remove());
+    this.axesLines?.geometry.dispose();
     this.renderer.domElement.remove();
   }
 
@@ -396,7 +406,108 @@ export class Viewer {
     this.dirty = true;
   }
 
+  private hideAxes() {
+    if (this.axesLines) this.axesLines.visible = false;
+    for (const t of this.ticks) t.style.display = "none";
+  }
+
+  /**
+   * Axes through the origin like a CAD view: X and Y run along the floor, Z stands up from it,
+   * all long enough to cross the stage. Ticks are numbered every 1-2-5 step that follows the
+   * zoom, only around what is on screen, and the numbers shrink with distance (perspective).
+   * X/Y read in scene coordinates; Z reads as height above the floor.
+   */
+  private updateAxes() {
+    if (!this.style?.axes || !this.model) return this.hideAxes();
+    const floor = this.box.min.z;
+    const half = Math.max(80, Math.ceil((this.radius * 6) / 10) * 10) / 2;
+    const c = this.center;
+    const xlo = Math.min(c.x - half, 0), xhi = Math.max(c.x + half, 0);
+    const ylo = Math.min(c.y - half, 0), yhi = Math.max(c.y + half, 0);
+    const zhi = Math.max(this.box.max.z, floor) + half;
+
+    const raw = this.distance() / 6;
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    const f = raw / pow;
+    const step = pow * (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10);
+    const tg = this.controls.target;
+    const win = step * 8;
+    const range = (lo: number, hi: number, near: number) => {
+      const out: number[] = [];
+      const a = Math.max(lo, near - win), b = Math.min(hi, near + win);
+      for (let v = Math.ceil(a / step) * step; v <= b + 1e-9 && out.length < 40; v += step) out.push(+v.toFixed(6));
+      return out;
+    };
+    const xs = range(xlo, xhi, tg.x);
+    const ys = range(ylo, yhi, tg.y);
+    const zs = range(0, zhi - floor, tg.z - floor);
+
+    const key = [step, floor, xs[0], xs.length, ys[0], ys.length, zs[0], zs.length, xlo, xhi, ylo, yhi, zhi].join("|");
+    if (key !== this.axesKey) {
+      this.axesKey = key;
+      const pts: number[] = [];
+      const cols: number[] = [];
+      const seg = (p: number[], q: number[], col: THREE.Color) => {
+        pts.push(...p, ...q);
+        cols.push(col.r, col.g, col.b, col.r, col.g, col.b);
+      };
+      const red = new THREE.Color("#e0524d"), green = new THREE.Color("#52b86a"), blue = new THREE.Color("#4b8fe0");
+      const tk = step * 0.1;
+      seg([xlo, 0, floor], [xhi, 0, floor], red);
+      seg([0, ylo, floor], [0, yhi, floor], green);
+      seg([0, 0, floor], [0, 0, zhi], blue);
+      for (const v of xs) seg([v, -tk, floor], [v, tk, floor], red);
+      for (const v of ys) seg([-tk, v, floor], [tk, v, floor], green);
+      for (const v of zs) seg([-tk, 0, floor + v], [tk, 0, floor + v], blue);
+      if (!this.axesLines) {
+        this.axesLines = new THREE.LineSegments(
+          new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, opacity: 0.9 }),
+        );
+        this.axesLines.renderOrder = 10;
+        this.scene.add(this.axesLines);
+      }
+      this.axesLines.geometry.dispose();
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+      this.axesLines.geometry = g;
+      this.dirty = true;
+    }
+    this.axesLines!.visible = true;
+
+    const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    const off = step * 0.3;
+    const items: { p: THREE.Vector3; text: string; axis: "x" | "y" | "z" }[] = [];
+    for (const v of xs) items.push({ p: new THREE.Vector3(v, -off, floor), text: v.toFixed(decimals), axis: "x" });
+    for (const v of ys) items.push({ p: new THREE.Vector3(-off, v, floor), text: v.toFixed(decimals), axis: "y" });
+    for (const v of zs) if (v > 0) items.push({ p: new THREE.Vector3(-off, 0, floor + v), text: v.toFixed(decimals), axis: "z" });
+
+    const w = this.host.clientWidth;
+    const h = this.host.clientHeight;
+    const dTarget = this.distance();
+    while (this.ticks.length < items.length) {
+      const l = document.createElement("span");
+      l.className = "vp-tick";
+      this.tickLayer.appendChild(l);
+      this.ticks.push(l);
+    }
+    this.ticks.forEach((l, i) => {
+      const it = items[i];
+      if (!it) return void (l.style.display = "none");
+      const v = it.p.clone().project(this.camera);
+      l.style.display = v.z > 1 ? "none" : "";
+      l.dataset.axis = it.axis;
+      l.textContent = it.text;
+      const depth = this.camera === this.persp ? this.camera.position.distanceTo(it.p) : dTarget;
+      const px = THREE.MathUtils.clamp(13 * (dTarget / depth), 7, 22);
+      l.style.fontSize = `${px.toFixed(1)}px`;
+      l.style.transform = `translate(-50%, -50%) translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px)`;
+    });
+  }
+
   private updateLabels() {
+    this.updateAxes();
     if (!this.style?.dimensions || !this.model) return;
     const { min, max } = this.box;
     const s = this.box.getSize(new THREE.Vector3());

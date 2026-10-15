@@ -48,6 +48,7 @@ export function PreviewPane({
   const [stats, setStats] = useState<ViewerStats | null>(null);
   const [grid, setGrid] = useState(true);
   const [dimensions, setDimensions] = useState(false);
+  const [axes, setAxes] = useState(false);
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
   const [console_, setConsole] = useState(false);
@@ -86,9 +87,10 @@ export function PreviewPane({
       ortho: r.orthographic,
       grid,
       dimensions,
+      axes,
       turntable,
     });
-  }, [viewer, r, grid, dimensions, turntable]);
+  }, [viewer, r, grid, dimensions, axes, turntable]);
 
   useEffect(() => {
     if (!viewer) return;
@@ -223,6 +225,9 @@ export function PreviewPane({
           </button>
           <button className={`vp-btn${dimensions ? " on" : ""}`} aria-pressed={dimensions} onClick={() => setDimensions(!dimensions)} title={t("preview.dimensions")} aria-label={t("preview.dimensions")}>
             <Icon name="ruler" size={18} />
+          </button>
+          <button className={`vp-btn${axes ? " on" : ""}`} aria-pressed={axes} onClick={() => setAxes(!axes)} title={t("preview.axes")} aria-label={t("preview.axes")}>
+            <Icon name="axes" size={18} />
           </button>
           <button className={`vp-btn${turntable ? " on" : ""}`} aria-pressed={turntable} onClick={() => setTurntable(!turntable)} title={t("preview.turntable")} aria-label={t("preview.turntable")}>
             <Icon name="rotate" size={18} />

@@ -104,7 +104,8 @@
     "noFit": "Does not fit the plate: {{size}} mm",
     "moveSprue": "Move the sprue: click the piece to place it there",
     "editSupports": "Edit supports: click the piece to add one, click a support to remove it",
-    "layoutFailed": "Could not build the print layout: {{error}}"
+    "layoutFailed": "Could not build the print layout: {{error}}",
+    "axes": "Axes with scale (X, Y on the floor, Z upright)"
   },
   "settings": {
     "title": "Project settings",

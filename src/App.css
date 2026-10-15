@@ -345,3 +345,5 @@ fieldset:disabled { opacity: 0.45; }
 .field-input .num { flex-wrap: wrap; min-width: 0; }
 .field-input .num input[type="number"] { min-width: 0; }
 .num.xyz input[type="number"] { width: 66px; }
+.vp-tick { position: absolute; left: 0; top: 0; font: 600 10px ui-monospace, Menlo, monospace; color: var(--text); white-space: nowrap; text-shadow: 0 0 3px var(--vp-bg), 0 0 3px var(--vp-bg); }
+.vp-tick[data-axis="x"] { color: #e0524d; } .vp-tick[data-axis="y"] { color: #52b86a; } .vp-tick[data-axis="z"] { color: #4b8fe0; }
