@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
+import { THEMES, getTheme, setTheme, type Theme } from "../theme";
 import { Dialog } from "./Dialog";
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română" };
@@ -7,6 +9,7 @@ const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română"
 /** App-wide preferences, as opposed to the settings stored in a project. */
 export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const { t, i18n } = useTranslation();
+  const [theme, setThemeState] = useState<Theme>(getTheme);
   return (
     <Dialog
       title={t("prefs.title")}
@@ -24,6 +27,23 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
           <select value={i18n.resolvedLanguage} onChange={(e) => setLanguage(e.currentTarget.value as Language)}>
             {SUPPORTED_LANGUAGES.map((l) => (
               <option key={l} value={l}>{LANGUAGE_NAMES[l]}</option>
+            ))}
+          </select>
+        </span>
+      </label>
+      <label className="field">
+        <span className="field-label">{t("prefs.theme")}</span>
+        <span className="field-input">
+          <select
+            value={theme}
+            onChange={(e) => {
+              const next = e.currentTarget.value as Theme;
+              setThemeState(next);
+              setTheme(next);
+            }}
+          >
+            {THEMES.map((th) => (
+              <option key={th} value={th}>{t(`prefs.themes.${th}`)}</option>
             ))}
           </select>
         </span>

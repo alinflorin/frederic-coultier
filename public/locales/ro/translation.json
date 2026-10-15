@@ -203,6 +203,12 @@
   },
   "prefs": {
     "title": "Preferințe",
-    "hint": "Se aplică întregii aplicații, nu doar acestui proiect."
+    "hint": "Se aplică întregii aplicații, nu doar acestui proiect.",
+    "theme": "Temă",
+    "themes": {
+      "auto": "Automat (ca sistemul)",
+      "light": "Luminos",
+      "dark": "Întunecat"
+    }
   }
 }

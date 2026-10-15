@@ -18,7 +18,7 @@ export function Welcome({
   const { t } = useTranslation();
   return (
     <main className="welcome">
-      <Icon name="sparkle" size={40} />
+      <img src="/logo.svg" width={64} height={64} alt="" />
       <h1>Frederic Coultier</h1>
       <p className="muted">{t("welcome.tagline")}</p>
       <div className="welcome-actions">

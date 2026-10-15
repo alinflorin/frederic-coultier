@@ -203,6 +203,12 @@
   },
   "prefs": {
     "title": "Preferences",
-    "hint": "Applies to the whole app, not just this project."
+    "hint": "Applies to the whole app, not just this project.",
+    "theme": "Theme",
+    "themes": {
+      "auto": "Auto (follow system)",
+      "light": "Light",
+      "dark": "Dark"
+    }
   }
 }

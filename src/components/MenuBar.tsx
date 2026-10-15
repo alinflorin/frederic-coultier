@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Icon } from "./Icon";
 
 export interface MenuItem {
   label: string;
@@ -35,7 +34,7 @@ export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string;
   return (
     <div className="menubar" ref={ref}>
       <div className="brand">
-        <Icon name="sparkle" size={18} />
+        <img src="/logo.svg" width={20} height={20} alt="" />
         <span>Frederic Coultier</span>
       </div>
       <nav className="menus" role="menubar">

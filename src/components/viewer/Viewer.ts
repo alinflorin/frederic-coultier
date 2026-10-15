@@ -75,6 +75,9 @@ export class Viewer {
   private dirty = true;
   private raf = 0;
   private ro: ResizeObserver;
+  private themeObserver: MutationObserver;
+  private scheme: MediaQueryList;
+  private onRetheme: () => void;
   private style: ViewerStyle | null = null;
   private lastQ = new THREE.Quaternion();
   private orientCbs = new Set<(q: THREE.Quaternion) => void>();
@@ -128,6 +131,16 @@ export class Viewer {
     this.controls.autoRotateSpeed = 2.2;
     this.controls.addEventListener("change", () => (this.dirty = true));
     this.renderer.domElement.addEventListener("dblclick", () => this.fit());
+
+    const retheme = () => {
+      this.applyTheme();
+      this.dirty = true;
+    };
+    this.themeObserver = new MutationObserver(retheme);
+    this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    this.scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    this.scheme.addEventListener("change", retheme);
+    this.onRetheme = retheme;
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -253,6 +266,8 @@ export class Viewer {
   dispose() {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
+    this.themeObserver.disconnect();
+    this.scheme.removeEventListener("change", this.onRetheme);
     this.controls.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
