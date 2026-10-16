@@ -168,7 +168,7 @@ function App() {
   const doSaveAs = async (): Promise<boolean> => {
     if (!project) return false;
     try {
-      const target = await pickProjectToSave(path ? baseName(path).replace(/\.fc$/i, "") : project.settings.general.name);
+      const target = await pickProjectToSave(docName);
       if (!target) return false;
       const written = await saveProject(target, toWire(project));
       setPath(written);
@@ -231,7 +231,7 @@ function App() {
     if (!project) return;
     setDialog(null);
     try {
-      const target = await pickExportPath(path ? baseName(path).replace(/\.fc$/i, "") : project.settings.general.name, format);
+      const target = await pickExportPath(docName, format);
       if (!target) return;
       const pr = project.settings.printing;
       const o = project.settings.optimization;
@@ -277,6 +277,7 @@ function App() {
 
   // --- window title, and asking before the window closes with unsaved work ---
   const title = project ? (path ? baseName(path) : t("file.untitled")) : "";
+  const docName = path ? baseName(path).replace(/\.fc$/i, "") : t("file.untitled");
   useEffect(() => {
     if (!inTauri()) return;
     const name = title ? `${dirty ? "● " : ""}${title} — Frederic Coultier` : "Frederic Coultier";
@@ -470,7 +471,7 @@ function App() {
         <SettingsDialog project={project} layout={layout} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && project && (
-        <ExportDialog project={project} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
+        <ExportDialog project={project} name={docName} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
       )}
       {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
       {pending && (

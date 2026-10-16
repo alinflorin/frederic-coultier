@@ -13,11 +13,13 @@ export interface ExportPick {
 
 export function ExportDialog({
   project,
+  name,
   triangles,
   onExport,
   onClose,
 }: {
   project: FcProject;
+  name: string;
   triangles: number | null;
   onExport: (format: ExportFormat, pick: ExportPick) => void;
   onClose: () => void;
@@ -47,7 +49,7 @@ export function ExportDialog({
       footer={
         <>
           <span className="muted grow">
-            {triangles ? `${project.settings.general.name}.${f.ext} · ${triangles.toLocaleString()} ${t("preview.tris")} · ${size}` : t("export.noModel")}
+            {triangles ? `${name}.${f.ext} · ${triangles.toLocaleString()} ${t("preview.tris")} · ${size}` : t("export.noModel")}
           </span>
           <button onClick={onClose}>{t("common.cancel")}</button>
           <button className="primary" disabled={!triangles} onClick={() => onExport(format, { ...pick, supports: canSupports && pick.supports })}>

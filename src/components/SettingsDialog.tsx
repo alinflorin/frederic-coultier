@@ -173,9 +173,6 @@ export function SettingsDialog({
         <div className="tab-body" role="tabpanel">
           {tab === "general" && (
             <>
-              <Field label={t("settings.name")}>
-                <input value={s.general.name} onChange={(e) => onChange({ ...s, general: { ...s.general, name: e.currentTarget.value } })} />
-              </Field>
               <Field label={t("settings.notes")}>
                 <textarea rows={4} value={s.general.notes} onChange={(e) => onChange({ ...s, general: { ...s.general, notes: e.currentTarget.value } })} />
               </Field>
