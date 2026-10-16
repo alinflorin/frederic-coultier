@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
-import type { EngineInfo } from "../chat/engines";
+import type { EngineInfo, ModelInfo } from "../chat/engines";
 import { Dialog } from "./Dialog";
 import { McpPrefs } from "./McpPrefs";
 
@@ -15,6 +15,12 @@ export function PreferencesDialog({
   engines,
   engine,
   onEngine,
+  models,
+  model,
+  efforts,
+  effort,
+  onModel,
+  onEffort,
   onRefreshEngines,
   onClose,
 }: {
@@ -24,6 +30,13 @@ export function PreferencesDialog({
   engines: EngineInfo[] | null;
   engine: string | null;
   onEngine: (id: string) => void;
+  /** Defaults of the chosen agent; empty means the agent's own choice. */
+  models: ModelInfo[];
+  model: string;
+  efforts: string[];
+  effort: string;
+  onModel: (id: string) => void;
+  onEffort: (level: string) => void;
   onRefreshEngines: () => void;
   onClose: () => void;
 }) {
@@ -99,6 +112,34 @@ export function PreferencesDialog({
           <button type="button" onClick={onRefreshEngines}>{t("prefs.chat.refresh")}</button>
         </span>
       </label>
+      {usable && (
+        <>
+          <label className="field">
+            <span className="field-label">{t("prefs.chat.model")}</span>
+            <span className="field-input">
+              <select value={model} onChange={(e) => onModel(e.currentTarget.value)}>
+                <option value="">{t("prefs.chat.own")}</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </span>
+          </label>
+          {efforts.length > 0 && (
+            <label className="field">
+              <span className="field-label">{t("prefs.chat.effort")}</span>
+              <span className="field-input">
+                <select value={effort} onChange={(e) => onEffort(e.currentTarget.value)}>
+                  <option value="">{t("prefs.chat.own")}</option>
+                  {efforts.map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          )}
+        </>
+      )}
       {engines && !usable && <p className="muted">{t("prefs.chat.none")}</p>}
       {engines?.filter((e) => !e.available).map((e) => (
         <p key={e.id} className="muted">{e.label}: {e.detail}</p>

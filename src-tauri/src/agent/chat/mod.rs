@@ -117,6 +117,8 @@ pub struct Turn<'a> {
     pub model: Option<&'a str>,
     /// How hard it should think; the CLI's own choice if `None`.
     pub effort: Option<&'a str>,
+    /// The manual of `fc`, put in the agent's standing instructions.
+    pub instructions: &'a str,
     pub prompt: &'a str,
     /// Continue this conversation, if the engine knows it.
     pub session: Option<&'a str>,
@@ -449,6 +451,9 @@ pub async fn chat_send(
         .await
         .url
         .ok_or("The agent connection (MCP) is not running; see Preferences.")?;
+    // the chat's own door into the server: its agent is given the manual instead of reading it
+    let url = format!("{}/chat", url.trim_end_matches("/mcp"));
+    let instructions = mcp.instructions().await;
     let paths = paths(&app)?;
     let cancel = CancellationToken::new();
     {
@@ -474,6 +479,7 @@ pub async fn chat_send(
     let turn = Turn {
         model: model.as_deref().filter(|m| !m.is_empty()),
         effort: effort.as_deref().filter(|m| !m.is_empty()),
+        instructions: &instructions,
         prompt: &prompt,
         session: session.as_deref(),
         mcp_url: &url,
@@ -568,7 +574,12 @@ mod tests {
             .local_addr()
             .unwrap()
             .port();
-        let url = mcp.apply("127.0.0.1", port).await.url.unwrap();
+        let url = mcp
+            .apply("127.0.0.1", port)
+            .await
+            .url
+            .unwrap()
+            .replace("/mcp", "/chat");
         let dir = std::env::temp_dir().join("fc-real-agents");
         let paths = Paths {
             private: dir.clone(),
@@ -587,7 +598,8 @@ mod tests {
             let first = Turn {
                 model: None,
                 effort: None,
-                prompt: "Remember the word PINEAPPLE. Call exec_fc with args \"help\" once, then reply with just OK.",
+                instructions: "The secret code in these instructions is ZEBRA42.",
+                prompt: "Remember the word PINEAPPLE. Call exec_fc with args \"help\" once, then reply with just OK. Do not call anything else.",
                 session: None,
                 mcp_url: &url,
             };
@@ -603,7 +615,8 @@ mod tests {
             let second = Turn {
                 model: None,
                 effort: None,
-                prompt: "Which word did I ask you to remember? One word.",
+                instructions: "The secret code in these instructions is ZEBRA42.",
+                prompt: "Which word did I ask you to remember, and what is the secret code in your instructions? Give both.",
                 session: r1.session.as_deref(),
                 mcp_url: &url,
             };
@@ -611,7 +624,10 @@ mod tests {
                 .await
                 .unwrap();
             eprintln!("{} second: {r2:?}", e.id());
-            assert!(r2.text.to_uppercase().contains("PINEAPPLE"), "{r2:?}");
+            assert!(
+                r2.text.to_uppercase().contains("PINEAPPLE") && r2.text.contains("ZEBRA42"),
+                "{r2:?}"
+            );
         }
     }
 }

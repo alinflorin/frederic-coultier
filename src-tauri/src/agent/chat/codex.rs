@@ -128,6 +128,9 @@ impl Engine for Codex {
         let work = subdir(paths, "codex-work")?;
         std::fs::write(home.join("config.toml"), config(turn.mcp_url))
             .map_err(|e| format!("could not write the Codex settings: {e}"))?;
+        // Codex reads AGENTS.md from its home as standing instructions
+        std::fs::write(home.join("AGENTS.md"), turn.instructions)
+            .map_err(|e| format!("could not write the Codex instructions: {e}"))?;
         share(&paths.codex_home.join("auth.json"), &home.join("auth.json"))?;
 
         let mut args: Vec<String> = vec!["exec".into()];
@@ -349,6 +352,7 @@ mod tests {
         let t = Turn {
             model: Some("gpt-6-sol"),
             effort: Some("high"),
+            instructions: "THE MANUAL",
             prompt: "hello",
             session: Some("t9"),
             mcp_url: "http://127.0.0.1:1/mcp",
@@ -364,6 +368,10 @@ mod tests {
         assert_eq!(inv.stdin, "hello");
         let home = &inv.env.iter().find(|(k, _)| k == "CODEX_HOME").unwrap().1;
         assert!(Path::new(home).join("config.toml").is_file());
+        assert_eq!(
+            std::fs::read_to_string(Path::new(home).join("AGENTS.md")).unwrap(),
+            "THE MANUAL"
+        );
         assert!(
             Path::new(home).join("auth.json").exists(),
             "the sign-in is shared"

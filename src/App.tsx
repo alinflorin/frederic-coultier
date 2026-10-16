@@ -97,6 +97,7 @@ function App() {
   const [picks, setPicks] = useState<Record<string, { model?: string; effort?: string }>>(
     () => getPref("chatPicks") ?? {},
   );
+  const [overrides, setOverrides] = useState<Record<string, { model?: string; effort?: string }>>({});
   const [mobilePane, setMobilePane] = useState<PaneId>("source");
   const [cols, setCols] = useState(() => {
     // chat (middle) stays narrow by default; source and preview share the rest
@@ -134,22 +135,31 @@ function App() {
     [commit],
   );
 
-  const pick = (engine && picks[engine.id]) || {};
+  // Defaults come from Preferences; the chat panel can override them until the app closes.
+  const defaults = (engine && picks[engine.id]) || {};
+  const override = (engine && overrides[engine.id]) || {};
   const models = engine?.models ?? [];
-  const chosen = models.find((m) => m.id === pick.model);
-  const efforts = chosen ? chosen.efforts : (engine?.efforts ?? []);
-  const effort = pick.effort && efforts.includes(pick.effort) ? pick.effort : "";
-  const setPick = (change: { model?: string; effort?: string }) => {
+  const settle = (model: string | undefined, effort: string | undefined) => {
+    const m = models.find((x) => x.id === model);
+    const efforts = m ? m.efforts : (engine?.efforts ?? []);
+    return { model: m?.id ?? "", efforts, effort: effort && efforts.includes(effort) ? effort : "" };
+  };
+  const pref = settle(defaults.model, defaults.effort);
+  const active = settle(override.model ?? pref.model, override.effort ?? pref.effort);
+  const setDefault = (change: { model?: string; effort?: string }) => {
     if (!engine) return;
-    const next = { ...picks, [engine.id]: { ...pick, ...change } };
+    const next = { ...picks, [engine.id]: { ...defaults, ...change } };
     setPicks(next);
     setPref("chatPicks", next);
+  };
+  const setOverride = (change: { model?: string; effort?: string }) => {
+    if (engine) setOverrides((o) => ({ ...o, [engine.id]: { ...override, ...change } }));
   };
   const chat = useAgentChat({
     projectRef,
     engine: engine?.id ?? null,
-    model: chosen?.id ?? "",
-    effort,
+    model: active.model,
+    effort: active.effort,
     path,
     projectId,
   });
@@ -541,11 +551,11 @@ function App() {
         agent={engine?.label ?? null}
         unavailable={noAgent}
         models={models}
-        model={chosen?.id ?? ""}
-        efforts={efforts}
-        effort={effort}
-        onModel={(model) => setPick({ model })}
-        onEffort={(effort) => setPick({ effort })}
+        model={override.model ?? ""}
+        efforts={active.efforts}
+        effort={override.effort ?? ""}
+        onModel={(model) => setOverride({ model: model || undefined, effort: undefined })}
+        onEffort={(effort) => setOverride({ effort: effort || undefined })}
         canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
         onSend={chat.send}
         onStop={chat.stop}
@@ -639,6 +649,12 @@ function App() {
           engines={engines}
           engine={engine?.id ?? null}
           onEngine={setChatEngine}
+          models={models}
+          model={pref.model}
+          efforts={pref.efforts}
+          effort={pref.effort}
+          onModel={(model) => setDefault({ model, effort: undefined })}
+          onEffort={(effort) => setDefault({ effort })}
           onRefreshEngines={refreshEngines}
           onClose={() => setDialog(null)}
         />}

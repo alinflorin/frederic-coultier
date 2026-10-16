@@ -113,6 +113,11 @@ impl Mcp {
         }
     }
 
+    /// The manual for an agent that is given it up front: the user's notes and the `fc` reference.
+    pub async fn instructions(&self) -> String {
+        cli::Cli::new(self.bridge.clone()).instructions().await
+    }
+
     pub async fn status(&self) -> McpStatus {
         let status = self.inner.lock().await.status.clone();
         self.with_activity(status)

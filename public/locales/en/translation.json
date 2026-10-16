@@ -71,9 +71,9 @@
     "checking": "Checking for agents…",
     "picture": "Picture from the tool",
     "model": "Model",
-    "default": "Default model",
+    "default": "App default",
     "effort": "Thinking level",
-    "effortDefault": "Default thinking"
+    "effortDefault": "App default"
   },
   "preview": {
     "title": "Preview",
@@ -298,7 +298,10 @@
       "agent": "Agent",
       "none": "Neither Claude Code nor Codex is signed in on this computer, so the chat cannot be turned on.",
       "refresh": "Check again",
-      "unavailable": "unavailable"
+      "unavailable": "unavailable",
+      "model": "Default model",
+      "effort": "Default thinking level",
+      "own": "The agent's own choice"
     },
     "mcp": {
       "title": "Agent connection (MCP)",

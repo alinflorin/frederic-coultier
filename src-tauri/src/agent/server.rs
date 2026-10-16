@@ -27,12 +27,23 @@ pub fn router(
     if !loopback {
         config = config.disable_allowed_hosts();
     }
-    let service: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
-        move || Ok(AppTools::new(bridge.clone(), gate.clone())),
+    let outside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
+        {
+            let (bridge, gate) = (bridge.clone(), gate.clone());
+            move || Ok(AppTools::new(bridge.clone(), gate.clone()))
+        },
+        Default::default(),
+        config.clone(),
+    );
+    // the chat panel's own agent: same tools, but it gets the manual in its context instead
+    let inside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
+        move || Ok(AppTools::embedded(bridge.clone(), gate.clone())),
         Default::default(),
         config,
     );
-    axum::Router::new().nest_service("/mcp", service)
+    axum::Router::new()
+        .nest_service("/mcp", outside)
+        .nest_service("/chat", inside)
 }
 
 /// A server that is up: where it listens, and how to stop it.
@@ -83,9 +94,19 @@ mod tests {
         origin: Option<&str>,
         body: Value,
     ) -> (StatusCode, Option<String>, Value) {
+        rpc_at("/mcp", app, session, origin, body).await
+    }
+
+    async fn rpc_at(
+        uri: &str,
+        app: &axum::Router,
+        session: Option<&str>,
+        origin: Option<&str>,
+        body: Value,
+    ) -> (StatusCode, Option<String>, Value) {
         let mut req = Request::builder()
             .method("POST")
-            .uri("/mcp")
+            .uri(uri)
             .header("host", "127.0.0.1")
             .header("content-type", "application/json")
             .header("accept", "application/json, text/event-stream");
@@ -422,5 +443,57 @@ mod tests {
             "DNS rebinding must not work: {}",
             res.status()
         );
+    }
+
+    #[tokio::test]
+    async fn the_chat_door_has_no_read_instructions_and_needs_none() {
+        let app = test_router(Mock::new(|_, _| Ok(json!({}))));
+        let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": { "name": "chat", "version": "1" } } });
+        let (_, sid, reply) = rpc_at("/chat", &app, None, None, init).await;
+        let sid = sid.expect("a session id");
+        let told = reply["result"]["instructions"].as_str().unwrap_or_default();
+        assert!(!told.contains("read_instructions"), "{told}");
+        rpc_at(
+            "/chat",
+            &app,
+            Some(&sid),
+            None,
+            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        )
+        .await;
+        let (_, _, list) = rpc_at(
+            "/chat",
+            &app,
+            Some(&sid),
+            None,
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        )
+        .await;
+        let tools = list["result"]["tools"].as_array().expect("tools");
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(names, ["exec_fc"]);
+        assert!(
+            !tools[0]["description"]
+                .as_str()
+                .unwrap()
+                .contains("read_instructions")
+        );
+        // runs straight away, without the instructions having been read
+        let (_, _, out) = rpc_at(
+            "/chat",
+            &app,
+            Some(&sid),
+            None,
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": { "name": "exec_fc", "arguments": { "args": "help" } } }),
+        )
+        .await;
+        let text = out["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(text.contains("fc commands"), "{out}");
+        assert_ne!(out["result"]["isError"], json!(true), "{out}");
     }
 }

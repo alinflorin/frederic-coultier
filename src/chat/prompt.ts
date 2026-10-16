@@ -3,8 +3,7 @@ import type { ChatMessage } from "../types";
 /** Said once, when an agent starts a conversation; the user never sees it. */
 const PREFACE =
   "You are talking to the user through the chat panel of the jewellery CAD app that your tools control. " +
-  "They see only your replies there. Answer in the language they write in, and keep it short. " +
-  "Start by reading the instructions with read_instructions if you have not yet.";
+  "They see only your replies there. Answer in the language they write in, and keep it short.";
 
 const KEEP = 20;
 const CLIP = 600;

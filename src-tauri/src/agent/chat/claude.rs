@@ -65,6 +65,10 @@ impl Engine for Claude {
         let body = json!({ "mcpServers": { "fc": { "type": "http", "url": turn.mcp_url } } });
         std::fs::write(&config, body.to_string())
             .map_err(|e| format!("could not write {}: {e}", config.display()))?;
+        // the manual, as part of the system prompt, rewritten every time so it is never stale
+        let manual = dir.join("instructions.md");
+        std::fs::write(&manual, turn.instructions)
+            .map_err(|e| format!("could not write {}: {e}", manual.display()))?;
 
         let mut args: Vec<String> = [
             "-p",
@@ -78,12 +82,14 @@ impl Engine for Claude {
             "",
             "--setting-sources",
             "",
-            "--allowedTools=mcp__fc__read_instructions,mcp__fc__exec_fc",
+            "--allowedTools=mcp__fc__exec_fc",
             "--mcp-config",
         ]
         .map(String::from)
         .into();
         args.push(config.to_string_lossy().into_owned());
+        args.push("--append-system-prompt-file".into());
+        args.push(manual.to_string_lossy().into_owned());
         for (flag, value) in [("--model", turn.model), ("--effort", turn.effort)] {
             if let Some(v) = value {
                 args.push(flag.into());
@@ -265,6 +271,7 @@ mod tests {
         let t = Turn {
             model: Some("opus"),
             effort: Some("high"),
+            instructions: "THE MANUAL",
             prompt: "hi \"there\"",
             session: Some("s1"),
             mcp_url: "http://127.0.0.1:1/mcp",
@@ -280,6 +287,14 @@ mod tests {
             "{a}"
         );
         assert_eq!(inv.stdin, "hi \"there\"");
+        assert!(
+            a.contains("--append-system-prompt-file") && !a.contains("read_instructions"),
+            "{a}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(inv.dir.join("instructions.md")).unwrap(),
+            "THE MANUAL"
+        );
         let cfg = std::fs::read_to_string(inv.dir.join("mcp.json")).unwrap();
         let cfg: Value = serde_json::from_str(&cfg).unwrap();
         assert_eq!(cfg["mcpServers"]["fc"]["url"], "http://127.0.0.1:1/mcp");

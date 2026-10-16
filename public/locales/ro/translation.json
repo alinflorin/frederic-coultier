@@ -71,9 +71,9 @@
     "checking": "Se caută agenți…",
     "picture": "Imagine de la unealtă",
     "model": "Model",
-    "default": "Model implicit",
+    "default": "Implicit aplicație",
     "effort": "Nivel de gândire",
-    "effortDefault": "Gândire implicită"
+    "effortDefault": "Implicit aplicație"
   },
   "preview": {
     "title": "Previzualizare",
@@ -298,7 +298,10 @@
       "agent": "Agent",
       "none": "Nici Claude Code, nici Codex nu sunt autentificate pe acest calculator, deci chat-ul nu poate fi pornit.",
       "refresh": "Verifică din nou",
-      "unavailable": "indisponibil"
+      "unavailable": "indisponibil",
+      "model": "Model implicit",
+      "effort": "Nivel de gândire implicit",
+      "own": "Alegerea agentului"
     },
     "mcp": {
       "title": "Conexiune agent (MCP)",
