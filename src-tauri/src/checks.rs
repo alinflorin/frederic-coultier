@@ -4,7 +4,7 @@
 use openrscad_geom::Mesh;
 use serde::Deserialize;
 
-use crate::bvh::{shares_vertex, Bvh, V3};
+use crate::bvh::{Bvh, V3, shares_vertex};
 use crate::meshtools::Finding;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -52,7 +52,11 @@ fn samples(m: &Mesh) -> Vec<Sample> {
             ];
             let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
             (l > 1e-9).then(|| Sample {
-                centre: [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0],
+                centre: [
+                    (a[0] + b[0] + c[0]) / 3.0,
+                    (a[1] + b[1] + c[1]) / 3.0,
+                    (a[2] + b[2] + c[2]) / 3.0,
+                ],
                 normal: n.map(|x| x / l),
                 tri: t,
                 area: l / 2.0 * stride as f64,
@@ -76,7 +80,12 @@ fn cluster(mut spots: Vec<(f64, V3, f64)>) -> (usize, Vec<(f64, V3)>, f64) {
 }
 
 fn finding(level: &'static str, code: &'static str, detail: String, at: &[(f64, V3)]) -> Finding {
-    Finding { level, code, detail, at: at.iter().take(MAX_LOCATIONS).map(|(_, p)| *p).collect() }
+    Finding {
+        level,
+        code,
+        detail,
+        at: at.iter().take(MAX_LOCATIONS).map(|(_, p)| *p).collect(),
+    }
 }
 
 /// Runs the checks on a watertight mesh with outward normals.
@@ -110,19 +119,34 @@ pub fn deep_checks(mesh: &Mesh, o: &CheckOptions) -> Vec<Finding> {
     } else {
         let min = thin.iter().map(|t| t.0).fold(f64::MAX, f64::min);
         let (n, seeds, area) = cluster(thin);
-        out.push(finding("warn", "thin", format!("{n}|{min:.3}|{area:.1}|{:.2}", o.min_wall), &seeds));
+        out.push(finding(
+            "warn",
+            "thin",
+            format!("{n}|{min:.3}|{area:.1}|{:.2}", o.min_wall),
+            &seeds,
+        ));
     }
     if gaps.is_empty() {
         out.push(finding("pass", "noGaps", format!("{:.2}", o.min_gap), &[]));
     } else {
         let min = gaps.iter().map(|t| t.0).fold(f64::MAX, f64::min);
         let (n, seeds, area) = cluster(gaps);
-        out.push(finding("warn", "gaps", format!("{n}|{min:.3}|{area:.1}|{:.2}", o.min_gap), &seeds));
+        out.push(finding(
+            "warn",
+            "gaps",
+            format!("{n}|{min:.3}|{area:.1}|{:.2}", o.min_gap),
+            &seeds,
+        ));
     }
 
     // self-intersections
     if m.tris.len() > SELFINT_MAX_TRIS {
-        out.push(finding("info", "selfIntSkipped", m.tris.len().to_string(), &[]));
+        out.push(finding(
+            "info",
+            "selfIntSkipped",
+            m.tris.len().to_string(),
+            &[],
+        ));
     } else {
         let mut hits: Vec<(f64, V3)> = Vec::new();
         let mut near = Vec::new();
@@ -145,7 +169,14 @@ pub fn deep_checks(mesh: &Mesh, o: &CheckOptions) -> Vec<Finding> {
                 if crosses(&m, i, j) {
                     count += 1;
                     if hits.len() < MAX_LOCATIONS {
-                        hits.push((0.0, [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0]));
+                        hits.push((
+                            0.0,
+                            [
+                                (a[0] + b[0] + c[0]) / 3.0,
+                                (a[1] + b[1] + c[1]) / 3.0,
+                                (a[2] + b[2] + c[2]) / 3.0,
+                            ],
+                        ));
                     }
                 }
             }
@@ -161,14 +192,25 @@ pub fn deep_checks(mesh: &Mesh, o: &CheckOptions) -> Vec<Finding> {
     let mut thick: Vec<V3> = Vec::new();
     let mut thin_pts: Vec<(f64, V3)> = Vec::new();
     for sm in &s {
-        match bvh.ray(sm.centre, sm.normal.map(|x| -x), Some(sm.tri), false, FILL_FEED) {
+        match bvh.ray(
+            sm.centre,
+            sm.normal.map(|x| -x),
+            Some(sm.tri),
+            false,
+            FILL_FEED,
+        ) {
             None => thick.push(sm.centre),
             Some(w) if w < FILL_THIN => thin_pts.push((w, sm.centre)),
             _ => {}
         }
     }
     if thick.is_empty() {
-        out.push(finding("info", "fillNoFeed", format!("{FILL_FEED:.1}"), &[]));
+        out.push(finding(
+            "info",
+            "fillNoFeed",
+            format!("{FILL_FEED:.1}"),
+            &[],
+        ));
     } else {
         let mut far: Vec<(f64, V3, f64)> = thin_pts
             .iter()
@@ -184,7 +226,12 @@ pub fn deep_checks(mesh: &Mesh, o: &CheckOptions) -> Vec<Finding> {
             far.sort_by(|a, b| a.0.total_cmp(&b.0));
             let seeds: Vec<(f64, V3)> = far.iter().map(|f| (f.0, f.1)).collect();
             let (_, seeds, _) = cluster(seeds.iter().map(|&(v, p)| (v, p, 0.0)).collect());
-            out.push(finding("warn", "fill", format!("{worst:.0}|{FILL_REACH:.0}"), &seeds));
+            out.push(finding(
+                "warn",
+                "fill",
+                format!("{worst:.0}|{FILL_REACH:.0}"),
+                &seeds,
+            ));
         }
     }
     out
@@ -214,17 +261,36 @@ mod tests {
 
     fn boxm(lo: V3, hi: V3) -> Mesh {
         let v = vec![
-            [lo[0], lo[1], lo[2]], [hi[0], lo[1], lo[2]], [hi[0], hi[1], lo[2]], [lo[0], hi[1], lo[2]],
-            [lo[0], lo[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], hi[1], hi[2]], [lo[0], hi[1], hi[2]],
+            [lo[0], lo[1], lo[2]],
+            [hi[0], lo[1], lo[2]],
+            [hi[0], hi[1], lo[2]],
+            [lo[0], hi[1], lo[2]],
+            [lo[0], lo[1], hi[2]],
+            [hi[0], lo[1], hi[2]],
+            [hi[0], hi[1], hi[2]],
+            [lo[0], hi[1], hi[2]],
         ];
         let t = vec![
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
-            [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
         ];
         Mesh { verts: v, tris: t }
     }
 
-    const OPT: CheckOptions = CheckOptions { min_wall: 0.5, min_gap: 0.3 };
+    const OPT: CheckOptions = CheckOptions {
+        min_wall: 0.5,
+        min_gap: 0.3,
+    };
 
     #[test]
     fn thick_block_is_fine() {
@@ -235,7 +301,10 @@ mod tests {
     #[test]
     fn thin_plate_is_flagged() {
         let f = deep_checks(&boxm([0., 0., 0.], [10., 10., 0.3]), &OPT);
-        assert!(f.iter().any(|f| f.code == "thin" && !f.at.is_empty()), "{f:?}");
+        assert!(
+            f.iter().any(|f| f.code == "thin" && !f.at.is_empty()),
+            "{f:?}"
+        );
     }
 
     #[test]
@@ -244,7 +313,8 @@ mod tests {
         let b = boxm([5.1, 0., 0.], [10., 5., 5.]);
         let off = a.verts.len() as u32;
         a.verts.extend(b.verts);
-        a.tris.extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
+        a.tris
+            .extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
         let f = deep_checks(&a, &OPT);
         assert!(f.iter().any(|f| f.code == "gaps"), "{f:?}");
     }
@@ -255,7 +325,8 @@ mod tests {
         let b = boxm([2.5, 2.5, 2.5], [8., 8., 8.]);
         let off = a.verts.len() as u32;
         a.verts.extend(b.verts);
-        a.tris.extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
+        a.tris
+            .extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
         let f = deep_checks(&a, &OPT);
         assert!(f.iter().any(|f| f.code == "selfInt"), "{f:?}");
     }

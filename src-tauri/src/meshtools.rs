@@ -47,7 +47,11 @@ fn dot(a: V3, b: V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn norm(a: V3) -> f64 {
     dot(a, a).sqrt()
@@ -89,7 +93,10 @@ pub fn analyze(mesh: &Mesh) -> MeshStats {
     let mut parent: Vec<usize> = (0..m.verts.len()).collect();
     for t in &m.tris {
         for k in 1..3 {
-            let (ra, rb) = (find(&mut parent, t[0] as usize), find(&mut parent, t[k] as usize));
+            let (ra, rb) = (
+                find(&mut parent, t[0] as usize),
+                find(&mut parent, t[k] as usize),
+            );
             if ra != rb {
                 parent[ra] = rb;
             }
@@ -118,14 +125,32 @@ pub fn analyze(mesh: &Mesh) -> MeshStats {
 /// Print-readiness checks (a subset of the original tool's `validate`).
 pub fn validate(stats: &MeshStats) -> Vec<Finding> {
     let mut f = Vec::new();
-    let mut add = |level, code, detail: String| f.push(Finding { level, code, detail, at: Vec::new() });
+    let mut add = |level, code, detail: String| {
+        f.push(Finding {
+            level,
+            code,
+            detail,
+            at: Vec::new(),
+        })
+    };
 
     if stats.triangles == 0 {
         add("fail", "empty", String::new());
         return f;
     }
-    add("info", "size", format!("{:.2} × {:.2} × {:.2} mm", stats.size[0], stats.size[1], stats.size[2]));
-    add("info", "counts", format!("{} / {}", stats.triangles, stats.shells));
+    add(
+        "info",
+        "size",
+        format!(
+            "{:.2} × {:.2} × {:.2} mm",
+            stats.size[0], stats.size[1], stats.size[2]
+        ),
+    );
+    add(
+        "info",
+        "counts",
+        format!("{} / {}", stats.triangles, stats.shells),
+    );
 
     if stats.open_edges + stats.non_manifold_edges + stats.winding_edges == 0 {
         add("pass", "watertight", String::new());
@@ -209,7 +234,16 @@ pub fn simplify(mesh: &Mesh, spec: &SimplifySpec) -> (Mesh, SimplifyReport) {
         match check(&welded, &stats_before, &result, spec) {
             Ok(vc) => {
                 let after = result.tris.len();
-                return (result, SimplifyReport { before, after, accepted: true, reason: None, volume_change: vc });
+                return (
+                    result,
+                    SimplifyReport {
+                        before,
+                        after,
+                        accepted: true,
+                        reason: None,
+                        volume_change: vc,
+                    },
+                );
             }
             Err(f) => {
                 first_failure.get_or_insert(f);
@@ -217,11 +251,24 @@ pub fn simplify(mesh: &Mesh, spec: &SimplifySpec) -> (Mesh, SimplifyReport) {
         }
     }
     let (reason, after, vc) = first_failure.unwrap_or(("stuck", before, 0.0));
-    (mesh.clone(), SimplifyReport { before, after, accepted: false, reason: Some(reason), volume_change: vc })
+    (
+        mesh.clone(),
+        SimplifyReport {
+            before,
+            after,
+            accepted: false,
+            reason: Some(reason),
+            volume_change: vc,
+        },
+    )
 }
 
 fn decimate(welded: &Mesh, target_tris: usize) -> Mesh {
-    let verts: Vec<[f32; 3]> = welded.verts.iter().map(|v| [v[0] as f32, v[1] as f32, v[2] as f32]).collect();
+    let verts: Vec<[f32; 3]> = welded
+        .verts
+        .iter()
+        .map(|v| [v[0] as f32, v[1] as f32, v[2] as f32])
+        .collect();
     let indices: Vec<u32> = welded.tris.iter().flatten().copied().collect();
     let mut out = vec![0u32; indices.len()];
     let n = meshopt_simplify(&mut out, &indices, &verts, target_tris * 3, 0.005);
@@ -247,10 +294,19 @@ fn decimate(welded: &Mesh, target_tris: usize) -> Mesh {
 }
 
 /// Ok(volume change %) when `result` is a faithful, still-closed version of `welded`.
-fn check(welded: &Mesh, a: &MeshStats, result: &Mesh, spec: &SimplifySpec) -> Result<f64, (&'static str, usize, f64)> {
+fn check(
+    welded: &Mesh,
+    a: &MeshStats,
+    result: &Mesh,
+    spec: &SimplifySpec,
+) -> Result<f64, (&'static str, usize, f64)> {
     let b = analyze(result);
     let after = result.tris.len();
-    let vc = if a.volume.abs() > 0.0 { 100.0 * (b.volume - a.volume) / a.volume.abs() } else { 0.0 };
+    let vc = if a.volume.abs() > 0.0 {
+        100.0 * (b.volume - a.volume) / a.volume.abs()
+    } else {
+        0.0
+    };
     if after >= welded.tris.len() {
         return Err(("stuck", after, vc));
     }
@@ -264,7 +320,9 @@ fn check(welded: &Mesh, a: &MeshStats, result: &Mesh, spec: &SimplifySpec) -> Re
         return Err(("volume", after, vc));
     }
     if let (Some((alo, ahi)), Some((blo, bhi))) = (welded.bbox(), result.bbox()) {
-        let moved = (0..3).map(|k| (blo[k] - alo[k]).abs().max((bhi[k] - ahi[k]).abs())).fold(0.0, f64::max);
+        let moved = (0..3)
+            .map(|k| (blo[k] - alo[k]).abs().max((bhi[k] - ahi[k]).abs()))
+            .fold(0.0, f64::max);
         if moved > 0.05 {
             return Err(("bbox", after, vc));
         }
@@ -355,7 +413,11 @@ fn ray_hit(m: &Mesh, p: V3, d: V3, skip: usize, max: f64) -> Option<f64> {
 /// A capped tube along unit `n` from `p`; `rings` are (distance along `n`, radius) pairs.
 pub fn tube(p: V3, n: V3, rings: &[(f64, f64)]) -> Mesh {
     const N: usize = 24;
-    let helper = if n[0].abs() < 0.6 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let helper = if n[0].abs() < 0.6 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let u = cross(n, helper);
     let u = u.map(|x| x / norm(u));
     let v = cross(n, u);
@@ -375,7 +437,12 @@ pub fn tube(p: V3, n: V3, rings: &[(f64, f64)]) -> Mesh {
     for ring in 0..rings.len() as u32 - 1 {
         for i in 0..n_ {
             let j = (i + 1) % n_;
-            let (a, b, c, d) = (ring * n_ + i, ring * n_ + j, (ring + 1) * n_ + j, (ring + 1) * n_ + i);
+            let (a, b, c, d) = (
+                ring * n_ + i,
+                ring * n_ + j,
+                (ring + 1) * n_ + j,
+                (ring + 1) * n_ + i,
+            );
             m.tris.push([a, b, c]);
             m.tris.push([a, c, d]);
         }
@@ -391,7 +458,16 @@ pub fn tube(p: V3, n: V3, rings: &[(f64, f64)]) -> Mesh {
 /// Sprue stub: embedded 0.4 mm into the surface, flaring at its foot for a smooth blend.
 fn stub(p: V3, n: V3, spec: &SprueSpec) -> Mesh {
     let r = spec.diameter / 2.0;
-    tube(p, n, &[(-0.4, r * 0.9), (0.0, r * 0.9), (1.6, r), (spec.length.max(1.7), r)])
+    tube(
+        p,
+        n,
+        &[
+            (-0.4, r * 0.9),
+            (0.0, r * 0.9),
+            (1.6, r),
+            (spec.length.max(1.7), r),
+        ],
+    )
 }
 
 /// Places a sprue stub on the thickest, least visible spot: candidates are
@@ -442,7 +518,11 @@ pub fn plan_sprue_at(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64, V3)> {
             if l < 1e-9 {
                 return None;
             }
-            let cen = [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0];
+            let cen = [
+                (a[0] + b[0] + c[0]) / 3.0,
+                (a[1] + b[1] + c[1]) / 3.0,
+                (a[2] + b[2] + c[2]) / 3.0,
+            ];
             for k in 0..3 {
                 centre[k] += l * cen[k];
             }
@@ -468,7 +548,11 @@ pub fn plan_sprue_at(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64, V3)> {
 
     for &(_, i) in cands.iter().take(25) {
         let Some((cen, n, _)) = info[i] else { continue };
-        let start = [cen[0] + n[0] * 0.05, cen[1] + n[1] * 0.05, cen[2] + n[2] * 0.05];
+        let start = [
+            cen[0] + n[0] * 0.05,
+            cen[1] + n[1] * 0.05,
+            cen[2] + n[2] * 0.05,
+        ];
         if ray_hit(&m, start, n, i, spec.length + 0.5).is_some() {
             continue; // the stub would run into the piece
         }
@@ -490,7 +574,11 @@ mod tests {
             let phi = std::f64::consts::PI * i as f64 / rings as f64;
             for j in 0..segs {
                 let th = std::f64::consts::TAU * j as f64 / segs as f64;
-                m.verts.push([r * phi.sin() * th.cos(), r * phi.sin() * th.sin(), r * phi.cos()]);
+                m.verts.push([
+                    r * phi.sin() * th.cos(),
+                    r * phi.sin() * th.sin(),
+                    r * phi.cos(),
+                ]);
             }
         }
         m.verts.push([0.0, 0.0, -r]);
@@ -501,12 +589,14 @@ mod tests {
         for i in 1..rings - 1 {
             for j in 0..segs {
                 m.tris.push([ring(i, j), ring(i, j + 1), ring(i + 1, j)]);
-                m.tris.push([ring(i, j + 1), ring(i + 1, j + 1), ring(i + 1, j)]);
+                m.tris
+                    .push([ring(i, j + 1), ring(i + 1, j + 1), ring(i + 1, j)]);
             }
         }
         let bottom = (m.verts.len() - 1) as u32;
         for j in 0..segs {
-            m.tris.push([bottom, ring(rings - 1, j), ring(rings - 1, j + 1)]);
+            m.tris
+                .push([bottom, ring(rings - 1, j), ring(rings - 1, j + 1)]);
         }
         m.flip_winding();
         m
@@ -515,7 +605,11 @@ mod tests {
     #[test]
     fn sphere_is_watertight_and_outward() {
         let s = analyze(&sphere(5.0, 24, 32));
-        assert_eq!((s.open_edges, s.non_manifold_edges, s.winding_edges), (0, 0, 0), "{s:?}");
+        assert_eq!(
+            (s.open_edges, s.non_manifold_edges, s.winding_edges),
+            (0, 0, 0),
+            "{s:?}"
+        );
         assert_eq!(s.shells, 1);
         assert!(s.volume > 0.0);
         assert!(validate(&s).iter().all(|f| f.level != "fail"));
@@ -532,7 +626,13 @@ mod tests {
     #[test]
     fn simplify_reduces_and_keeps_shape() {
         let m = sphere(10.0, 60, 90);
-        let (out, rep) = simplify(&m, &SimplifySpec { keep_percent: 40.0, max_volume_change: 3.0 });
+        let (out, rep) = simplify(
+            &m,
+            &SimplifySpec {
+                keep_percent: 40.0,
+                max_volume_change: 3.0,
+            },
+        );
         assert!(rep.accepted, "{rep:?}");
         assert!(out.tris.len() < m.tris.len() * 8 / 10, "{rep:?}");
         assert!(analyze(&out).open_edges == 0);
@@ -541,7 +641,13 @@ mod tests {
     #[test]
     fn simplify_rejects_when_volume_limit_is_tight() {
         let m = sphere(10.0, 60, 90);
-        let (out, rep) = simplify(&m, &SimplifySpec { keep_percent: 2.0, max_volume_change: 0.001 });
+        let (out, rep) = simplify(
+            &m,
+            &SimplifySpec {
+                keep_percent: 2.0,
+                max_volume_change: 0.001,
+            },
+        );
         assert!(!rep.accepted);
         assert_eq!(out.tris.len(), m.tris.len(), "original kept");
     }
@@ -549,10 +655,23 @@ mod tests {
     #[test]
     fn sprue_sticks_out_of_the_surface() {
         let m = sphere(5.0, 24, 32);
-        let (stub, thick) = plan_sprue(&m, &SprueSpec { diameter: 2.0, length: 5.0, at: None }).unwrap();
+        let (stub, thick) = plan_sprue(
+            &m,
+            &SprueSpec {
+                diameter: 2.0,
+                length: 5.0,
+                at: None,
+            },
+        )
+        .unwrap();
         assert!(thick > 1.0);
         let (lo, hi) = stub.bbox().unwrap();
-        let reach = (0..3).map(|k| lo[k].abs().max(hi[k].abs())).fold(0.0, f64::max);
-        assert!(reach > 5.0 + 4.0, "stub extends beyond the sphere, reach {reach}");
+        let reach = (0..3)
+            .map(|k| lo[k].abs().max(hi[k].abs()))
+            .fold(0.0, f64::max);
+        assert!(
+            reach > 5.0 + 4.0,
+            "stub extends beyond the sphere, reach {reach}"
+        );
     }
 }

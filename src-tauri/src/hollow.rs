@@ -49,7 +49,8 @@ pub fn fuse(parts: Vec<Mesh>) -> Mesh {
             for p in parts {
                 let base = out.verts.len() as u32;
                 out.verts.extend(p.verts);
-                out.tris.extend(p.tris.into_iter().map(|t| t.map(|i| i + base)));
+                out.tris
+                    .extend(p.tris.into_iter().map(|t| t.map(|i| i + base)));
             }
             out
         }
@@ -67,7 +68,11 @@ impl Grid {
         (i * self.n[1] + j) * self.n[2] + k
     }
     fn pos(&self, i: f64, j: f64, k: f64) -> V3 {
-        [self.lo[0] + (i + 0.5) * self.h, self.lo[1] + (j + 0.5) * self.h, self.lo[2] + (k + 0.5) * self.h]
+        [
+            self.lo[0] + (i + 0.5) * self.h,
+            self.lo[1] + (j + 0.5) * self.h,
+            self.lo[2] + (k + 0.5) * self.h,
+        ]
     }
 }
 
@@ -77,7 +82,11 @@ fn make_grid(m: &Mesh, wall: f64) -> Option<Grid> {
     loop {
         let n = [0, 1, 2].map(|k| ((hi[k] - lo[k]) / h).ceil() as usize + 6);
         if (n[0] * n[1] * n[2]) as f64 <= MAX_VOXELS {
-            return Some(Grid { lo: lo.map(|x| x - 3.0 * h), h, n });
+            return Some(Grid {
+                lo: lo.map(|x| x - 3.0 * h),
+                h,
+                n,
+            });
         }
         h *= 1.15;
     }
@@ -192,7 +201,12 @@ fn distance_to_outside(inside: &[bool], g: &Grid) -> Vec<f32> {
                 for t in 0..len {
                     src[t] = f[at(t)];
                 }
-                edt_line(&src[..len], &mut dst[..len], &mut v[..len], &mut z[..len + 1]);
+                edt_line(
+                    &src[..len],
+                    &mut dst[..len],
+                    &mut v[..len],
+                    &mut z[..len + 1],
+                );
                 for t in 0..len {
                     f[at(t)] = dst[t];
                 }
@@ -210,7 +224,13 @@ fn cavity_field(m: &Mesh, g: &Grid, wall: f64) -> Option<Vec<f32>> {
     let mut field: Vec<f32> = inside
         .iter()
         .zip(&d2)
-        .map(|(&i, &d)| if i { ((d as f64).sqrt() * g.h - half - wall) as f32 } else { -(g.h as f32) })
+        .map(|(&i, &d)| {
+            if i {
+                ((d as f64).sqrt() * g.h - half - wall) as f32
+            } else {
+                -(g.h as f32)
+            }
+        })
         .collect();
 
     // drop cavity regions that are too narrow to be worth it
@@ -230,7 +250,14 @@ fn cavity_field(m: &Mesh, g: &Grid, wall: f64) -> Option<Vec<f32>> {
         while let Some(c) = stack.pop() {
             peak = peak.max(field[c]);
             let (i, j, k) = (c / (ny * nz), (c / nz) % ny, c % nz);
-            for (di, dj, dk) in [(1i32, 0i32, 0i32), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)] {
+            for (di, dj, dk) in [
+                (1i32, 0i32, 0i32),
+                (-1, 0, 0),
+                (0, 1, 0),
+                (0, -1, 0),
+                (0, 0, 1),
+                (0, 0, -1),
+            ] {
                 let (a, b, d) = (i as i32 + di, j as i32 + dj, k as i32 + dk);
                 if a < 0 || b < 0 || d < 0 || a >= nx as i32 || b >= ny as i32 || d >= nz as i32 {
                     continue;
@@ -287,7 +314,11 @@ fn surface_nets(field: &[f32], g: &Grid) -> Mesh {
                         cnt += 1.0;
                     }
                 }
-                let p = g.pos(i as f64 + sum[0] / cnt, j as f64 + sum[1] / cnt, k as f64 + sum[2] / cnt);
+                let p = g.pos(
+                    i as f64 + sum[0] / cnt,
+                    j as f64 + sum[1] / cnt,
+                    k as f64 + sum[2] / cnt,
+                );
                 cell_vertex.insert(g.idx(i, j, k), m.verts.len() as u32);
                 m.verts.push(p);
             }
@@ -316,7 +347,9 @@ fn surface_nets(field: &[f32], g: &Grid) -> Mesh {
                         p[c] -= 1 - dc;
                         cell_vertex.get(&g.idx(p[0], p[1], p[2])).copied()
                     };
-                    let (Some(q0), Some(q1), Some(q2), Some(q3)) = (cell(0, 0), cell(1, 0), cell(1, 1), cell(0, 1)) else {
+                    let (Some(q0), Some(q1), Some(q2), Some(q3)) =
+                        (cell(0, 0), cell(1, 0), cell(1, 1), cell(0, 1))
+                    else {
                         continue;
                     };
                     let (q1, q3) = if here { (q1, q3) } else { (q3, q1) };
@@ -330,7 +363,18 @@ fn surface_nets(field: &[f32], g: &Grid) -> Mesh {
 }
 
 const EDGES: [(usize, usize); 12] = [
-    (0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7),
+    (0, 1),
+    (2, 3),
+    (4, 5),
+    (6, 7),
+    (0, 2),
+    (1, 3),
+    (4, 6),
+    (5, 7),
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7),
 ];
 
 /// Connected pieces of a mesh, as lists of vertex indices.
@@ -345,7 +389,10 @@ fn components(m: &Mesh) -> Vec<Vec<u32>> {
     }
     for t in &m.tris {
         for k in 1..3 {
-            let (a, b) = (find(&mut parent, t[0] as usize), find(&mut parent, t[k] as usize));
+            let (a, b) = (
+                find(&mut parent, t[0] as usize),
+                find(&mut parent, t[k] as usize),
+            );
             if a != b {
                 parent[a] = b;
             }
@@ -354,7 +401,10 @@ fn components(m: &Mesh) -> Vec<Vec<u32>> {
     let mut groups: HashMap<usize, Vec<u32>> = HashMap::new();
     let used: std::collections::HashSet<u32> = m.tris.iter().flatten().copied().collect();
     for v in used {
-        groups.entry(find(&mut parent, v as usize)).or_default().push(v);
+        groups
+            .entry(find(&mut parent, v as usize))
+            .or_default()
+            .push(v);
     }
     groups.into_values().collect()
 }
@@ -366,8 +416,12 @@ pub fn hollow(mesh: &Mesh, spec: &HollowSpec) -> Result<Option<(Mesh, HollowRepo
         outer.flip_winding();
     }
     let wall = spec.wall.max(0.5);
-    let Some(g) = make_grid(&outer, wall) else { return Ok(None) };
-    let Some(field) = cavity_field(&outer, &g, wall) else { return Ok(None) };
+    let Some(g) = make_grid(&outer, wall) else {
+        return Ok(None);
+    };
+    let Some(field) = cavity_field(&outer, &g, wall) else {
+        return Ok(None);
+    };
     let cavity = surface_nets(&field, &g);
     if cavity.tris.is_empty() {
         return Ok(None);
@@ -382,8 +436,12 @@ pub fn hollow(mesh: &Mesh, spec: &HollowSpec) -> Result<Option<(Mesh, HollowRepo
     let mut tools = vec![cavity.clone()];
     let r = spec.drain / 2.0;
     for comp in &comps {
-        let by_z = |a: &&u32, b: &&u32| z_of(cavity.verts[**a as usize]).total_cmp(&z_of(cavity.verts[**b as usize]));
-        let (Some(&lo), Some(&hi)) = (comp.iter().min_by(by_z), comp.iter().max_by(by_z)) else { continue };
+        let by_z = |a: &&u32, b: &&u32| {
+            z_of(cavity.verts[**a as usize]).total_cmp(&z_of(cavity.verts[**b as usize]))
+        };
+        let (Some(&lo), Some(&hi)) = (comp.iter().min_by(by_z), comp.iter().max_by(by_z)) else {
+            continue;
+        };
         for (v, sign) in [(lo, -1.0), (hi, 1.0)] {
             let p = cavity.verts[v as usize];
             let d = up.map(|x| x * sign);
@@ -397,12 +455,21 @@ pub fn hollow(mesh: &Mesh, spec: &HollowSpec) -> Result<Option<(Mesh, HollowRepo
     let drains = tools.len() - 1;
 
     let tools: Vec<Mesh> = tools.into_iter().map(|t| t.welded(1e-6)).collect();
-    let result = Kernel::new().difference(outer.clone(), tools).map_err(|e| e.to_string())?;
+    let result = Kernel::new()
+        .difference(outer.clone(), tools)
+        .map_err(|e| e.to_string())?;
     if result.is_empty() {
         return Err("hollowing removed the whole piece".into());
     }
     let removed = outer.volume() - result.volume();
-    Ok(Some((result, HollowReport { cavities: comps.len(), drains, removed })))
+    Ok(Some((
+        result,
+        HollowReport {
+            cavities: comps.len(),
+            drains,
+            removed,
+        },
+    )))
 }
 
 #[cfg(test)]
@@ -411,12 +478,28 @@ mod tests {
 
     fn cube(s: f64) -> Mesh {
         let v = vec![
-            [0., 0., 0.], [s, 0., 0.], [s, s, 0.], [0., s, 0.],
-            [0., 0., s], [s, 0., s], [s, s, s], [0., s, s],
+            [0., 0., 0.],
+            [s, 0., 0.],
+            [s, s, 0.],
+            [0., s, 0.],
+            [0., 0., s],
+            [s, 0., s],
+            [s, s, s],
+            [0., s, s],
         ];
         let t = vec![
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
-            [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
         ];
         Mesh { verts: v, tris: t }
     }
@@ -433,19 +516,35 @@ mod tests {
     #[test]
     fn solid_cube_becomes_a_shell() {
         let m = cube(10.0);
-        let spec = HollowSpec { wall: 1.0, drain: 1.0, tilt: 0.0 };
+        let spec = HollowSpec {
+            wall: 1.0,
+            drain: 1.0,
+            tilt: 0.0,
+        };
         let (h, rep) = hollow(&m, &spec).expect("ok").expect("something to hollow");
         assert_eq!(rep.cavities, 1);
         assert_eq!(rep.drains, 2);
         // cavity is (10 - 2)^3 = 512 of 1000, give or take a voxel of wall
-        assert!(rep.removed > 380.0 && rep.removed < 600.0, "removed {}", rep.removed);
-        assert!(h.volume() < 620.0 && h.volume() > 400.0, "volume {}", h.volume());
+        assert!(
+            rep.removed > 380.0 && rep.removed < 600.0,
+            "removed {}",
+            rep.removed
+        );
+        assert!(
+            h.volume() < 620.0 && h.volume() > 400.0,
+            "volume {}",
+            h.volume()
+        );
     }
 
     #[test]
     fn thin_piece_is_left_alone() {
         let m = cube(1.5);
-        let spec = HollowSpec { wall: 1.0, drain: 1.0, tilt: 0.0 };
+        let spec = HollowSpec {
+            wall: 1.0,
+            drain: 1.0,
+            tilt: 0.0,
+        };
         assert!(hollow(&m, &spec).unwrap().is_none());
     }
 

@@ -5,8 +5,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use openrscad_eval::{eval_program_with_budget, register_system_fonts, NullResolver};
-use openrscad_geom::{render_cached_warns, GeomCache, Mesh};
+use openrscad_eval::{NullResolver, eval_program_with_budget, register_system_fonts};
+use openrscad_geom::{GeomCache, Mesh, render_cached_warns};
 use serde::Serialize;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -77,7 +77,11 @@ fn failure(source: &str, message: String, span: Option<std::ops::Range<usize>>) 
         }
         None => (None, None),
     };
-    RenderFailure { message, line, column }
+    RenderFailure {
+        message,
+        line,
+        column,
+    }
 }
 
 fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
@@ -86,8 +90,8 @@ fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
         register_system_fonts();
     }
 
-    let program = openrscad_syntax::parse(source)
-        .map_err(|e| failure(source, e.message, Some(e.span)))?;
+    let program =
+        openrscad_syntax::parse(source).map_err(|e| failure(source, e.message, Some(e.span)))?;
     // Projects are self-contained: no file system access for include/use/import.
     let out = eval_program_with_budget(&program, &NullResolver, ".", EVAL_BUDGET)
         .map_err(|e| failure(source, e.message, e.span))?;
@@ -103,13 +107,22 @@ fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
                 }
                 None => (None, None),
             };
-            Diagnostic { severity: "warning", message: w.message.clone(), line, column }
+            Diagnostic {
+                severity: "warning",
+                message: w.message.clone(),
+                line,
+                column,
+            }
         })
         .collect();
 
     let mut cache = GeomCache::new();
     let (mesh, geom_warnings) = render_cached_warns(&out.node, &Kernel::new(), &mut cache)
-        .map_err(|e| RenderFailure { message: e.to_string(), line: None, column: None })?;
+        .map_err(|e| RenderFailure {
+            message: e.to_string(),
+            line: None,
+            column: None,
+        })?;
     diagnostics.extend(geom_warnings.into_iter().map(|message| Diagnostic {
         severity: "warning",
         message,
@@ -132,7 +145,11 @@ pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Render
     let handle = std::thread::Builder::new()
         .stack_size(STACK_BYTES)
         .spawn(move || render_now(&source))
-        .map_err(|e| RenderFailure { message: e.to_string(), line: None, column: None })?;
+        .map_err(|e| RenderFailure {
+            message: e.to_string(),
+            line: None,
+            column: None,
+        })?;
     let rendered = handle.join().unwrap_or_else(|_| {
         Err(RenderFailure {
             message: "the renderer crashed on this model".into(),
@@ -188,28 +205,67 @@ mod tests {
         use crate::{hollow, meshtools, supports};
         let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
         let t = std::time::Instant::now();
-        let spec = hollow::HollowSpec { wall: 0.8, drain: 1.0, tilt: 30.0 };
+        let spec = hollow::HollowSpec {
+            wall: 0.8,
+            drain: 1.0,
+            tilt: 30.0,
+        };
         let hollowed = hollow::hollow(&r.mesh, &spec).expect("hollow ok");
-        eprintln!("hollow: {:?} in {:?}", hollowed.as_ref().map(|h| &h.1), t.elapsed());
+        eprintln!(
+            "hollow: {:?} in {:?}",
+            hollowed.as_ref().map(|h| &h.1),
+            t.elapsed()
+        );
         let base = hollowed.map_or((*r.mesh).clone(), |h| h.0);
         assert!(base.volume() <= r.mesh.volume());
-        let (_, rep) = meshtools::simplify(&base, &meshtools::SimplifySpec { keep_percent: 60.0, max_volume_change: 1.0 });
+        let (_, rep) = meshtools::simplify(
+            &base,
+            &meshtools::SimplifySpec {
+                keep_percent: 60.0,
+                max_volume_change: 1.0,
+            },
+        );
         eprintln!("simplify: {rep:?}");
-        let p = supports::PrintParams { tilt: 30.0, lift: 3.0, tip: 0.2, base: 0.8, raft: 1.0, raft_radius: 3.0 };
-        let auto = supports::AutoParams { angle: 45.0, spacing: 4.0, step: 1.0, bias: 3.0 };
+        let p = supports::PrintParams {
+            tilt: 30.0,
+            lift: 3.0,
+            tip: 0.2,
+            base: 0.8,
+            raft: 1.0,
+            raft_radius: 3.0,
+        };
+        let auto = supports::AutoParams {
+            angle: 45.0,
+            spacing: 4.0,
+            step: 1.0,
+            bias: 3.0,
+        };
         let sup = supports::auto_supports(&base, &p, &auto, &[], 1).unwrap();
         let baked = supports::bake(&base, &sup.supports, &p).unwrap();
-        eprintln!("supports {} baked tris {} total {:?}", sup.supports.len(), baked.tris.len(), t.elapsed());
+        eprintln!(
+            "supports {} baked tris {} total {:?}",
+            sup.supports.len(),
+            baked.tris.len(),
+            t.elapsed()
+        );
         assert!(baked.tris.len() > base.tris.len());
     }
 
     #[test]
     fn sprue_on_the_sample_ring() {
         let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
-        let spec = crate::meshtools::SprueSpec { diameter: 2.0, length: 5.0, at: None };
+        let spec = crate::meshtools::SprueSpec {
+            diameter: 2.0,
+            length: 5.0,
+            at: None,
+        };
         let t = std::time::Instant::now();
         let got = crate::meshtools::plan_sprue(&r.mesh, &spec);
-        eprintln!("sprue: {:?} in {:?}", got.as_ref().map(|g| (g.0.tris.len(), g.1, g.0.bbox())), t.elapsed());
+        eprintln!(
+            "sprue: {:?} in {:?}",
+            got.as_ref().map(|g| (g.0.tris.len(), g.1, g.0.bbox())),
+            t.elapsed()
+        );
         assert!(got.is_some());
     }
 

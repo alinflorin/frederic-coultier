@@ -7,8 +7,8 @@ pub mod text;
 pub mod tools;
 
 use std::net::IpAddr;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -39,8 +39,15 @@ fn is_loopback(host: &str) -> bool {
 }
 
 fn check(host: &str, port: u16) -> Result<(), String> {
-    if host.is_empty() || host.len() > 253 || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':')) {
-        return Err(format!("{host:?} is not a host name or address; use something like {DEFAULT_HOST}"));
+    if host.is_empty()
+        || host.len() > 253
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
+    {
+        return Err(format!(
+            "{host:?} is not a host name or address; use something like {DEFAULT_HOST}"
+        ));
     }
     if port == 0 {
         return Err("the port must be between 1 and 65535".into());
@@ -50,9 +57,15 @@ fn check(host: &str, port: u16) -> Result<(), String> {
 
 fn bind_error(e: &std::io::Error, host: &str, port: u16) -> String {
     match e.kind() {
-        std::io::ErrorKind::AddrInUse => format!("port {port} is already in use (by another program, or another copy of this app); pick a different port"),
-        std::io::ErrorKind::AddrNotAvailable => format!("{host} is not an address of this computer"),
-        std::io::ErrorKind::PermissionDenied => format!("not allowed to listen on port {port}; try a port above 1024"),
+        std::io::ErrorKind::AddrInUse => format!(
+            "port {port} is already in use (by another program, or another copy of this app); pick a different port"
+        ),
+        std::io::ErrorKind::AddrNotAvailable => {
+            format!("{host} is not an address of this computer")
+        }
+        std::io::ErrorKind::PermissionDenied => {
+            format!("not allowed to listen on port {port}; try a port above 1024")
+        }
         _ => format!("could not listen on {host}:{port}: {e}"),
     }
 }
@@ -72,8 +85,22 @@ pub struct Mcp {
 
 impl Mcp {
     pub fn new(bridge: Arc<dyn Bridge>) -> Self {
-        let status = McpStatus { running: false, host: DEFAULT_HOST.into(), port: DEFAULT_PORT, url: None, error: None, loopback: true };
-        Self { bridge, read: Arc::new(AtomicBool::new(false)), inner: Mutex::new(Inner { status, running: None }) }
+        let status = McpStatus {
+            running: false,
+            host: DEFAULT_HOST.into(),
+            port: DEFAULT_PORT,
+            url: None,
+            error: None,
+            loopback: true,
+        };
+        Self {
+            bridge,
+            read: Arc::new(AtomicBool::new(false)),
+            inner: Mutex::new(Inner {
+                status,
+                running: None,
+            }),
+        }
     }
 
     pub async fn status(&self) -> McpStatus {
@@ -87,17 +114,39 @@ impl Mcp {
         let mut g = self.inner.lock().await;
         if let Some(mut old) = g.running.take() {
             old.stop.cancel();
-            if tokio::time::timeout(Duration::from_secs(3), &mut old.task).await.is_err() {
+            if tokio::time::timeout(Duration::from_secs(3), &mut old.task)
+                .await
+                .is_err()
+            {
                 old.task.abort();
             }
         }
         let loopback = is_loopback(&host);
-        let mut status = McpStatus { running: false, host: host.clone(), port, url: None, error: None, loopback };
+        let mut status = McpStatus {
+            running: false,
+            host: host.clone(),
+            port,
+            url: None,
+            error: None,
+            loopback,
+        };
         match check(&host, port) {
             Err(e) => status.error = Some(e),
-            Ok(()) => match server::serve(self.bridge.clone(), &host, port, loopback, self.read.clone()).await {
+            Ok(()) => match server::serve(
+                self.bridge.clone(),
+                &host,
+                port,
+                loopback,
+                self.read.clone(),
+            )
+            .await
+            {
                 Ok(served) => {
-                    let shown = if served.addr.is_ipv6() { format!("[{}]", served.addr.ip()) } else { served.addr.ip().to_string() };
+                    let shown = if served.addr.is_ipv6() {
+                        format!("[{}]", served.addr.ip())
+                    } else {
+                        served.addr.ip().to_string()
+                    };
                     status.url = Some(format!("http://{shown}:{}/mcp", served.addr.port()));
                     status.running = true;
                     g.running = Some(served);
@@ -117,7 +166,11 @@ pub async fn mcp_status(mcp: State<'_, Arc<Mcp>>) -> Result<McpStatus, String> {
 
 /// Applies a new host and port. The preferences window saves them, this restarts the server.
 #[tauri::command]
-pub async fn mcp_configure(host: String, port: u16, mcp: State<'_, Arc<Mcp>>) -> Result<McpStatus, String> {
+pub async fn mcp_configure(
+    host: String,
+    port: u16,
+    mcp: State<'_, Arc<Mcp>>,
+) -> Result<McpStatus, String> {
     Ok(mcp.apply(&host, port).await)
 }
 
@@ -125,13 +178,23 @@ pub async fn mcp_configure(host: String, port: u16, mcp: State<'_, Arc<Mcp>>) ->
 pub fn start(app: &tauri::AppHandle) {
     let pending = Arc::new(bridge::Pending::default());
     app.manage(pending.clone());
-    let mcp = Arc::new(Mcp::new(Arc::new(bridge::TauriBridge::new(app.clone(), pending))));
+    let mcp = Arc::new(Mcp::new(Arc::new(bridge::TauriBridge::new(
+        app.clone(),
+        pending,
+    ))));
     app.manage(mcp.clone());
 
     let store = app.store("settings.json").ok();
     let saved = |key: &str| store.as_ref().and_then(|s| s.get(key));
-    let host = saved("mcpHost").and_then(|v| v.as_str().map(str::to_owned)).filter(|h| !h.trim().is_empty()).unwrap_or_else(|| DEFAULT_HOST.into());
-    let port = saved("mcpPort").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0).unwrap_or(DEFAULT_PORT);
+    let host = saved("mcpHost")
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_HOST.into());
+    let port = saved("mcpPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .filter(|p| *p != 0)
+        .unwrap_or(DEFAULT_PORT);
 
     // started before the window exists, so it already has a status when preferences opens
     let status = tauri::async_runtime::block_on(mcp.apply(&host, port));
@@ -155,11 +218,17 @@ mod tests {
 
     /// A port nobody listens on right now.
     fn free_port() -> u16 {
-        std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
     }
 
     async fn reachable(port: u16) -> bool {
-        tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_ok()
+        tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
     }
 
     #[test]
@@ -220,11 +289,17 @@ mod tests {
         let port = taken.local_addr().unwrap().port();
         let s = m.apply("127.0.0.1", port).await;
         assert!(!s.running && s.url.is_none(), "{s:?}");
-        assert!(s.error.as_deref().unwrap().contains("already in use"), "{s:?}");
+        assert!(
+            s.error.as_deref().unwrap().contains("already in use"),
+            "{s:?}"
+        );
         assert_eq!(s.port, port, "it must not quietly pick another port");
         // the failed apply leaves nothing listening on a different port either
         drop(taken);
-        assert!(m.apply("127.0.0.1", port).await.running, "works once the port is free");
+        assert!(
+            m.apply("127.0.0.1", port).await.running,
+            "works once the port is free"
+        );
     }
 
     #[tokio::test]
@@ -234,7 +309,10 @@ mod tests {
         m.apply("127.0.0.1", port).await;
         let s = m.apply("not a host", port).await;
         assert!(!s.running && s.error.is_some());
-        assert!(!reachable(port).await, "an invalid configuration must not leave the old server up");
+        assert!(
+            !reachable(port).await,
+            "an invalid configuration must not leave the old server up"
+        );
         assert!(!m.apply("127.0.0.1", 0).await.running);
     }
 

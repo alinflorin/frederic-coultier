@@ -95,7 +95,11 @@ fn sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn len(a: V3) -> f64 {
     (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
@@ -137,14 +141,25 @@ pub fn frame(mesh: &Mesh, p: &PrintParams) -> Option<(f64, Frame)> {
 fn tri_normal(a: V3, b: V3, c: V3) -> Option<(V3, f64)> {
     let n = cross(sub(b, a), sub(c, a));
     let l = len(n);
-    if l < 1e-12 { None } else { Some(([n[0] / l, n[1] / l, n[2] / l], l / 2.0)) }
+    if l < 1e-12 {
+        None
+    } else {
+        Some(([n[0] / l, n[1] / l, n[2] / l], l / 2.0))
+    }
 }
 
 // --- print orientation ---
 
 /// Ranks tilts about X from `min` to `max`: overhanging area (needs supports)
 /// plus 3x the flat area lying on the plate, best first.
-pub fn rank_tilts(mesh: &Mesh, min: f64, max: f64, step: f64, angle: f64, lift: f64) -> Vec<TiltRow> {
+pub fn rank_tilts(
+    mesh: &Mesh,
+    min: f64,
+    max: f64,
+    step: f64,
+    angle: f64,
+    lift: f64,
+) -> Vec<TiltRow> {
     let ct = (angle * PI / 180.0).cos();
     let tris: Vec<(V3, f64, [usize; 3])> = mesh
         .tris
@@ -176,11 +191,23 @@ pub fn rank_tilts(mesh: &Mesh, min: f64, max: f64, step: f64, angle: f64, lift: 
             }
             let size = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2] + lift];
             let fits = size[0] <= BED[0] && size[1] <= BED[1] && size[2] <= BED[2];
-            rows.push(TiltRow { tilt, overhang: over, flat, size, fits });
+            rows.push(TiltRow {
+                tilt,
+                overhang: over,
+                flat,
+                size,
+                fits,
+            });
         }
         tilt += step;
     }
-    let score = |r: &TiltRow| if r.fits { r.overhang + 3.0 * r.flat } else { 1e12 + r.overhang };
+    let score = |r: &TiltRow| {
+        if r.fits {
+            r.overhang + 3.0 * r.flat
+        } else {
+            1e12 + r.overhang
+        }
+    };
     rows.sort_by(|a, b| score(a).total_cmp(&score(b)));
     rows
 }
@@ -204,7 +231,14 @@ impl XyGrid {
         let cell = (span / 128.0).max(0.25);
         let nx = ((hi[0] - lo[0]) / cell) as usize + 1;
         let ny = ((hi[1] - lo[1]) / cell) as usize + 1;
-        let mut g = XyGrid { x0: lo[0], y0: lo[1], cell, nx, ny, cells: HashMap::new() };
+        let mut g = XyGrid {
+            x0: lo[0],
+            y0: lo[1],
+            cell,
+            nx,
+            ny,
+            cells: HashMap::new(),
+        };
         for (t, b) in tri_box.iter().enumerate().take(tris.len()) {
             let (ix0, ix1) = (g.ix(b[0]), g.ix(b[3]));
             let (iy0, iy1) = (g.iy(b[1]), g.iy(b[4]));
@@ -236,7 +270,10 @@ pub fn auto_supports(
     mut next_id: u32,
 ) -> Option<AutoResult> {
     let (zoff, _) = frame(mesh, print)?;
-    let v: Vec<V3> = tilt_mesh(mesh, print.tilt).into_iter().map(|p| [p[0], p[1], p[2] + zoff]).collect();
+    let v: Vec<V3> = tilt_mesh(mesh, print.tilt)
+        .into_iter()
+        .map(|p| [p[0], p[1], p[2] + zoff])
+        .collect();
     let tol = 0.3;
 
     let tri_box: Vec<[f64; 6]> = mesh
@@ -258,7 +295,9 @@ pub fn auto_supports(
 
     // would a pillar straight down from p cross the model?
     let blocked = |p: V3| -> bool {
-        let Some(list) = grid.cells.get(&(grid.ix(p[0]) * grid.ny + grid.iy(p[1]))) else { return false };
+        let Some(list) = grid.cells.get(&(grid.ix(p[0]) * grid.ny + grid.iy(p[1]))) else {
+            return false;
+        };
         for &t in list {
             let b = &tri_box[t as usize];
             if p[0] < b[0] || p[0] > b[3] || p[1] < b[1] || p[1] > b[4] || b[2] > p[2] - tol {
@@ -315,11 +354,22 @@ pub fn auto_supports(
         let n = ((m / step) as usize + 1).min(40);
         for a1 in 0..n {
             for b1 in 0..(n - a1) {
-                let (u, w) = ((a1 as f64 + 1.0 / 3.0) / n as f64, (b1 as f64 + 1.0 / 3.0) / n as f64);
-                let p = [a[0] + u * e1[0] + w * e2[0], a[1] + u * e1[1] + w * e2[1], a[2] + u * e1[2] + w * e2[2]];
+                let (u, w) = (
+                    (a1 as f64 + 1.0 / 3.0) / n as f64,
+                    (b1 as f64 + 1.0 / 3.0) / n as f64,
+                );
+                let p = [
+                    a[0] + u * e1[0] + w * e2[0],
+                    a[1] + u * e1[1] + w * e2[1],
+                    a[2] + u * e1[2] + w * e2[2],
+                ];
                 let d = sub(p, centre);
                 let dd = len(d);
-                let o = if dd > 1e-9 { (d[0] * cr[0] + d[1] * cr[1] + d[2] * cr[2]) / (dd * l) } else { 0.0 };
+                let o = if dd > 1e-9 {
+                    (d[0] * cr[0] + d[1] * cr[1] + d[2] * cr[2]) / (dd * l)
+                } else {
+                    0.0
+                };
                 samples.push((p[2] + auto.bias * (o + 1.0) / 2.0, p));
             }
         }
@@ -336,7 +386,10 @@ pub fn auto_supports(
         .collect();
     let kept = manual.len();
     let sp2 = auto.spacing * auto.spacing;
-    let (c, s) = ((print.tilt * PI / 180.0).cos(), (print.tilt * PI / 180.0).sin());
+    let (c, s) = (
+        (print.tilt * PI / 180.0).cos(),
+        (print.tilt * PI / 180.0).sin(),
+    );
 
     let mut out: Vec<Support> = manual.to_vec();
     let (mut added, mut blocked_n) = (0, 0);
@@ -367,7 +420,13 @@ pub fn auto_supports(
     Some(AutoResult {
         supports: out,
         next_id,
-        stats: AutoStats { overhang_faces, samples: samples.len(), added, kept, blocked: blocked_n },
+        stats: AutoStats {
+            overhang_faces,
+            samples: samples.len(),
+            added,
+            kept,
+            blocked: blocked_n,
+        },
     })
 }
 
@@ -376,7 +435,8 @@ pub fn auto_supports(
 fn append(into: &mut Mesh, verts: Vec<V3>, tris: Vec<[u32; 3]>) {
     let base = into.verts.len() as u32;
     into.verts.extend(verts);
-    into.tris.extend(tris.into_iter().map(|t| t.map(|i| i + base)));
+    into.tris
+        .extend(tris.into_iter().map(|t| t.map(|i| i + base)));
 }
 
 /// Closed prism over a convex polygon (counter-clockwise seen from +Z).
@@ -398,10 +458,12 @@ fn prism(poly: &[[f64; 2]], z0: f64, z1: f64) -> (Vec<V3>, Vec<[u32; 3]>) {
 }
 
 fn circle(cx: f64, cy: f64, r: f64, n: usize) -> Vec<[f64; 2]> {
-    (0..n).map(|i| {
-        let a = 2.0 * PI * i as f64 / n as f64;
-        [cx + r * a.cos(), cy + r * a.sin()]
-    }).collect()
+    (0..n)
+        .map(|i| {
+            let a = 2.0 * PI * i as f64 / n as f64;
+            [cx + r * a.cos(), cy + r * a.sin()]
+        })
+        .collect()
 }
 
 /// Stadium (hull of two discs) around the segment p-q.
@@ -423,7 +485,10 @@ fn stadium(p: [f64; 2], q: [f64; 2], r: f64) -> Vec<[f64; 2]> {
 /// Tapered pillar from `(x, y, z0)` with radius `r0` up to `(x, y, z1)` with radius `r1`.
 fn pillar(x: f64, y: f64, z0: f64, r0: f64, z1: f64, r1: f64) -> (Vec<V3>, Vec<[u32; 3]>) {
     const N: usize = 16;
-    let mut v: Vec<V3> = circle(x, y, r0, N).into_iter().map(|p| [p[0], p[1], z0]).collect();
+    let mut v: Vec<V3> = circle(x, y, r0, N)
+        .into_iter()
+        .map(|p| [p[0], p[1], z0])
+        .collect();
     v.extend(circle(x, y, r1, N).into_iter().map(|p| [p[0], p[1], z1]));
     let n = N as u32;
     let mut t = Vec::new();
@@ -467,9 +532,16 @@ pub fn support_parts(supports: &[Support], p: &PrintParams, zoff: f64) -> Vec<Me
         let (mut used, mut d, mut par) = (vec![false; n], vec![f64::MAX; n], vec![usize::MAX; n]);
         d[0] = 0.0;
         for _ in 0..n {
-            let b = (0..n).filter(|&i| !used[i]).min_by(|&a, &b| d[a].total_cmp(&d[b])).unwrap();
+            let b = (0..n)
+                .filter(|&i| !used[i])
+                .min_by(|&a, &b| d[a].total_cmp(&d[b]))
+                .unwrap();
             used[b] = true;
-            let poly = if par[b] == usize::MAX { circle(xy[b][0], xy[b][1], p.raft_radius, 32) } else { stadium(xy[b], xy[par[b]], p.raft_radius) };
+            let poly = if par[b] == usize::MAX {
+                circle(xy[b][0], xy[b][1], p.raft_radius, 32)
+            } else {
+                stadium(xy[b], xy[par[b]], p.raft_radius)
+            };
             let (v, t) = prism(&poly, 0.0, raft_top);
             parts.push(Mesh { verts: v, tris: t });
             for i in 0..n {
@@ -498,7 +570,10 @@ pub fn support_mesh(supports: &[Support], p: &PrintParams, zoff: f64) -> Mesh {
 /// The model in the print frame (tilted, lifted).
 pub fn tilted_model(mesh: &Mesh, p: &PrintParams, zoff: f64) -> Mesh {
     Mesh {
-        verts: tilt_mesh(mesh, p.tilt).into_iter().map(|q| [q[0], q[1], q[2] + zoff]).collect(),
+        verts: tilt_mesh(mesh, p.tilt)
+            .into_iter()
+            .map(|q| [q[0], q[1], q[2] + zoff])
+            .collect(),
         tris: mesh.tris.clone(),
     }
 }
@@ -526,9 +601,21 @@ mod tests {
     }
 
     fn params(tilt: f64) -> PrintParams {
-        PrintParams { tilt, lift: 3.0, tip: 0.2, base: 0.8, raft: 1.0, raft_radius: 3.0 }
+        PrintParams {
+            tilt,
+            lift: 3.0,
+            tip: 0.2,
+            base: 0.8,
+            raft: 1.0,
+            raft_radius: 3.0,
+        }
     }
-    const AUTO: AutoParams = AutoParams { angle: 45.0, spacing: 4.0, step: 1.0, bias: 3.0 };
+    const AUTO: AutoParams = AutoParams {
+        angle: 45.0,
+        spacing: 4.0,
+        step: 1.0,
+        bias: 3.0,
+    };
 
     #[test]
     fn prism_is_closed_and_positive() {
@@ -553,7 +640,14 @@ mod tests {
     #[test]
     fn manual_supports_are_kept_and_count_for_coverage() {
         let m = mushroom();
-        let manual = vec![Support { id: 1, x: 0.0, y: 0.0, z: 5.0, source: "manual".into(), tip: None }];
+        let manual = vec![Support {
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+            source: "manual".into(),
+            tip: None,
+        }];
         let with = auto_supports(&m, &params(0.0), &AUTO, &manual, 2).unwrap();
         let without = auto_supports(&m, &params(0.0), &AUTO, &[], 1).unwrap();
         assert_eq!(with.supports[0].source, "manual");

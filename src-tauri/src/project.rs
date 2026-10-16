@@ -19,7 +19,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -39,7 +39,9 @@ pub enum ProjectError {
     Json(#[from] serde_json::Error),
     #[error("this is not a Frederic Coultier project")]
     WrongFormat,
-    #[error("this project was made with a newer version of the app (file version {0}, supported {VERSION})")]
+    #[error(
+        "this project was made with a newer version of the app (file version {0}, supported {VERSION})"
+    )]
     TooNew(u32),
     #[error("project file is missing {0}")]
     Missing(&'static str),
@@ -140,9 +142,15 @@ pub fn write_project(path: &Path, project: &Project) -> Result<PathBuf, ProjectE
         let entries: [(&str, Vec<u8>); 5] = [
             ("manifest.json", serde_json::to_vec_pretty(&manifest)?),
             ("model.scad", project.source.clone().into_bytes()),
-            ("settings.json", serde_json::to_vec_pretty(&project.settings)?),
+            (
+                "settings.json",
+                serde_json::to_vec_pretty(&project.settings)?,
+            ),
             ("chat.json", serde_json::to_vec_pretty(&project.chat)?),
-            ("supports.json", serde_json::to_vec_pretty(&project.supports)?),
+            (
+                "supports.json",
+                serde_json::to_vec_pretty(&project.supports)?,
+            ),
         ];
         for (name, bytes) in entries {
             zip.start_file(name, opts)?;
@@ -201,10 +209,14 @@ mod tests {
 
         let other = dir.path().join("other.fc");
         let mut zip = ZipWriter::new(File::create(&other).unwrap());
-        zip.start_file("hello.txt", SimpleFileOptions::default()).unwrap();
+        zip.start_file("hello.txt", SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"hi").unwrap();
         zip.finish().unwrap();
-        assert!(matches!(read_project(&other), Err(ProjectError::WrongFormat)));
+        assert!(matches!(
+            read_project(&other),
+            Err(ProjectError::WrongFormat)
+        ));
     }
 
     #[test]
@@ -212,8 +224,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("new.fc");
         let mut zip = ZipWriter::new(File::create(&path).unwrap());
-        zip.start_file("manifest.json", SimpleFileOptions::default()).unwrap();
-        zip.write_all(br#"{"format":"frederic-coultier-project","version":99,"app":"9.0.0"}"#).unwrap();
+        zip.start_file("manifest.json", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(br#"{"format":"frederic-coultier-project","version":99,"app":"9.0.0"}"#)
+            .unwrap();
         zip.finish().unwrap();
         assert!(matches!(read_project(&path), Err(ProjectError::TooNew(99))));
     }
@@ -225,7 +239,8 @@ mod tests {
         let mut zip = ZipWriter::new(File::create(&path).unwrap());
         let o = SimpleFileOptions::default();
         zip.start_file("manifest.json", o).unwrap();
-        zip.write_all(br#"{"format":"frederic-coultier-project","version":1,"app":"0"}"#).unwrap();
+        zip.write_all(br#"{"format":"frederic-coultier-project","version":1,"app":"0"}"#)
+            .unwrap();
         zip.start_file("model.scad", o).unwrap();
         zip.write_all(b"cube(1);").unwrap();
         zip.finish().unwrap();

@@ -45,7 +45,12 @@ impl<'a> Bvh<'a> {
             let n = order.len();
             build(&boxes, &mut order, 0, n, &mut nodes);
         }
-        Bvh { mesh, nodes, order, boxes }
+        Bvh {
+            mesh,
+            nodes,
+            order,
+            boxes,
+        }
     }
 
     fn tri(&self, t: usize) -> [V3; 3] {
@@ -55,7 +60,14 @@ impl<'a> Bvh<'a> {
     /// Nearest hit along `p + t d` (unit `d`) with `1e-4 < t <= max`, ignoring triangle
     /// `skip` and, when `share_with_skip`, any triangle sharing a vertex with it.
     /// Returns the distance.
-    pub fn ray(&self, p: V3, d: V3, skip: Option<usize>, share_with_skip: bool, max: f64) -> Option<f64> {
+    pub fn ray(
+        &self,
+        p: V3,
+        d: V3,
+        skip: Option<usize>,
+        share_with_skip: bool,
+        max: f64,
+    ) -> Option<f64> {
         if self.nodes.is_empty() {
             return None;
         }
@@ -125,7 +137,13 @@ pub fn shares_vertex(m: &Mesh, a: usize, b: usize) -> bool {
     m.tris[a].iter().any(|v| m.tris[b].contains(v))
 }
 
-fn build(boxes: &[(V3, V3)], order: &mut [u32], start: usize, end: usize, nodes: &mut Vec<Node>) -> u32 {
+fn build(
+    boxes: &[(V3, V3)],
+    order: &mut [u32],
+    start: usize,
+    end: usize,
+    nodes: &mut Vec<Node>,
+) -> u32 {
     let mut lo = [f64::MAX; 3];
     let mut hi = [f64::MIN; 3];
     for &t in &order[start..end] {
@@ -136,11 +154,19 @@ fn build(boxes: &[(V3, V3)], order: &mut [u32], start: usize, end: usize, nodes:
         }
     }
     let me = nodes.len() as u32;
-    nodes.push(Node { lo, hi, a: start as u32, count: (end - start) as u32, right: 0 });
+    nodes.push(Node {
+        lo,
+        hi,
+        a: start as u32,
+        count: (end - start) as u32,
+        right: 0,
+    });
     if end - start <= 4 {
         return me;
     }
-    let axis = (0..3).max_by(|&i, &j| (hi[i] - lo[i]).total_cmp(&(hi[j] - lo[j]))).unwrap();
+    let axis = (0..3)
+        .max_by(|&i, &j| (hi[i] - lo[i]).total_cmp(&(hi[j] - lo[j])))
+        .unwrap();
     let mid = (start + end) / 2;
     let centre = |t: &u32| {
         let (l, h) = boxes[*t as usize];
@@ -171,7 +197,13 @@ fn slab(p: V3, inv: V3, lo: V3, hi: V3, max: f64) -> bool {
 
 pub fn moller(p: V3, d: V3, a: V3, b: V3, c: V3) -> Option<f64> {
     let sub = |x: V3, y: V3| [x[0] - y[0], x[1] - y[1], x[2] - y[2]];
-    let cross = |x: V3, y: V3| [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+    let cross = |x: V3, y: V3| {
+        [
+            x[1] * y[2] - x[2] * y[1],
+            x[2] * y[0] - x[0] * y[2],
+            x[0] * y[1] - x[1] * y[0],
+        ]
+    };
     let dot = |x: V3, y: V3| x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
     let (e1, e2) = (sub(b, a), sub(c, a));
     let pv = cross(d, e2);
@@ -199,12 +231,28 @@ mod tests {
 
     fn cube() -> Mesh {
         let v = vec![
-            [0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.],
-            [0., 0., 1.], [1., 0., 1.], [1., 1., 1.], [0., 1., 1.],
+            [0., 0., 0.],
+            [1., 0., 0.],
+            [1., 1., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+            [1., 0., 1.],
+            [1., 1., 1.],
+            [0., 1., 1.],
         ];
         let t = vec![
-            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
-            [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
         ];
         Mesh { verts: v, tris: t }
     }
@@ -213,10 +261,18 @@ mod tests {
     fn ray_finds_the_near_wall() {
         let m = cube();
         let b = Bvh::new(&m);
-        let d = b.ray([0.5, 0.5, -2.0], [0.0, 0.0, 1.0], None, false, 10.0).unwrap();
+        let d = b
+            .ray([0.5, 0.5, -2.0], [0.0, 0.0, 1.0], None, false, 10.0)
+            .unwrap();
         assert!((d - 2.0).abs() < 1e-9);
-        assert!(b.ray([0.5, 0.5, -2.0], [0.0, 0.0, 1.0], None, false, 1.0).is_none());
-        assert!(b.ray([5.0, 5.0, -2.0], [0.0, 0.0, 1.0], None, false, 10.0).is_none());
+        assert!(
+            b.ray([0.5, 0.5, -2.0], [0.0, 0.0, 1.0], None, false, 1.0)
+                .is_none()
+        );
+        assert!(
+            b.ray([5.0, 5.0, -2.0], [0.0, 0.0, 1.0], None, false, 10.0)
+                .is_none()
+        );
     }
 
     #[test]

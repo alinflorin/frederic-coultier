@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::oneshot;
 
@@ -18,7 +18,12 @@ pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 /// Something that can run an operation inside the app. The MCP tools only know
 /// this trait, so they can be tested without a window.
 pub trait Bridge: Send + Sync + 'static {
-    fn call(&self, op: &'static str, args: Value, timeout: Duration) -> BoxFuture<Result<Value, String>>;
+    fn call(
+        &self,
+        op: &'static str,
+        args: Value,
+        timeout: Duration,
+    ) -> BoxFuture<Result<Value, String>>;
 }
 
 type Reply = Result<Value, String>;
@@ -47,7 +52,11 @@ pub struct TauriBridge {
 
 impl TauriBridge {
     pub fn new(app: AppHandle, pending: Arc<Pending>) -> Self {
-        Self { app, pending, next: AtomicU64::new(1) }
+        Self {
+            app,
+            pending,
+            next: AtomicU64::new(1),
+        }
     }
 }
 
@@ -56,7 +65,9 @@ impl Bridge for TauriBridge {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let rx = self.pending.add(id);
         let pending = self.pending.clone();
-        let sent = self.app.emit("agent:request", json!({ "id": id, "op": op, "args": args }));
+        let sent = self
+            .app
+            .emit("agent:request", json!({ "id": id, "op": op, "args": args }));
         Box::pin(async move {
             if let Err(e) = sent {
                 pending.take(id);
@@ -67,7 +78,10 @@ impl Bridge for TauriBridge {
                 Ok(Err(_)) => Err("the app dropped the request".into()),
                 Err(_) => {
                     pending.take(id);
-                    Err(format!("the app did not answer {op} within {} s", timeout.as_secs()))
+                    Err(format!(
+                        "the app did not answer {op} within {} s",
+                        timeout.as_secs()
+                    ))
                 }
             }
         })
@@ -81,7 +95,10 @@ pub fn agent_reply(id: u64, ok: bool, value: Value, pending: State<'_, Arc<Pendi
         let _ = tx.send(if ok {
             Ok(value)
         } else {
-            Err(value.as_str().map(str::to_owned).unwrap_or_else(|| value.to_string()))
+            Err(value
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| value.to_string()))
         });
     }
 }
@@ -99,8 +116,13 @@ pub mod mock {
     }
 
     impl Mock {
-        pub fn new(handler: impl Fn(&'static str, Value) -> Reply + Send + Sync + 'static) -> Arc<Self> {
-            Arc::new(Self { handler: Box::new(handler), calls: Mutex::new(Vec::new()) })
+        pub fn new(
+            handler: impl Fn(&'static str, Value) -> Reply + Send + Sync + 'static,
+        ) -> Arc<Self> {
+            Arc::new(Self {
+                handler: Box::new(handler),
+                calls: Mutex::new(Vec::new()),
+            })
         }
 
         /// Answers immediately and records the call, for tests that wrap a mock.

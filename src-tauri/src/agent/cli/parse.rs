@@ -129,7 +129,10 @@ fn heredoc_marker(line: &str) -> Option<(&str, String)> {
     }
     // quotes, if any, must wrap the whole word
     let quoted = rest.len() != word.len();
-    if quoted && !((rest.starts_with('\'') && rest.ends_with('\'')) || (rest.starts_with('"') && rest.ends_with('"'))) {
+    if quoted
+        && !((rest.starts_with('\'') && rest.ends_with('\''))
+            || (rest.starts_with('"') && rest.ends_with('"')))
+    {
         return None;
     }
     Some((&t[..at], word.to_string()))
@@ -160,7 +163,9 @@ pub fn parse(input: &str) -> Result<Vec<Invocation>, String> {
                     i += 1;
                 }
                 if !closed {
-                    return Err(format!("the here-document is not closed: end it with a line containing only {word}"));
+                    return Err(format!(
+                        "the here-document is not closed: end it with a line containing only {word}"
+                    ));
                 }
                 stdin = Some(body.join("\n"));
                 i += 1;
@@ -175,14 +180,21 @@ pub fn parse(input: &str) -> Result<Vec<Invocation>, String> {
         i += 1;
     }
 
-    let mut cmds: Vec<Invocation> = commands(&head)?.into_iter().map(|words| Invocation { words, stdin: None }).collect();
+    let mut cmds: Vec<Invocation> = commands(&head)?
+        .into_iter()
+        .map(|words| Invocation { words, stdin: None })
+        .collect();
     if let Some(text) = stdin {
         match cmds.last_mut() {
             Some(last) => last.stdin = Some(text),
             None => return Err("a here-document needs a command before it".into()),
         }
     }
-    cmds.extend(commands(&tail)?.into_iter().map(|words| Invocation { words, stdin: None }));
+    cmds.extend(
+        commands(&tail)?
+            .into_iter()
+            .map(|words| Invocation { words, stdin: None }),
+    );
     Ok(cmds)
 }
 
@@ -196,11 +208,19 @@ pub struct Flag {
 }
 
 pub const fn switch(name: &'static str) -> Flag {
-    Flag { name, short: None, value: false }
+    Flag {
+        name,
+        short: None,
+        value: false,
+    }
 }
 
 pub const fn opt(name: &'static str) -> Flag {
-    Flag { name, short: None, value: true }
+    Flag {
+        name,
+        short: None,
+        value: true,
+    }
 }
 
 pub const fn short(mut f: Flag, c: char) -> Flag {
@@ -220,12 +240,21 @@ impl Parsed {
     }
 
     pub fn value(&self, name: &str) -> Option<&str> {
-        self.flags.get(name).and_then(|v| v.last()).map(String::as_str)
+        self.flags
+            .get(name)
+            .and_then(|v| v.last())
+            .map(String::as_str)
     }
 
     pub fn number(&self, name: &str) -> Result<Option<f64>, String> {
         self.value(name)
-            .map(|v| v.trim().parse::<f64>().ok().filter(|n| n.is_finite()).ok_or_else(|| format!("--{name} needs a number, got {v:?}")))
+            .map(|v| {
+                v.trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|n| n.is_finite())
+                    .ok_or_else(|| format!("--{name} needs a number, got {v:?}"))
+            })
             .transpose()
     }
 
@@ -264,7 +293,10 @@ pub fn options(words: &[String], specs: &[Flag]) -> Result<Parsed, String> {
             None => {
                 let c = w.chars().nth(1).unwrap();
                 match specs.iter().find(|f| f.short == Some(c)) {
-                    Some(f) => (f.name.to_string(), (w.len() > 2).then(|| w[2..].to_string())),
+                    Some(f) => (
+                        f.name.to_string(),
+                        (w.len() > 2).then(|| w[2..].to_string()),
+                    ),
                     None => return Err(unknown(w, specs)),
                 }
             }
@@ -276,7 +308,9 @@ pub fn options(words: &[String], specs: &[Flag]) -> Result<Parsed, String> {
             let v = match inline {
                 Some(v) => v,
                 None => {
-                    let v = words.get(i).ok_or_else(|| format!("--{name} needs a value"))?;
+                    let v = words
+                        .get(i)
+                        .ok_or_else(|| format!("--{name} needs a value"))?;
                     i += 1;
                     v.clone()
                 }
@@ -311,13 +345,20 @@ pub fn range(s: &str) -> Result<(usize, Option<usize>), String> {
             let n = num(s)?;
             Ok((n, Some(n)))
         }
-        Some((a, b)) => Ok((if a.is_empty() { 1 } else { num(a)? }, if b.is_empty() { None } else { Some(num(b)?) })),
+        Some((a, b)) => Ok((
+            if a.is_empty() { 1 } else { num(a)? },
+            if b.is_empty() { None } else { Some(num(b)?) },
+        )),
     }
 }
 
 /// `1.5,-2,0` as three numbers.
 pub fn point(s: &str) -> Result<[f64; 3], String> {
-    let parts: Vec<f64> = s.split(',').map(|t| t.trim().parse::<f64>()).collect::<Result<_, _>>().map_err(|_| format!("{s:?} is not a point; use X,Y,Z"))?;
+    let parts: Vec<f64> = s
+        .split(',')
+        .map(|t| t.trim().parse::<f64>())
+        .collect::<Result<_, _>>()
+        .map_err(|_| format!("{s:?} is not a point; use X,Y,Z"))?;
     <[f64; 3]>::try_from(parts).map_err(|_| format!("{s:?} is not a point; use X,Y,Z"))
 }
 
@@ -335,7 +376,10 @@ mod tests {
 
     #[test]
     fn quotes_and_escapes() {
-        assert_eq!(words(r#"src edit 'cube(1);' "a \"b\"\n c""#), [w(&["src", "edit", "cube(1);", "a \"b\"\n c"])]);
+        assert_eq!(
+            words(r#"src edit 'cube(1);' "a \"b\"\n c""#),
+            [w(&["src", "edit", "cube(1);", "a \"b\"\n c"])]
+        );
         assert_eq!(words(r"a\ b c"), [w(&["a b", "c"])]);
         assert_eq!(words("x '' y"), [w(&["x", "", "y"])]);
         assert_eq!(words("'a  b'c"), [w(&["a  bc"])]);
@@ -345,7 +389,10 @@ mod tests {
 
     #[test]
     fn separators() {
-        assert_eq!(words("a 1 && b 2 ; c\nd"), [w(&["a", "1"]), w(&["b", "2"]), w(&["c"]), w(&["d"])]);
+        assert_eq!(
+            words("a 1 && b 2 ; c\nd"),
+            [w(&["a", "1"]), w(&["b", "2"]), w(&["c"]), w(&["d"])]
+        );
         assert_eq!(words("a&&b"), [w(&["a"]), w(&["b"])]);
         assert_eq!(words("echo 'a && b'"), [w(&["echo", "a && b"])]);
         assert!(words("   ").is_empty());
@@ -354,29 +401,65 @@ mod tests {
     #[test]
     fn heredoc_is_stdin_of_the_command_on_that_line() {
         let got = parse("src insert 3 <<EOF\nhello;\n  world;\nEOF").unwrap();
-        assert_eq!(got, [Invocation { words: w(&["src", "insert", "3"]), stdin: Some("hello;\n  world;".into()) }]);
+        assert_eq!(
+            got,
+            [Invocation {
+                words: w(&["src", "insert", "3"]),
+                stdin: Some("hello;\n  world;".into())
+            }]
+        );
         let got = parse("src write <<'END'\n$x = 1; 'q'\nEND\nrender").unwrap();
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].stdin.as_deref(), Some("$x = 1; 'q'"));
-        assert_eq!(got[1], Invocation { words: w(&["render"]), stdin: None });
+        assert_eq!(
+            got[1],
+            Invocation {
+                words: w(&["render"]),
+                stdin: None
+            }
+        );
         let got = parse("status\nsrc write <<EOF\nx\nEOF").unwrap();
-        assert_eq!((got[0].stdin.as_deref(), got[1].stdin.as_deref()), (None, Some("x")));
+        assert_eq!(
+            (got[0].stdin.as_deref(), got[1].stdin.as_deref()),
+            (None, Some("x"))
+        );
     }
 
     #[test]
     fn heredoc_edge_cases() {
-        assert!(parse("src write <<EOF\nnever closed").unwrap_err().contains("not closed"));
-        assert!(parse("<<EOF\nx\nEOF").unwrap_err().contains("needs a command"));
+        assert!(
+            parse("src write <<EOF\nnever closed")
+                .unwrap_err()
+                .contains("not closed")
+        );
+        assert!(
+            parse("<<EOF\nx\nEOF")
+                .unwrap_err()
+                .contains("needs a command")
+        );
         // an empty body is still a body
-        assert_eq!(parse("src write <<EOF\nEOF").unwrap()[0].stdin.as_deref(), Some(""));
+        assert_eq!(
+            parse("src write <<EOF\nEOF").unwrap()[0].stdin.as_deref(),
+            Some("")
+        );
         // << inside quotes is just text
         assert_eq!(words("src grep '<<EOF'"), [w(&["src", "grep", "<<EOF"])]);
         // the body may contain the marker syntax and blank lines
-        let got = parse("src edit <<EOF\n<<<<<<< SEARCH\na\n=======\n\nb\n>>>>>>> REPLACE\nEOF").unwrap();
-        assert_eq!(got[0].stdin.as_deref(), Some("<<<<<<< SEARCH\na\n=======\n\nb\n>>>>>>> REPLACE"));
+        let got =
+            parse("src edit <<EOF\n<<<<<<< SEARCH\na\n=======\n\nb\n>>>>>>> REPLACE\nEOF").unwrap();
+        assert_eq!(
+            got[0].stdin.as_deref(),
+            Some("<<<<<<< SEARCH\na\n=======\n\nb\n>>>>>>> REPLACE")
+        );
     }
 
-    const SPECS: &[Flag] = &[switch("all"), opt("zoom"), short(opt("context"), 'C'), switch("grid"), switch("no-grid")];
+    const SPECS: &[Flag] = &[
+        switch("all"),
+        opt("zoom"),
+        short(opt("context"), 'C'),
+        switch("grid"),
+        switch("no-grid"),
+    ];
 
     #[test]
     fn options_sort_flags_from_positionals() {
@@ -386,7 +469,10 @@ mod tests {
         assert_eq!(p.number("context").unwrap(), Some(3.0));
         assert!(p.has("all") && !p.has("grid"));
         let p = options(&w(&["--zoom=1.5", "-C", "4"]), SPECS).unwrap();
-        assert_eq!((p.number("zoom").unwrap(), p.number("context").unwrap()), (Some(1.5), Some(4.0)));
+        assert_eq!(
+            (p.number("zoom").unwrap(), p.number("context").unwrap()),
+            (Some(1.5), Some(4.0))
+        );
     }
 
     #[test]
@@ -401,10 +487,27 @@ mod tests {
     fn options_errors_are_helpful() {
         let e = options(&w(&["--bogus"]), SPECS).unwrap_err();
         assert!(e.contains("--bogus") && e.contains("--zoom"), "{e}");
-        assert!(options(&w(&["--zoom"]), SPECS).unwrap_err().contains("needs a value"));
-        assert!(options(&w(&["--all=1"]), SPECS).unwrap_err().contains("does not take"));
-        assert!(options(&w(&["--zoom", "x"]), SPECS).unwrap().number("zoom").is_err());
-        assert!(options(&w(&["--bogus"]), &[]).unwrap_err().contains("no options"));
+        assert!(
+            options(&w(&["--zoom"]), SPECS)
+                .unwrap_err()
+                .contains("needs a value")
+        );
+        assert!(
+            options(&w(&["--all=1"]), SPECS)
+                .unwrap_err()
+                .contains("does not take")
+        );
+        assert!(
+            options(&w(&["--zoom", "x"]), SPECS)
+                .unwrap()
+                .number("zoom")
+                .is_err()
+        );
+        assert!(
+            options(&w(&["--bogus"]), &[])
+                .unwrap_err()
+                .contains("no options")
+        );
     }
 
     #[test]

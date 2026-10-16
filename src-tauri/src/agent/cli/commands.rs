@@ -4,11 +4,11 @@
 use std::path::Path;
 use std::time::Duration;
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use super::catalog::COMMANDS;
-use super::parse::{self, opt, options, short, switch, Flag, Invocation, Parsed};
 use super::Out;
+use super::catalog::COMMANDS;
+use super::parse::{self, Flag, Invocation, Parsed, opt, options, short, switch};
 use crate::agent::bridge::Bridge;
 use crate::agent::text;
 
@@ -33,7 +33,10 @@ impl Ctx<'_> {
 }
 
 fn say(text: impl Into<String>) -> Result<Out, String> {
-    Ok(Out { text: text.into(), images: Vec::new() })
+    Ok(Out {
+        text: text.into(),
+        images: Vec::new(),
+    })
 }
 
 /// Runs one command. The error text is what the agent reads, so it says how to continue.
@@ -54,8 +57,15 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
     };
     let stdin = inv.stdin.as_deref();
     // a stray here-document is an easy mistake: say so before changing anything
-    if stdin.is_some() && !matches!(name.as_str(), "src edit" | "src insert" | "src replace" | "src write") {
-        return Err(format!("{name} does not read a here-document (<<EOF); nothing was changed"));
+    if stdin.is_some()
+        && !matches!(
+            name.as_str(),
+            "src edit" | "src insert" | "src replace" | "src write"
+        )
+    {
+        return Err(format!(
+            "{name} does not read a here-document (<<EOF); nothing was changed"
+        ));
     }
     let result = match name.as_str() {
         "status" => status(c, args).await,
@@ -99,11 +109,27 @@ fn n(v: f64) -> String {
 }
 
 fn nums(v: &Value) -> String {
-    v.as_array().map(|a| a.iter().filter_map(Value::as_f64).map(n).collect::<Vec<_>>().join(", ")).unwrap_or_default()
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_f64)
+                .map(n)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
 }
 
 fn size_of(v: &Value) -> String {
-    v.as_array().map(|a| a.iter().filter_map(Value::as_f64).map(n).collect::<Vec<_>>().join("×")).unwrap_or_default()
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_f64)
+                .map(n)
+                .collect::<Vec<_>>()
+                .join("×")
+        })
+        .unwrap_or_default()
 }
 
 fn compact(v: &Value) -> String {
@@ -111,7 +137,13 @@ fn compact(v: &Value) -> String {
 }
 
 fn expect_no_args(args: &[String]) -> Result<(), String> {
-    options(args, NO_FLAGS).and_then(|p| if p.pos.is_empty() { Ok(()) } else { Err(format!("unexpected argument {:?}", p.pos[0])) })
+    options(args, NO_FLAGS).and_then(|p| {
+        if p.pos.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("unexpected argument {:?}", p.pos[0]))
+        }
+    })
 }
 
 /// One readable paragraph out of a `render.wait` reply.
@@ -124,7 +156,11 @@ pub fn render_summary(r: &Value) -> String {
             if tris == 0 {
                 lines.push("render: ok, but the model is empty (no geometry)".to_string());
             } else {
-                lines.push(format!("render: ok, {tris} triangles, {} mm, {} ms", size_of(&r["size"]), r["ms"].as_u64().unwrap_or(0)));
+                lines.push(format!(
+                    "render: ok, {tris} triangles, {} mm, {} ms",
+                    size_of(&r["size"]),
+                    r["ms"].as_u64().unwrap_or(0)
+                ));
             }
         }
         "error" => {
@@ -134,17 +170,35 @@ pub fn render_summary(r: &Value) -> String {
                 (Some(l), None) => format!(" at line {l}"),
                 _ => String::new(),
             };
-            lines.push(format!("render: FAILED{at}: {}", e["message"].as_str().unwrap_or("unknown error")));
+            lines.push(format!(
+                "render: FAILED{at}: {}",
+                e["message"].as_str().unwrap_or("unknown error")
+            ));
         }
-        "timeout" => lines.push("render: still running; run `render` again in a moment".to_string()),
+        "timeout" => {
+            lines.push("render: still running; run `render` again in a moment".to_string())
+        }
         "stale" => lines.push("render: out of date (a render is pending)".to_string()),
         other => lines.push(format!("render: {other}")),
     }
     for d in r["diagnostics"].as_array().into_iter().flatten().take(10) {
-        let line = d["line"].as_u64().map(|l| format!(" (line {l})")).unwrap_or_default();
-        lines.push(format!("- {}{}: {}", d["severity"].as_str().unwrap_or("note"), line, d["message"].as_str().unwrap_or("")));
+        let line = d["line"]
+            .as_u64()
+            .map(|l| format!(" (line {l})"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "- {}{}: {}",
+            d["severity"].as_str().unwrap_or("note"),
+            line,
+            d["message"].as_str().unwrap_or("")
+        ));
     }
-    let echoes: Vec<&str> = r["echoes"].as_array().into_iter().flatten().filter_map(|e| e.as_str()).collect();
+    let echoes: Vec<&str> = r["echoes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.as_str())
+        .collect();
     for e in echoes.iter().take(10) {
         lines.push(format!("echo: {e}"));
     }
@@ -169,15 +223,45 @@ async fn status(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         format!(
             "project: {}{}{}",
             v["name"].as_str().unwrap_or("?"),
-            if v["unsavedChanges"] == true { " (unsaved changes)" } else { "" },
-            v["path"].as_str().map(|p| format!("  {p}")).unwrap_or_else(|| "  (never saved)".into())
+            if v["unsavedChanges"] == true {
+                " (unsaved changes)"
+            } else {
+                ""
+            },
+            v["path"]
+                .as_str()
+                .map(|p| format!("  {p}"))
+                .unwrap_or_else(|| "  (never saved)".into())
         ),
-        format!("source: {} lines, preview {}", v["sourceLines"], v["preview"].as_str().unwrap_or("?")),
-        format!("material: {} ({})", v["material"]["metal"].as_str().unwrap_or("?"), v["material"]["process"].as_str().unwrap_or("?")),
+        format!(
+            "source: {} lines, preview {}",
+            v["sourceLines"],
+            v["preview"].as_str().unwrap_or("?")
+        ),
+        format!(
+            "material: {} ({})",
+            v["material"]["metal"].as_str().unwrap_or("?"),
+            v["material"]["process"].as_str().unwrap_or("?")
+        ),
         format!("tilt: {}°", n(sup["tilt"].as_f64().unwrap_or(0.0))),
-        format!("supports: {}, {} ({} auto, {} manual)", on(&sup["enabled"]), sup["total"], sup["auto"], sup["manual"]),
+        format!(
+            "supports: {}, {} ({} auto, {} manual)",
+            on(&sup["enabled"]),
+            sup["total"],
+            sup["auto"],
+            sup["manual"]
+        ),
         if sp["enabled"] == true {
-            format!("sprue: on, ⌀{} × {} mm, {}", n(sp["diameter"].as_f64().unwrap_or(0.0)), n(sp["length"].as_f64().unwrap_or(0.0)), if sp["at"].is_null() { "automatic spot".to_string() } else { format!("at {}", nums(&sp["at"])) })
+            format!(
+                "sprue: on, ⌀{} × {} mm, {}",
+                n(sp["diameter"].as_f64().unwrap_or(0.0)),
+                n(sp["length"].as_f64().unwrap_or(0.0)),
+                if sp["at"].is_null() {
+                    "automatic spot".to_string()
+                } else {
+                    format!("at {}", nums(&sp["at"]))
+                }
+            )
         } else {
             "sprue: off".to_string()
         },
@@ -205,8 +289,16 @@ async fn new_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     if let Some(extra) = p.pos.first() {
         return Err(format!("unexpected argument {extra:?}"));
     }
-    c.op("project.new", json!({ "sample": p.has("sample"), "discard": p.has("discard") })).await?;
-    say(if p.has("sample") { "ok: new project from the sample ring (not saved yet)" } else { "ok: new empty project (not saved yet; save it with save-project PATH)" })
+    c.op(
+        "project.new",
+        json!({ "sample": p.has("sample"), "discard": p.has("discard") }),
+    )
+    .await?;
+    say(if p.has("sample") {
+        "ok: new project from the sample ring (not saved yet)"
+    } else {
+        "ok: new empty project (not saved yet; save it with save-project PATH)"
+    })
 }
 
 async fn open_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -224,7 +316,11 @@ async fn open_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     if !file.is_file() {
         return Err("that file does not exist".into());
     }
-    c.slow("project.open", json!({ "path": path, "discard": p.has("discard") })).await?;
+    c.slow(
+        "project.open",
+        json!({ "path": path, "discard": p.has("discard") }),
+    )
+    .await?;
     say(format!("ok: opened {path}"))
 }
 
@@ -246,7 +342,10 @@ async fn save_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
                 return Err("that folder does not exist".into());
             }
             if file.exists() && !p.has("overwrite") {
-                return Err(format!("{} already exists; add --overwrite to replace it", file.display()));
+                return Err(format!(
+                    "{} already exists; add --overwrite to replace it",
+                    file.display()
+                ));
             }
             a.insert("path".into(), json!(path));
         }
@@ -260,7 +359,10 @@ async fn save_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
 
 async fn source(c: &Ctx<'_>) -> Result<String, String> {
     let cur = c.op("source.get", json!({})).await?;
-    cur["source"].as_str().map(str::to_owned).ok_or_else(|| "unexpected reply from the app".into())
+    cur["source"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "unexpected reply from the app".into())
 }
 
 async fn src_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -281,7 +383,14 @@ async fn src_grep(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let [pattern] = p.pos.as_slice() else {
         return Err("give exactly one pattern".into());
     };
-    let o = text::SearchOptions { regex: p.has("regex"), ignore_case: p.has("ignore-case"), context: p.number("context")?.map_or(0, |n| n.max(0.0) as usize).min(20) };
+    let o = text::SearchOptions {
+        regex: p.has("regex"),
+        ignore_case: p.has("ignore-case"),
+        context: p
+            .number("context")?
+            .map_or(0, |n| n.max(0.0) as usize)
+            .min(20),
+    };
     say(text::search(&source(c).await?, pattern, o)?)
 }
 
@@ -295,7 +404,9 @@ async fn edit_source(
 ) -> Result<Out, String> {
     for attempt in 0..3 {
         let cur = c.op("source.get", json!({})).await?;
-        let src = cur["source"].as_str().ok_or("unexpected reply from the app")?;
+        let src = cur["source"]
+            .as_str()
+            .ok_or("unexpected reply from the app")?;
         let rev = cur["rev"].as_u64().ok_or("unexpected reply from the app")?;
         let e = change(src)?;
         let set = json!({ "source": e.source, "expectRev": rev });
@@ -311,16 +422,29 @@ async fn edit_source(
     Err("the source kept changing; try again".into())
 }
 
-async fn edit_report(c: &Ctx<'_>, e: &text::Edited, wait_render: bool, snippet: bool) -> Result<Out, String> {
+async fn edit_report(
+    c: &Ctx<'_>,
+    e: &text::Edited,
+    wait_render: bool,
+    snippet: bool,
+) -> Result<Out, String> {
     let mut out = format!("ok: +{} −{} lines", e.delta.added, e.delta.removed);
     if snippet {
         let span = e.last_line.saturating_sub(e.first_line) + 1;
         let from = e.first_line.saturating_sub(2).max(1);
-        let body = text::read(&e.source, Some(from), Some(span + 4 + (e.first_line - from).saturating_sub(2))).unwrap_or_default();
+        let body = text::read(
+            &e.source,
+            Some(from),
+            Some(span + 4 + (e.first_line - from).saturating_sub(2)),
+        )
+        .unwrap_or_default();
         out = format!("{out}, now lines {}–{}\n{body}", e.first_line, e.last_line);
     }
     if wait_render {
-        match c.slow("render.wait", json!({ "timeoutMs": RENDER_WAIT_MS })).await {
+        match c
+            .slow("render.wait", json!({ "timeoutMs": RENDER_WAIT_MS }))
+            .await
+        {
             Ok(r) => out = format!("{out}\n{}", render_summary(&r)),
             Err(m) => out = format!("{out}\n(could not read the render result: {m})"),
         }
@@ -334,12 +458,23 @@ pub(super) const EDIT_FLAGS: &[Flag] = &[switch("no-wait"), switch("all")];
 pub(super) const NEW_FLAGS: &[Flag] = &[switch("sample"), switch("discard")];
 pub(super) const OPEN_FLAGS: &[Flag] = &[switch("discard")];
 pub(super) const SAVE_FLAGS: &[Flag] = &[switch("overwrite")];
-pub(super) const GREP_FLAGS: &[Flag] = &[short(switch("regex"), 'E'), short(switch("ignore-case"), 'i'), short(opt("context"), 'C')];
+pub(super) const GREP_FLAGS: &[Flag] = &[
+    short(switch("regex"), 'E'),
+    short(switch("ignore-case"), 'i'),
+    short(opt("context"), 'C'),
+];
 pub(super) const CHECK_FLAGS: &[Flag] = &[switch("deep"), switch("simplify")];
 pub(super) const SUPPORTS_AUTO_FLAGS: &[Flag] = &[opt("angle"), opt("spacing")];
 pub(super) const SUPPORTS_ADD_FLAGS: &[Flag] = &[opt("tip")];
 pub(super) const SUPPORTS_RM_FLAGS: &[Flag] = &[switch("auto"), switch("manual"), switch("all")];
-pub(super) const SPRUE_FLAGS: &[Flag] = &[switch("on"), switch("off"), opt("diameter"), opt("length"), opt("at"), switch("auto")];
+pub(super) const SPRUE_FLAGS: &[Flag] = &[
+    switch("on"),
+    switch("off"),
+    opt("diameter"),
+    opt("length"),
+    opt("at"),
+    switch("auto"),
+];
 pub(super) const EXPORT_FLAGS: &[Flag] = &[
     opt("format"),
     switch("ascii"),
@@ -359,8 +494,12 @@ fn text_arg(p: &Parsed, at: usize, stdin: Option<&str>) -> Result<String, String
     match (stdin, p.pos.get(at)) {
         (Some(s), None) => Ok(s.to_string()),
         (None, Some(t)) => Ok(t.clone()),
-        (Some(_), Some(_)) => Err("give the text either as a here-document or as an argument, not both".into()),
-        (None, None) => Err("no text given: pass it as an argument or as a here-document (<<EOF ... EOF)".into()),
+        (Some(_), Some(_)) => {
+            Err("give the text either as a here-document or as an argument, not both".into())
+        }
+        (None, None) => Err(
+            "no text given: pass it as an argument or as a here-document (<<EOF ... EOF)".into(),
+        ),
     }
 }
 
@@ -371,19 +510,41 @@ async fn src_edit(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Result<O
         (Some(body), []) => {
             let blocks = text::parse_blocks(body)?;
             let single = blocks.len() == 1;
-            edit_source(c, true, wait, |s| text::edit_blocks(s, &blocks, all), single).await
+            edit_source(
+                c,
+                true,
+                wait,
+                |s| text::edit_blocks(s, &blocks, all),
+                single,
+            )
+            .await
         }
-        (None, [old, new]) => edit_source(c, true, wait, |s| text::edit(s, old, new, all), true).await,
+        (None, [old, new]) => {
+            edit_source(c, true, wait, |s| text::edit(s, old, new, all), true).await
+        }
         (Some(_), _) => Err("with a here-document, give no OLD/NEW arguments".into()),
-        _ => Err("give OLD and NEW as two arguments, or SEARCH/REPLACE blocks as a here-document".into()),
+        _ => Err(
+            "give OLD and NEW as two arguments, or SEARCH/REPLACE blocks as a here-document".into(),
+        ),
     }
 }
 
 async fn src_insert(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Result<Out, String> {
     let p = options(args, WAIT)?;
-    let line: usize = p.pos.first().and_then(|l| l.parse().ok()).ok_or("give the line to insert after (0 = at the start)")?;
+    let line: usize = p
+        .pos
+        .first()
+        .and_then(|l| l.parse().ok())
+        .ok_or("give the line to insert after (0 = at the start)")?;
     let t = text_arg(&p, 1, stdin)?;
-    edit_source(c, false, !p.has("no-wait"), |s| text::insert(s, line, &t), true).await
+    edit_source(
+        c,
+        false,
+        !p.has("no-wait"),
+        |s| text::insert(s, line, &t),
+        true,
+    )
+    .await
 }
 
 async fn src_replace(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Result<Out, String> {
@@ -403,7 +564,14 @@ async fn src_replace(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Resul
 async fn src_delete(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let p = options(args, WAIT)?;
     let (a, b) = parse::range(p.pos.first().ok_or("give the line range to delete")?)?;
-    edit_source(c, false, !p.has("no-wait"), |s| text::replace_lines(s, a, b.unwrap_or_else(|| text::line_count(s)), ""), false).await
+    edit_source(
+        c,
+        false,
+        !p.has("no-wait"),
+        |s| text::replace_lines(s, a, b.unwrap_or_else(|| text::line_count(s)), ""),
+        false,
+    )
+    .await
 }
 
 async fn src_write(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Result<Out, String> {
@@ -417,7 +585,12 @@ async fn src_write(c: &Ctx<'_>, args: &[String], stdin: Option<&str>) -> Result<
         false,
         !p.has("no-wait"),
         |s| {
-            Ok(text::Edited { delta: text::write(s, &t), first_line: 1, last_line: text::line_count(&t).max(1), source: t.clone() })
+            Ok(text::Edited {
+                delta: text::write(s, &t),
+                first_line: 1,
+                last_line: text::line_count(&t).max(1),
+                source: t.clone(),
+            })
         },
         false,
     )
@@ -432,7 +605,9 @@ async fn render(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         return Err(format!("unexpected argument {:?}", p.pos[0]));
     }
     let ms = if p.has("no-wait") { 0 } else { RENDER_WAIT_MS };
-    say(render_summary(&c.slow("render.wait", json!({ "timeoutMs": ms })).await?))
+    say(render_summary(
+        &c.slow("render.wait", json!({ "timeoutMs": ms })).await?,
+    ))
 }
 
 pub(super) const SHOT_FLAGS: &[Flag] = &[
@@ -459,7 +634,11 @@ pub(super) const SHOT_FLAGS: &[Flag] = &[
 
 fn one_of(flag: &str, value: &str, allowed: &[&str]) -> Result<String, String> {
     let v = value.to_ascii_lowercase();
-    if allowed.contains(&v.as_str()) { Ok(v) } else { Err(format!("--{flag} must be one of {}", allowed.join(", "))) }
+    if allowed.contains(&v.as_str()) {
+        Ok(v)
+    } else {
+        Err(format!("--{flag} must be one of {}", allowed.join(", ")))
+    }
 }
 
 async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -469,7 +648,14 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     }
     let mut a = Map::new();
     if let Some(v) = p.value("view") {
-        a.insert("view".into(), json!(one_of("view", v, &["front", "back", "left", "right", "top", "bottom", "iso"])?));
+        a.insert(
+            "view".into(),
+            json!(one_of(
+                "view",
+                v,
+                &["front", "back", "left", "right", "top", "bottom", "iso"]
+            )?),
+        );
     }
     for (flag, key) in [("az", "azimuth"), ("el", "elevation"), ("zoom", "zoom")] {
         if let Some(v) = p.number(flag)? {
@@ -491,7 +677,14 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         _ => {}
     }
     if let Some(v) = p.value("shading") {
-        a.insert("shading".into(), json!(one_of("shading", v, &["shaded", "edges", "wireframe", "xray"])?));
+        a.insert(
+            "shading".into(),
+            json!(one_of(
+                "shading",
+                v,
+                &["shaded", "edges", "wireframe", "xray"]
+            )?),
+        );
     }
     for (flag, key) in [("grid", "grid"), ("axes", "axes"), ("dims", "dimensions")] {
         if let Some(b) = p.toggle(flag)? {
@@ -499,19 +692,35 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         }
     }
     if let Some(v) = p.value("scene") {
-        a.insert("scene".into(), json!(one_of("scene", v, &["model", "print"])?));
+        a.insert(
+            "scene".into(),
+            json!(one_of("scene", v, &["model", "print"])?),
+        );
     }
     if let Some(v) = p.value("cut") {
         let parts: Vec<&str> = v.split(':').collect();
-        let bad = || "--cut looks like z:0.5 or z:0.5:flip (axis x, y or z; position 0 to 1)".to_string();
-        let axis = one_of("cut", parts.first().copied().unwrap_or(""), &["x", "y", "z"]).map_err(|_| bad())?;
-        let pos: f64 = parts.get(1).and_then(|t| t.parse().ok()).filter(|p| (0.0..=1.0).contains(p)).ok_or_else(bad)?;
+        let bad =
+            || "--cut looks like z:0.5 or z:0.5:flip (axis x, y or z; position 0 to 1)".to_string();
+        let axis = one_of(
+            "cut",
+            parts.first().copied().unwrap_or(""),
+            &["x", "y", "z"],
+        )
+        .map_err(|_| bad())?;
+        let pos: f64 = parts
+            .get(1)
+            .and_then(|t| t.parse().ok())
+            .filter(|p| (0.0..=1.0).contains(p))
+            .ok_or_else(bad)?;
         let flip = match parts.get(2) {
             None => false,
             Some(&"flip") => true,
             _ => return Err(bad()),
         };
-        a.insert("section".into(), json!({ "axis": axis, "position": pos, "flip": flip }));
+        a.insert(
+            "section".into(),
+            json!({ "axis": axis, "position": pos, "flip": flip }),
+        );
     }
     if let Some(v) = p.value("metal") {
         a.insert("metal_color".into(), json!(v));
@@ -520,7 +729,11 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         a.insert("background".into(), json!(v));
     }
     if let Some(v) = p.value("size") {
-        let (w, h) = v.to_ascii_lowercase().split_once('x').and_then(|(w, h)| Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))).ok_or("--size looks like 800x600")?;
+        let (w, h) = v
+            .to_ascii_lowercase()
+            .split_once('x')
+            .and_then(|(w, h)| Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?)))
+            .ok_or("--size looks like 800x600")?;
         if !(16..=2048).contains(&w) || !(16..=2048).contains(&h) {
             return Err("--size must be between 16 and 2048 pixels each way".into());
         }
@@ -528,9 +741,19 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         a.insert("height".into(), json!(h));
     }
     let v = c.slow("view.capture", Value::Object(a)).await?;
-    let png = v["png"].as_str().ok_or("the app returned no picture")?.to_owned();
-    let note = v["note"].as_str().filter(|s| !s.is_empty()).map(|s| format!(". {s}")).unwrap_or_default();
-    Ok(Out { text: format!("{}×{} px{note}", v["width"], v["height"]), images: vec![(png, "image/png".into())] })
+    let png = v["png"]
+        .as_str()
+        .ok_or("the app returned no picture")?
+        .to_owned();
+    let note = v["note"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| format!(". {s}"))
+        .unwrap_or_default();
+    Ok(Out {
+        text: format!("{}×{} px{note}", v["width"], v["height"]),
+        images: vec![(png, "image/png".into())],
+    })
 }
 
 // ---- settings ----
@@ -540,7 +763,10 @@ async fn get(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let mut v = c.op("settings.get", json!({})).await?;
     if let Some(path) = p.pos.first() {
         for key in path.split('.') {
-            v = v.get(key).cloned().ok_or_else(|| format!("no setting {path:?}; try `get` for the whole list"))?;
+            v = v
+                .get(key)
+                .cloned()
+                .ok_or_else(|| format!("no setting {path:?}; try `get` for the whole list"))?;
         }
     }
     say(compact(&v))
@@ -558,29 +784,44 @@ async fn set(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     }
     let mut patch = Value::Object(Map::new());
     for kv in &p.pos {
-        let (key, val) = kv.split_once('=').ok_or_else(|| format!("{kv:?} is not KEY=VALUE"))?;
+        let (key, val) = kv
+            .split_once('=')
+            .ok_or_else(|| format!("{kv:?} is not KEY=VALUE"))?;
         let mut node = &mut patch;
         let parts: Vec<&str> = key.split('.').collect();
         for (i, part) in parts.iter().enumerate() {
-            let obj = node.as_object_mut().ok_or_else(|| format!("{key:?} conflicts with another setting you gave"))?;
+            let obj = node
+                .as_object_mut()
+                .ok_or_else(|| format!("{key:?} conflicts with another setting you gave"))?;
             if i + 1 == parts.len() {
                 if obj.insert((*part).into(), value_of(val)).is_some() {
                     return Err(format!("{key:?} conflicts with another setting you gave"));
                 }
                 break;
             }
-            node = obj.entry(*part).or_insert_with(|| Value::Object(Map::new()));
+            node = obj
+                .entry(*part)
+                .or_insert_with(|| Value::Object(Map::new()));
         }
     }
     let v = c.slow("settings.patch", json!({ "patch": patch })).await?;
-    let changed: Vec<&str> = v["changed"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let changed: Vec<&str> = v["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
     if changed.is_empty() {
         return say("no change (already set)");
     }
     let shown: Vec<String> = changed
         .iter()
         .map(|path| {
-            let now = path.split('.').try_fold(&v["settings"], |acc, k| acc.get(k)).map(compact).unwrap_or_default();
+            let now = path
+                .split('.')
+                .try_fold(&v["settings"], |acc, k| acc.get(k))
+                .map(compact)
+                .unwrap_or_default();
             format!("{path} = {now}")
         })
         .collect();
@@ -594,7 +835,12 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     if !p.pos.is_empty() {
         return Err(format!("unexpected argument {:?}", p.pos[0]));
     }
-    let v = c.slow("analysis.report", json!({ "deepChecks": p.has("deep"), "simplifyPreview": p.has("simplify") })).await?;
+    let v = c
+        .slow(
+            "analysis.report",
+            json!({ "deepChecks": p.has("deep"), "simplifyPreview": p.has("simplify") }),
+        )
+        .await?;
     let s = &v["stats"];
     let f = |k: &str| s[k].as_f64().unwrap_or(0.0);
     let mut l = vec![
@@ -606,23 +852,45 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             s["triangles"],
             s["shells"]
         ),
-        format!("metal: {} g {}", n(v["metalGrams"].as_f64().unwrap_or(0.0)), v["metal"].as_str().unwrap_or("")),
+        format!(
+            "metal: {} g {}",
+            n(v["metalGrams"].as_f64().unwrap_or(0.0)),
+            v["metal"].as_str().unwrap_or("")
+        ),
         format!(
             "open edges {}, non-manifold {}, winding {}, degenerate {}",
             s["openEdges"], s["nonManifoldEdges"], s["windingEdges"], s["degenerate"]
         ),
     ];
     for fd in v["findings"].as_array().into_iter().flatten() {
-        let at: Vec<String> = fd["at"].as_array().into_iter().flatten().take(3).map(|p| format!("({})", nums(p))).collect();
+        let at: Vec<String> = fd["at"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(3)
+            .map(|p| format!("({})", nums(p)))
+            .collect();
         let more = fd["at"].as_array().map_or(0, |a| a.len().saturating_sub(3));
-        let detail = fd["detail"].as_str().filter(|d| !d.is_empty()).map(|d| format!(": {d}")).unwrap_or_default();
+        let detail = fd["detail"]
+            .as_str()
+            .filter(|d| !d.is_empty())
+            .map(|d| format!(": {d}"))
+            .unwrap_or_default();
         l.push(format!(
             "[{}] {}{}{}{}",
             fd["level"].as_str().unwrap_or("?"),
             fd["code"].as_str().unwrap_or("?"),
             detail,
-            if at.is_empty() { String::new() } else { format!(" at {}", at.join(" ")) },
-            if more > 0 { format!(" +{more} more") } else { String::new() }
+            if at.is_empty() {
+                String::new()
+            } else {
+                format!(" at {}", at.join(" "))
+            },
+            if more > 0 {
+                format!(" +{more} more")
+            } else {
+                String::new()
+            }
         ));
     }
     if let Some(sm) = v["simplify"].as_object() {
@@ -631,7 +899,11 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             sm["before"],
             sm["after"],
             n(sm["volumeChange"].as_f64().unwrap_or(0.0)),
-            if sm["accepted"] == true { "accepted".to_string() } else { format!("rejected ({})", sm["reason"].as_str().unwrap_or("?")) }
+            if sm["accepted"] == true {
+                "accepted".to_string()
+            } else {
+                format!("rejected ({})", sm["reason"].as_str().unwrap_or("?"))
+            }
         ));
     }
     say(l.join("\n"))
@@ -641,7 +913,10 @@ async fn orient(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     expect_no_args(args)?;
     let v = c.slow("analysis.tilt", json!({})).await?;
     let cur = v["current"].as_f64().unwrap_or(0.0);
-    let mut l = vec![format!("current tilt {}°; best first (tilt, overhang, flat, printed size, fits)", n(cur))];
+    let mut l = vec![format!(
+        "current tilt {}°; best first (tilt, overhang, flat, printed size, fits)",
+        n(cur)
+    )];
     for r in v["rows"].as_array().into_iter().flatten().take(8) {
         l.push(format!(
             "{:>4}°  {:>8}  {:>8}  {} mm  {}",
@@ -669,7 +944,11 @@ async fn supports_ls(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         v["auto"],
         v["manual"],
         size_of(&v["printedSize"]),
-        if v["fitsPrinter"] == true { "fits" } else { "does NOT fit" },
+        if v["fitsPrinter"] == true {
+            "fits"
+        } else {
+            "does NOT fit"
+        },
         v["printer"].as_str().unwrap_or("the printer")
     )];
     let list = v["list"].as_array().cloned().unwrap_or_default();
@@ -723,17 +1002,33 @@ async fn supports_add(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         .map(|s| parse::point(s).map(|[x, y, z]| json!({ "x": x, "y": y, "z": z, "tip": tip })))
         .collect::<Result<_, _>>()?;
     let v = c.slow("supports.add", json!({ "points": points })).await?;
-    let ids: Vec<String> = v["added"].as_array().into_iter().flatten().map(|i| i.to_string()).collect();
-    let off = if v["enabled"] == true { "" } else { " (supports are off: `set printing.supports.enabled=true` to use them)" };
+    let ids: Vec<String> = v["added"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|i| i.to_string())
+        .collect();
+    let off = if v["enabled"] == true {
+        ""
+    } else {
+        " (supports are off: `set printing.supports.enabled=true` to use them)"
+    };
     say(format!("ok: added ids {}{off}", ids.join(", ")))
 }
 
 async fn supports_rm(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let p = options(args, SUPPORTS_RM_FLAGS)?;
-    let kinds: Vec<&str> = ["auto", "manual", "all"].into_iter().filter(|k| p.has(k)).collect();
+    let kinds: Vec<&str> = ["auto", "manual", "all"]
+        .into_iter()
+        .filter(|k| p.has(k))
+        .collect();
     let mut a = Map::new();
     if !p.pos.is_empty() {
-        let ids: Vec<u32> = p.pos.iter().map(|s| s.parse().map_err(|_| format!("{s:?} is not a support id"))).collect::<Result<_, _>>()?;
+        let ids: Vec<u32> = p
+            .pos
+            .iter()
+            .map(|s| s.parse().map_err(|_| format!("{s:?} is not a support id")))
+            .collect::<Result<_, _>>()?;
         a.insert("ids".into(), json!(ids));
     }
     match kinds.as_slice() {
@@ -745,7 +1040,11 @@ async fn supports_rm(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         return Err("give support ids, or --auto, --manual or --all".into());
     }
     let v = c.slow("supports.remove", Value::Object(a)).await?;
-    say(format!("ok: removed {}, {} left", v["removed"].as_array().map_or(0, Vec::len), v["remaining"]))
+    say(format!(
+        "ok: removed {}, {} left",
+        v["removed"].as_array().map_or(0, Vec::len),
+        v["remaining"]
+    ))
 }
 
 async fn sprue(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -779,9 +1078,29 @@ async fn sprue(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     if v["enabled"] != true {
         return say("sprue: off");
     }
-    let place = if v["at"].is_null() { "no spot found".to_string() } else { format!("at {} ({})", nums(&v["at"]), if v["manualSpot"] == true { "manual" } else { "automatic" }) };
-    let warn = if v["placed"] == false { "  — NO FREE SPOT on this piece" } else { "" };
-    say(format!("sprue: on, ⌀{} × {} mm, {place}{warn}", n(v["diameter"].as_f64().unwrap_or(0.0)), n(v["length"].as_f64().unwrap_or(0.0))))
+    let place = if v["at"].is_null() {
+        "no spot found".to_string()
+    } else {
+        format!(
+            "at {} ({})",
+            nums(&v["at"]),
+            if v["manualSpot"] == true {
+                "manual"
+            } else {
+                "automatic"
+            }
+        )
+    };
+    let warn = if v["placed"] == false {
+        "  — NO FREE SPOT on this piece"
+    } else {
+        ""
+    };
+    say(format!(
+        "sprue: on, ⌀{} × {} mm, {place}{warn}",
+        n(v["diameter"].as_f64().unwrap_or(0.0)),
+        n(v["length"].as_f64().unwrap_or(0.0))
+    ))
 }
 
 // ---- export ----
@@ -792,7 +1111,11 @@ async fn export(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         return Err("give exactly one file path".into());
     };
     let file = Path::new(path);
-    let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let format = match (p.value("format"), p.has("ascii"), ext.as_str()) {
         (Some(f), _, _) => one_of("format", f, &["stl-bin", "stl-ascii", "obj", "3mf"])?,
         (None, true, "stl") => "stl-ascii".into(),
@@ -801,9 +1124,15 @@ async fn export(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         (None, _, "3mf") => "3mf".into(),
         _ => return Err("cannot tell the format from the file name; end it in .stl, .obj or .3mf, or pass --format".into()),
     };
-    let want = if format.starts_with("stl") { "stl" } else { format.as_str() };
+    let want = if format.starts_with("stl") {
+        "stl"
+    } else {
+        format.as_str()
+    };
     if ext != want {
-        return Err(format!("the file name must end in .{want} for format {format}"));
+        return Err(format!(
+            "the file name must end in .{want} for format {format}"
+        ));
     }
     if !file.is_absolute() {
         return Err("the path must be absolute".into());
@@ -823,7 +1152,14 @@ async fn export(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         }
     }
     let v = c.slow("export.run", Value::Object(a)).await?;
-    say(format!("exported {path} ({format}){}", if v["supportsBakedIn"] == true { ", with supports" } else { "" }))
+    say(format!(
+        "exported {path} ({format}){}",
+        if v["supportsBakedIn"] == true {
+            ", with supports"
+        } else {
+            ""
+        }
+    ))
 }
 
 // ---- help ----
@@ -867,9 +1203,15 @@ mod tests {
                 *g = (args["source"].as_str().unwrap().to_string(), g.1 + 1);
                 Ok(json!({ "rev": g.1 }))
             }
-            "render.wait" => Ok(json!({ "status": "ok", "triangles": 120, "size": [10.0, 10.0, 5.0], "ms": 7, "diagnostics": [], "echoes": [] })),
-            "settings.get" => Ok(json!({ "printing": { "tilt": 30, "supports": { "enabled": false, "tipRadius": 0.2 } } })),
-            "settings.patch" => Ok(json!({ "changed": ["printing.tilt"], "settings": { "printing": { "tilt": 25 } } })),
+            "render.wait" => Ok(
+                json!({ "status": "ok", "triangles": 120, "size": [10.0, 10.0, 5.0], "ms": 7, "diagnostics": [], "echoes": [] }),
+            ),
+            "settings.get" => Ok(
+                json!({ "printing": { "tilt": 30, "supports": { "enabled": false, "tipRadius": 0.2 } } }),
+            ),
+            "settings.patch" => Ok(
+                json!({ "changed": ["printing.tilt"], "settings": { "printing": { "tilt": 25 } } }),
+            ),
             "project.info" => Ok(json!({
                 "open": true, "name": "ring", "path": "/tmp/ring.fc", "unsavedChanges": true, "sourceLines": 3, "preview": "ok",
                 "material": { "metal": "silver925", "process": "casting" },
@@ -877,12 +1219,20 @@ mod tests {
                 "sprue": { "enabled": false }, "hollow": { "enabled": false }, "notes": "EU 54"
             })),
             "project.new" | "project.open" => Ok(json!({})),
-            "project.save" => Ok(json!({ "path": args["path"].as_str().unwrap_or("/tmp/ring.fc") })),
-            "view.capture" => Ok(json!({ "png": "AAAA", "width": 800, "height": 600, "note": "Scene: as modelled." })),
+            "project.save" => {
+                Ok(json!({ "path": args["path"].as_str().unwrap_or("/tmp/ring.fc") }))
+            }
+            "view.capture" => Ok(
+                json!({ "png": "AAAA", "width": 800, "height": 600, "note": "Scene: as modelled." }),
+            ),
             "supports.add" => Ok(json!({ "added": [5, 6], "enabled": true })),
             "supports.remove" => Ok(json!({ "removed": [5], "remaining": 3 })),
-            "supports.auto" => Ok(json!({ "added": 3, "kept": 1, "blocked": 0, "total": 4, "overhangFaces": 22 })),
-            "sprue.set" => Ok(json!({ "enabled": true, "diameter": 2.0, "length": 5.0, "at": [1.0, 2.0, 3.0], "manualSpot": false, "placed": true })),
+            "supports.auto" => {
+                Ok(json!({ "added": 3, "kept": 1, "blocked": 0, "total": 4, "overhangFaces": 22 }))
+            }
+            "sprue.set" => Ok(
+                json!({ "enabled": true, "diameter": 2.0, "length": 5.0, "at": [1.0, 2.0, 3.0], "manualSpot": false, "placed": true }),
+            ),
             "export.run" => Ok(json!({ "supportsBakedIn": true })),
             other => Err(format!("unexpected op {other}")),
         });
@@ -902,7 +1252,11 @@ mod tests {
 
         async fn err(&self, input: &str) -> String {
             let r = self.fc(input).await;
-            assert!(r.error.is_some(), "{input:?} should fail, printed: {}", r.out.text);
+            assert!(
+                r.error.is_some(),
+                "{input:?} should fail, printed: {}",
+                r.out.text
+            );
             r.out.text
         }
 
@@ -915,7 +1269,13 @@ mod tests {
         }
 
         fn last(&self, op: &str) -> Value {
-            self.calls().iter().rev().find(|c| c.0 == op).unwrap_or_else(|| panic!("{op} was never called")).1.clone()
+            self.calls()
+                .iter()
+                .rev()
+                .find(|c| c.0 == op)
+                .unwrap_or_else(|| panic!("{op} was never called"))
+                .1
+                .clone()
         }
     }
 
@@ -923,9 +1283,19 @@ mod tests {
     async fn cat_and_grep() {
         let a = app("cube(1);\nsphere(2);\ncylinder(3);\n");
         assert_eq!(a.ok("src cat 2:3").await, "2\tsphere(2);\n3\tcylinder(3);");
-        assert!(a.ok("fc src cat").await.starts_with("1\tcube(1);"), "a leading fc is accepted");
-        assert_eq!(a.ok("src grep sph").await, "2:sphere(2);\n(1 matching lines)");
-        assert!(a.ok("src grep -E -i -C1 '^SPHERE'").await.contains("1-cube(1);"));
+        assert!(
+            a.ok("fc src cat").await.starts_with("1\tcube(1);"),
+            "a leading fc is accepted"
+        );
+        assert_eq!(
+            a.ok("src grep sph").await,
+            "2:sphere(2);\n(1 matching lines)"
+        );
+        assert!(
+            a.ok("src grep -E -i -C1 '^SPHERE'")
+                .await
+                .contains("1-cube(1);")
+        );
         assert!(a.err("src grep").await.contains("usage: src grep"));
     }
 
@@ -935,7 +1305,10 @@ mod tests {
         let out = a.ok("src edit 'b = 2;' 'b = 3;'").await;
         assert_eq!(a.src(), "a = 1;\nb = 3;\n");
         assert!(out.starts_with("ok: +1 −1 lines, now lines 2–2"), "{out}");
-        assert!(out.contains("b = 3;") && out.contains("render: ok, 120 triangles, 10×10×5 mm, 7 ms"), "{out}");
+        assert!(
+            out.contains("b = 3;") && out.contains("render: ok, 120 triangles, 10×10×5 mm, 7 ms"),
+            "{out}"
+        );
         let out = a.ok("src edit 'a = 1;' 'a = 9;' --no-wait").await;
         assert!(!out.contains("render:"), "{out}");
     }
@@ -956,9 +1329,16 @@ mod tests {
     async fn edit_errors_carry_the_usage() {
         let a = app("x;\nx;\n");
         let e = a.err("src edit x y").await;
-        assert!(e.contains("2 places") && e.contains("usage: src edit"), "{e}");
+        assert!(
+            e.contains("2 places") && e.contains("usage: src edit"),
+            "{e}"
+        );
         assert!(a.err("src edit onlyone").await.contains("OLD and NEW"));
-        assert!(a.err("src edit 'x;' 'y;' --bogus").await.contains("unknown option --bogus"));
+        assert!(
+            a.err("src edit 'x;' 'y;' --bogus")
+                .await
+                .contains("unknown option --bogus")
+        );
         assert_eq!(a.src(), "x;\nx;\n");
     }
 
@@ -978,7 +1358,11 @@ mod tests {
         assert!(out.contains("render: ok"));
         assert!(a.err("src insert 9 x").await.contains("past the end"));
         assert!(a.err("src insert 1").await.contains("no text given"));
-        assert!(a.err("src insert 1 'a' <<EOF\nb\nEOF").await.contains("not both"));
+        assert!(
+            a.err("src insert 1 'a' <<EOF\nb\nEOF")
+                .await
+                .contains("not both")
+        );
     }
 
     #[tokio::test]
@@ -1002,7 +1386,13 @@ mod tests {
     async fn status_is_short_text() {
         let a = app("");
         let out = a.ok("status").await;
-        for want in ["project: ring (unsaved changes)  /tmp/ring.fc", "source: 3 lines, preview ok", "supports: on, 4 (3 auto, 1 manual)", "sprue: off", "notes: EU 54"] {
+        for want in [
+            "project: ring (unsaved changes)  /tmp/ring.fc",
+            "source: 3 lines, preview ok",
+            "supports: on, 4 (3 auto, 1 manual)",
+            "sprue: off",
+            "notes: EU 54",
+        ] {
             assert!(out.contains(want), "{want:?} missing from\n{out}");
         }
     }
@@ -1011,15 +1401,28 @@ mod tests {
     async fn project_files() {
         let a = app("");
         a.ok("new-project").await;
-        assert_eq!(a.last("project.new"), json!({ "sample": false, "discard": false }));
+        assert_eq!(
+            a.last("project.new"),
+            json!({ "sample": false, "discard": false })
+        );
         a.ok("new-project --sample --discard").await;
-        assert_eq!(a.last("project.new"), json!({ "sample": true, "discard": true }));
-        assert!(a.err("new-project now").await.contains("unexpected argument"));
+        assert_eq!(
+            a.last("project.new"),
+            json!({ "sample": true, "discard": true })
+        );
+        assert!(
+            a.err("new-project now")
+                .await
+                .contains("unexpected argument")
+        );
 
         // save: its own file, or a new one
         assert!(a.ok("save-project").await.starts_with("saved"));
         assert_eq!(a.last("project.save"), json!({}));
-        assert!(a.ok("save").await.starts_with("saved"), "`save` still works");
+        assert!(
+            a.ok("save").await.starts_with("saved"),
+            "`save` still works"
+        );
         let dir = std::env::temp_dir();
         let path = format!("{}/fc-test-{}.fc", dir.display(), std::process::id());
         a.ok(&format!("save-project {path}")).await;
@@ -1027,18 +1430,38 @@ mod tests {
 
         // a file that exists is not replaced without --overwrite, with or without the extension
         std::fs::write(&path, b"x").unwrap();
-        assert!(a.err(&format!("save-project {path}")).await.contains("--overwrite"));
-        assert!(a.err(&format!("save-project {}", path.trim_end_matches(".fc"))).await.contains("--overwrite"));
+        assert!(
+            a.err(&format!("save-project {path}"))
+                .await
+                .contains("--overwrite")
+        );
+        assert!(
+            a.err(&format!("save-project {}", path.trim_end_matches(".fc")))
+                .await
+                .contains("--overwrite")
+        );
         a.ok(&format!("save-project {path} --overwrite")).await;
 
         // open: path checks happen before the app is asked
         let before = a.calls().len();
-        for bad in ["open-project", "open-project rel.fc", "open-project /tmp/ring.stl", "open-project /no/such/ring.fc", "save-project rel.fc", "save-project /no/such/dir/x.fc", "save-project --overwrite", "save-project a b"] {
+        for bad in [
+            "open-project",
+            "open-project rel.fc",
+            "open-project /tmp/ring.stl",
+            "open-project /no/such/ring.fc",
+            "save-project rel.fc",
+            "save-project /no/such/dir/x.fc",
+            "save-project --overwrite",
+            "save-project a b",
+        ] {
             a.err(bad).await;
         }
         assert_eq!(a.calls().len(), before, "{:?}", a.calls());
         a.ok(&format!("open-project {path} --discard")).await;
-        assert_eq!(a.last("project.open"), json!({ "path": path, "discard": true }));
+        assert_eq!(
+            a.last("project.open"),
+            json!({ "path": path, "discard": true })
+        );
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -1052,7 +1475,10 @@ mod tests {
     #[tokio::test]
     async fn settings_get_and_set() {
         let a = app("");
-        assert_eq!(a.ok("get printing.supports").await, r#"{"enabled":false,"tipRadius":0.2}"#);
+        assert_eq!(
+            a.ok("get printing.supports").await,
+            r#"{"enabled":false,"tipRadius":0.2}"#
+        );
         assert!(a.err("get printing.nope").await.contains("no setting"));
         let out = a.ok("set printing.tilt=25 printing.supports.enabled=true render.metalColor=#d4af37 printing.sprueAt=null printing.sprueAt2=[1,2,3]").await;
         assert!(out.starts_with("ok: printing.tilt = 25"), "{out}");
@@ -1072,7 +1498,10 @@ mod tests {
         let r = a.fc("shot --view TOP --az 30 --el=-20 --zoom 2 --at 1,2,3 --ortho --shading xray --grid --no-axes --dims --scene print --cut z:0.5:flip --metal #d4af37 --bg white --size 800x600").await;
         assert!(r.error.is_none(), "{}", r.out.text);
         assert_eq!(r.out.text, "800×600 px. Scene: as modelled.");
-        assert_eq!(r.out.images, [("AAAA".to_string(), "image/png".to_string())]);
+        assert_eq!(
+            r.out.images,
+            [("AAAA".to_string(), "image/png".to_string())]
+        );
         assert_eq!(
             a.last("view.capture"),
             json!({
@@ -1113,19 +1542,48 @@ mod tests {
     #[tokio::test]
     async fn supports_and_sprue() {
         let a = app("");
-        assert!(a.ok("supports auto --angle 40 --spacing 3").await.contains("3 added, 1 manual kept"));
-        assert_eq!(a.last("supports.auto"), json!({ "overhang_angle": 40.0, "spacing": 3.0 }));
-        assert!(a.ok("supports add 1,2,3 4,5,6 --tip 0.3").await.contains("added ids 5, 6"));
-        assert_eq!(a.last("supports.add"), json!({ "points": [{ "x": 1.0, "y": 2.0, "z": 3.0, "tip": 0.3 }, { "x": 4.0, "y": 5.0, "z": 6.0, "tip": 0.3 }] }));
+        assert!(
+            a.ok("supports auto --angle 40 --spacing 3")
+                .await
+                .contains("3 added, 1 manual kept")
+        );
+        assert_eq!(
+            a.last("supports.auto"),
+            json!({ "overhang_angle": 40.0, "spacing": 3.0 })
+        );
+        assert!(
+            a.ok("supports add 1,2,3 4,5,6 --tip 0.3")
+                .await
+                .contains("added ids 5, 6")
+        );
+        assert_eq!(
+            a.last("supports.add"),
+            json!({ "points": [{ "x": 1.0, "y": 2.0, "z": 3.0, "tip": 0.3 }, { "x": 4.0, "y": 5.0, "z": 6.0, "tip": 0.3 }] })
+        );
         assert!(a.ok("supports rm 5").await.contains("removed 1, 3 left"));
         assert_eq!(a.last("supports.remove"), json!({ "ids": [5] }));
         a.ok("supports rm --manual").await;
         assert_eq!(a.last("supports.remove"), json!({ "kind": "manual" }));
-        for bad in ["supports rm", "supports rm --auto --all", "supports rm x", "supports add", "supports add 1,2", "supports", "supports bogus"] {
+        for bad in [
+            "supports rm",
+            "supports rm --auto --all",
+            "supports rm x",
+            "supports add",
+            "supports add 1,2",
+            "supports",
+            "supports bogus",
+        ] {
             a.err(bad).await;
         }
-        assert!(a.ok("sprue --on --diameter 2.5 --at 1,2,3").await.contains("sprue: on, ⌀2 × 5 mm, at 1, 2, 3 (automatic)"));
-        assert_eq!(a.last("sprue.set"), json!({ "enabled": true, "diameter": 2.5, "at": [1.0, 2.0, 3.0] }));
+        assert!(
+            a.ok("sprue --on --diameter 2.5 --at 1,2,3")
+                .await
+                .contains("sprue: on, ⌀2 × 5 mm, at 1, 2, 3 (automatic)")
+        );
+        assert_eq!(
+            a.last("sprue.set"),
+            json!({ "enabled": true, "diameter": 2.5, "at": [1.0, 2.0, 3.0] })
+        );
         a.ok("sprue --auto").await;
         assert_eq!(a.last("sprue.set"), json!({ "auto": true }));
         assert!(a.err("sprue --on --off").await.contains("contradict"));
@@ -1146,25 +1604,45 @@ mod tests {
         ] {
             a.err(&bad).await;
         }
-        assert!(a.calls().is_empty(), "nothing may reach the app: {:?}", a.calls());
+        assert!(
+            a.calls().is_empty(),
+            "nothing may reach the app: {:?}",
+            a.calls()
+        );
         let dir = std::env::temp_dir();
-        let out = a.ok(&format!("export {}/fc-test-model.stl --ascii --no-supports --hollow", dir.display())).await;
+        let out = a
+            .ok(&format!(
+                "export {}/fc-test-model.stl --ascii --no-supports --hollow",
+                dir.display()
+            ))
+            .await;
         assert!(out.contains("(stl-ascii), with supports"), "{out}");
         let sent = a.last("export.run");
         assert_eq!(sent["format"], "stl-ascii");
         assert_eq!(sent["supports"], false);
         assert_eq!(sent["hollow"], true);
-        assert!(sent.get("sprue").is_none(), "unset options stay the project's choice");
+        assert!(
+            sent.get("sprue").is_none(),
+            "unset options stay the project's choice"
+        );
     }
 
     #[tokio::test]
     async fn chains_label_their_output_and_stop_at_the_first_error() {
         let a = app("cube(1);\n");
         let out = a.ok("src cat && render").await;
-        assert!(out.starts_with("$ src cat\n1\tcube(1);\n$ render\nrender: ok"), "{out}");
+        assert!(
+            out.starts_with("$ src cat\n1\tcube(1);\n$ render\nrender: ok"),
+            "{out}"
+        );
         let r = a.fc("src cat && nonsense && render").await;
         assert!(r.error.is_some());
-        assert!(r.out.text.contains("$ nonsense\nfc: unknown command") && !r.out.text.contains("$ render"), "{}", r.out.text);
+        assert!(
+            r.out.text.contains("$ nonsense\nfc: unknown command")
+                && !r.out.text.contains("$ render"),
+            "{}",
+            r.out.text
+        );
     }
 
     #[tokio::test]
@@ -1175,7 +1653,11 @@ mod tests {
         assert!(a.err("src").await.contains("needs a subcommand"));
         assert!(a.err("frobnicate").await.contains("unknown command"));
         // a here-document for a command that ignores it must not run the command at all
-        assert!(a.err("set printing.tilt=5 <<EOF\nx\nEOF").await.contains("does not read a here-document"));
+        assert!(
+            a.err("set printing.tilt=5 <<EOF\nx\nEOF")
+                .await
+                .contains("does not read a here-document")
+        );
         assert!(a.calls().is_empty());
     }
 

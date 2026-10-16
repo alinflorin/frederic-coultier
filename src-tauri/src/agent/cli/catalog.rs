@@ -8,7 +8,11 @@ const fn o(name: &'static str, arg: &'static str, text: &'static str) -> Opt {
     Opt { name, arg, text }
 }
 
-const WAIT_DOC: Opt = o("no-wait", "", "do not wait for the render result (default: wait up to 20 s and report it)");
+const WAIT_DOC: Opt = o(
+    "no-wait",
+    "",
+    "do not wait for the render result (default: wait up to 20 s and report it)",
+);
 
 pub const COMMANDS: &[Cmd] = &[
     // ---- Project ----
@@ -30,8 +34,16 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Starts a new project, not saved anywhere yet (use `save-project PATH`). Use it when `status` says no project is open.\nIf the open project has unsaved changes the command refuses, to protect the user's work.",
         flags: NEW_FLAGS,
         opts: &[
-            o("sample", "", "start from the sample ring instead of an empty model"),
-            o("discard", "", "replace the open project even though it has unsaved changes. Only if the user asked for that"),
+            o(
+                "sample",
+                "",
+                "start from the sample ring instead of an empty model",
+            ),
+            o(
+                "discard",
+                "",
+                "replace the open project even though it has unsaved changes. Only if the user asked for that",
+            ),
         ],
         examples: &[],
     },
@@ -42,7 +54,11 @@ pub const COMMANDS: &[Cmd] = &[
         summary: "open a .fc project file",
         details: "Opens a `.fc` project file (absolute path), replacing the open project. Refuses when the open project has unsaved changes.",
         flags: OPEN_FLAGS,
-        opts: &[o("discard", "", "replace the open project even though it has unsaved changes. Only if the user asked for that")],
+        opts: &[o(
+            "discard",
+            "",
+            "replace the open project even though it has unsaved changes. Only if the user asked for that",
+        )],
         examples: &["open-project /home/anna/rings/solitaire.fc"],
     },
     Cmd {
@@ -53,7 +69,10 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Without PATH it saves the project to its own file; that fails for a project that was never saved, so give a PATH then.\nWith PATH (absolute) it saves there and the project continues to live at that file (\"save as\"); `.fc` is added if the name lacks it.\nIt will not replace an existing file without `--overwrite`. `save` is accepted as a short form.",
         flags: SAVE_FLAGS,
         opts: &[o("overwrite", "", "replace PATH if it already exists")],
-        examples: &["save-project", "save-project /home/anna/rings/solitaire-v2.fc"],
+        examples: &[
+            "save-project",
+            "save-project /home/anna/rings/solitaire-v2.fc",
+        ],
     },
     // ---- Source ----
     Cmd {
@@ -76,7 +95,11 @@ pub const COMMANDS: &[Cmd] = &[
         opts: &[
             o("regex", "", "treat PATTERN as a regular expression"),
             o("ignore-case", "", "ignore upper/lower case"),
-            o("context", "N", "show N lines around each match (at most 20)"),
+            o(
+                "context",
+                "N",
+                "show N lines around each match (at most 20)",
+            ),
         ],
         examples: &["src grep cylinder", "src grep -E -i -C 2 'ring_(r|d)'"],
     },
@@ -87,7 +110,10 @@ pub const COMMANDS: &[Cmd] = &[
         summary: "replace exact text",
         details: "Replaces exact text. OLD must match **exactly once**, indentation included; if it matches more than once the error lists the line numbers, so add surrounding text to make it unique.\nEvery edit prints how many lines changed, the changed lines with their numbers, and whether the model still renders (`render: ok, 12340 triangles, 18.2×18.2×9.4 mm` or `render: FAILED at line 13, column 5: ...`). Fix a failure before doing anything else.\n\nFor several changes at once, or text with quotes and newlines, give SEARCH/REPLACE blocks in a here-document. Blocks apply in order; if one fails **nothing** is changed and the error names the block. To delete text leave the part after `=======` empty. If the user types at the same moment, `src edit` retries by itself.",
         flags: EDIT_FLAGS,
-        opts: &[o("all", "", "replace every match, not just a unique one"), WAIT_DOC],
+        opts: &[
+            o("all", "", "replace every match, not just a unique one"),
+            WAIT_DOC,
+        ],
         examples: &[
             "src edit 'radius = 5;' 'radius = 6;'",
             "src edit <<EOF\n<<<<<<< SEARCH\nring_r = 8.5;\n=======\nring_r = 9;\n>>>>>>> REPLACE\n<<<<<<< SEARCH\n  cylinder(r = ring_r, h = 2);\n=======\n  cylinder(r = ring_r, h = 2.5);\n>>>>>>> REPLACE\nEOF",
@@ -141,7 +167,11 @@ pub const COMMANDS: &[Cmd] = &[
         summary: "does the model render? size, errors, warnings, echo output",
         details: "Waits for the preview to catch up with the source, then prints the render result: triangles and size, or the error with line and column, plus warnings and `echo()` output.",
         flags: WAIT,
-        opts: &[o("no-wait", "", "print the current state at once instead of waiting")],
+        opts: &[o(
+            "no-wait",
+            "",
+            "print the current state at once instead of waiting",
+        )],
         examples: &[],
     },
     Cmd {
@@ -152,23 +182,64 @@ pub const COMMANDS: &[Cmd] = &[
         details: "A picture of the 3D preview, returned as an image. **Every option is optional: what you leave out stays as the user currently has it on screen**, so plain `shot` shows exactly the user's view. Options apply only to the picture; the user's view does not change.\nNeeds the preview to be visible and the model to render without errors.",
         flags: SHOT_FLAGS,
         opts: &[
-            o("view", "V", "`front` `back` `left` `right` `top` `bottom` `iso`"),
-            o("az", "DEG", "camera angle around the piece: 0 front, 90 right, 180 back, −90 left"),
-            o("el", "DEG", "camera angle above the horizon: 0 level, 90 straight down, −90 from below"),
-            o("zoom", "N", "1 fits the whole piece, 2 is twice as close, 0.5 shows more around it"),
-            o("at", "X,Y,Z", "the point to look at (scene coordinates, mm); default: where the view is centred"),
+            o(
+                "view",
+                "V",
+                "`front` `back` `left` `right` `top` `bottom` `iso`",
+            ),
+            o(
+                "az",
+                "DEG",
+                "camera angle around the piece: 0 front, 90 right, 180 back, −90 left",
+            ),
+            o(
+                "el",
+                "DEG",
+                "camera angle above the horizon: 0 level, 90 straight down, −90 from below",
+            ),
+            o(
+                "zoom",
+                "N",
+                "1 fits the whole piece, 2 is twice as close, 0.5 shows more around it",
+            ),
+            o(
+                "at",
+                "X,Y,Z",
+                "the point to look at (scene coordinates, mm); default: where the view is centred",
+            ),
             o("ortho|persp", "", "orthographic or perspective camera"),
             o("shading", "S", "`shaded` `edges` `wireframe` `xray`"),
             o("grid|no-grid", "", "floor grid"),
             o("axes|no-axes", "", "X/Y/Z axes with numbered ticks"),
             o("dims|no-dims", "", "bounding-box dimensions"),
-            o("scene", "S", "`model` (as modelled) or `print` (tilted, with supports, raft and sprue; needs supports or sprue switched on)"),
-            o("cut", "AXIS:POS[:flip]", "cut the piece open: axis `x` `y` `z`, position 0–1 across the piece, `:flip` keeps the other side"),
+            o(
+                "scene",
+                "S",
+                "`model` (as modelled) or `print` (tilted, with supports, raft and sprue; needs supports or sprue switched on)",
+            ),
+            o(
+                "cut",
+                "AXIS:POS[:flip]",
+                "cut the piece open: axis `x` `y` `z`, position 0–1 across the piece, `:flip` keeps the other side",
+            ),
             o("metal", "COLOR", "metal colour, e.g. `#d4af37`"),
-            o("bg", "COLOR", "`transparent` (default), `white`, `black` or any CSS colour"),
-            o("size", "WxH", "picture size in pixels, 16–2048 each way; default: the size of the preview on screen"),
+            o(
+                "bg",
+                "COLOR",
+                "`transparent` (default), `white`, `black` or any CSS colour",
+            ),
+            o(
+                "size",
+                "WxH",
+                "picture size in pixels, 16–2048 each way; default: the size of the preview on screen",
+            ),
         ],
-        examples: &["shot", "shot --view top --axes", "shot --az 40 --el 25 --zoom 1.5 --shading xray", "shot --cut z:0.5 --scene print --size 1000x800"],
+        examples: &[
+            "shot",
+            "shot --view top --axes",
+            "shot --az 40 --el 25 --zoom 1.5 --shading xray",
+            "shot --cut z:0.5 --scene print --size 1000x800",
+        ],
     },
     // ---- Settings ----
     Cmd {
@@ -189,7 +260,9 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Changes settings by dotted path, several at once. Values are numbers, `true`/`false`, `null`, `[1,2,3]`, or text. Unknown keys, wrong types and out-of-range values are rejected, and then nothing is changed.",
         flags: NO_FLAGS,
         opts: &[],
-        examples: &["set printing.tilt=25 printing.supports.enabled=true render.metalColor=#d4af37"],
+        examples: &[
+            "set printing.tilt=25 printing.supports.enabled=true render.metalColor=#d4af37",
+        ],
     },
     // ---- Checking ----
     Cmd {
@@ -200,8 +273,16 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Measures the model (size, volume, area, triangles, shells, weight of metal) and prints printability findings as `[fail|warn|pass|info] code: detail at (x,y,z)`, with locations in model coordinates.",
         flags: CHECK_FLAGS,
         opts: &[
-            o("deep", "", "also check wall thickness and gaps (only on a watertight model; slower)"),
-            o("simplify", "", "also dry-run the mesh simplification from the optimization settings"),
+            o(
+                "deep",
+                "",
+                "also check wall thickness and gaps (only on a watertight model; slower)",
+            ),
+            o(
+                "simplify",
+                "",
+                "also dry-run the mesh simplification from the optimization settings",
+            ),
         ],
         examples: &["check", "check --deep"],
     },
@@ -234,7 +315,11 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Generates supports for the current tilt. Manual supports are kept, earlier automatic ones are replaced. Requires supports to be switched on.",
         flags: SUPPORTS_AUTO_FLAGS,
         opts: &[
-            o("angle", "DEG", "overhang angle above which a face needs support; this run only"),
+            o(
+                "angle",
+                "DEG",
+                "overhang angle above which a face needs support; this run only",
+            ),
             o("spacing", "MM", "distance between supports; this run only"),
         ],
         examples: &["supports auto", "supports auto --angle 40 --spacing 3"],
@@ -256,7 +341,11 @@ pub const COMMANDS: &[Cmd] = &[
         summary: "remove supports",
         details: "Removes supports by id (see `supports ls`), or all automatic, all manual, or all of them.",
         flags: SUPPORTS_RM_FLAGS,
-        opts: &[o("auto", "", "remove every automatic support"), o("manual", "", "remove every manual support"), o("all", "", "remove every support")],
+        opts: &[
+            o("auto", "", "remove every automatic support"),
+            o("manual", "", "remove every manual support"),
+            o("all", "", "remove every support"),
+        ],
         examples: &["supports rm 5 6", "supports rm --auto"],
     },
     Cmd {
@@ -288,12 +377,27 @@ pub const COMMANDS: &[Cmd] = &[
             o("format", "F", "`stl-bin`, `stl-ascii`, `obj` or `3mf`"),
             o("ascii", "", "write a `.stl` as ASCII instead of binary"),
             o("overwrite", "", "replace PATH if it already exists"),
-            o("supports|no-supports", "", "tilt the piece and bake in the supports and raft"),
-            o("simplify|no-simplify", "", "simplify the mesh as set in the optimization settings"),
+            o(
+                "supports|no-supports",
+                "",
+                "tilt the piece and bake in the supports and raft",
+            ),
+            o(
+                "simplify|no-simplify",
+                "",
+                "simplify the mesh as set in the optimization settings",
+            ),
             o("sprue|no-sprue", "", "add the casting sprue"),
-            o("hollow|no-hollow", "", "hollow the piece out as set in the printing settings"),
+            o(
+                "hollow|no-hollow",
+                "",
+                "hollow the piece out as set in the printing settings",
+            ),
         ],
-        examples: &["export /home/anna/out/ring.stl", "export /home/anna/out/ring.3mf --no-supports --overwrite"],
+        examples: &[
+            "export /home/anna/out/ring.stl",
+            "export /home/anna/out/ring.3mf --no-supports --overwrite",
+        ],
     },
     // ---- Help ----
     Cmd {

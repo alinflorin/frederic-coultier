@@ -2,13 +2,13 @@
 //! that lives inside the app, and `exec_fc` runs it. Everything the app can do is a command, so
 //! the agent's tool list stays tiny whatever the app learns to do.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
-use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler};
+use rmcp::{ErrorData, ServerHandler, schemars, tool, tool_handler, tool_router};
 use serde::Deserialize;
 
 use super::bridge::Bridge;
@@ -47,20 +47,28 @@ pub struct AppTools {
 
 impl AppTools {
     pub fn new(bridge: Arc<dyn Bridge>, read: Arc<AtomicBool>) -> Self {
-        Self { cli: Cli::new(bridge), read, tool_router: Self::tool_router() }
+        Self {
+            cli: Cli::new(bridge),
+            read,
+            tool_router: Self::tool_router(),
+        }
     }
 }
 
 #[tool_router]
 impl AppTools {
-    #[tool(description = "REQUIRED FIRST STEP, before anything else. Returns the user's own instructions and the complete reference of `fc`, the command line through which you read and edit the model and use every feature of this app. Read all of it. exec_fc refuses to run until you have.")]
+    #[tool(
+        description = "REQUIRED FIRST STEP, before anything else. Returns the user's own instructions and the complete reference of `fc`, the command line through which you read and edit the model and use every feature of this app. Read all of it. exec_fc refuses to run until you have."
+    )]
     async fn read_instructions(&self) -> ToolResult {
         let text = self.cli.instructions().await;
         self.read.store(true, Ordering::Relaxed);
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 
-    #[tool(description = "Run fc commands, e.g. `status` or `src cat 1:40`. Only after you have read read_instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`.")]
+    #[tool(
+        description = "Run fc commands, e.g. `status` or `src cat 1:40`. Only after you have read read_instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`."
+    )]
     async fn exec_fc(&self, Parameters(a): Parameters<ExecArgs>) -> ToolResult {
         if !self.read.load(Ordering::Relaxed) {
             return Ok(CallToolResult::error(vec![ContentBlock::text(READ_FIRST)]));
@@ -68,7 +76,11 @@ impl AppTools {
         let run = self.cli.run(&a.args).await;
         let mut content = Vec::new();
         if !run.out.text.is_empty() || run.out.images.is_empty() {
-            let text = if run.out.text.is_empty() { "(no output)".to_string() } else { run.out.text };
+            let text = if run.out.text.is_empty() {
+                "(no output)".to_string()
+            } else {
+                run.out.text
+            };
             content.push(ContentBlock::text(text));
         }
         for (data, mime) in run.out.images {
@@ -84,6 +96,7 @@ impl AppTools {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AppTools {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(INSTRUCTIONS)
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(INSTRUCTIONS)
     }
 }

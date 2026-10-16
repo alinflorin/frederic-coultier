@@ -60,8 +60,21 @@ EOF
 A normal loop: `src cat`, `src edit`, read the render result the edit prints, `shot` to look, repeat.";
 
 fn flag_label(c: &Cmd, part: &str, arg: &str) -> String {
-    let short = c.flags.iter().find(|f| f.name == part).and_then(|f| f.short).map(|s| format!("-{s}, ")).unwrap_or_default();
-    format!("`{short}--{part}{}`", if arg.is_empty() { String::new() } else { format!(" {arg}") })
+    let short = c
+        .flags
+        .iter()
+        .find(|f| f.name == part)
+        .and_then(|f| f.short)
+        .map(|s| format!("-{s}, "))
+        .unwrap_or_default();
+    format!(
+        "`{short}--{part}{}`",
+        if arg.is_empty() {
+            String::new()
+        } else {
+            format!(" {arg}")
+        }
+    )
 }
 
 fn opt_line(c: &Cmd, o: &Opt) -> String {
@@ -72,14 +85,35 @@ fn opt_line(c: &Cmd, o: &Opt) -> String {
 /// One command in full: synopsis, what it does, options, examples.
 fn entry(c: &Cmd) -> String {
     // a command without arguments needs no synopsis: it would only repeat the heading
-    let synopsis = if c.usage == c.name { String::new() } else { format!("```\n{}\n```\n", c.usage) };
-    let mut s = format!("### `{}`\n{synopsis}{}", c.name, if c.details.is_empty() { c.summary } else { c.details });
+    let synopsis = if c.usage == c.name {
+        String::new()
+    } else {
+        format!("```\n{}\n```\n", c.usage)
+    };
+    let mut s = format!(
+        "### `{}`\n{synopsis}{}",
+        c.name,
+        if c.details.is_empty() {
+            c.summary
+        } else {
+            c.details
+        }
+    );
     if !c.opts.is_empty() {
         s.push_str("\n\nOptions:\n");
-        s.push_str(&c.opts.iter().map(|o| opt_line(c, o)).collect::<Vec<_>>().join("\n"));
+        s.push_str(
+            &c.opts
+                .iter()
+                .map(|o| opt_line(c, o))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
     }
     if !c.examples.is_empty() {
-        s.push_str(&format!("\n\nExamples:\n```\n{}\n```", c.examples.join("\n")));
+        s.push_str(&format!(
+            "\n\nExamples:\n```\n{}\n```",
+            c.examples.join("\n")
+        ));
     }
     s
 }
@@ -87,7 +121,9 @@ fn entry(c: &Cmd) -> String {
 /// `help`: every command in one line, by group.
 pub fn overview() -> String {
     let width = COMMANDS.iter().map(|c| c.name.len()).max().unwrap_or(0);
-    let mut out = String::from("fc commands (`help NAME` shows one in detail; read_instructions has the full reference)");
+    let mut out = String::from(
+        "fc commands (`help NAME` shows one in detail; read_instructions has the full reference)",
+    );
     let mut group = "";
     for c in COMMANDS {
         if c.group != group {
@@ -104,22 +140,39 @@ pub fn entries(query: &str) -> Result<String, String> {
     let q = query.trim().trim_start_matches("fc ").to_ascii_lowercase();
     let exact: Vec<&Cmd> = COMMANDS.iter().filter(|c| c.name == q).collect();
     let hits: Vec<&Cmd> = if exact.is_empty() {
-        COMMANDS.iter().filter(|c| c.name.split(' ').next() == Some(q.as_str()) || c.group.to_ascii_lowercase() == q).collect()
+        COMMANDS
+            .iter()
+            .filter(|c| {
+                c.name.split(' ').next() == Some(q.as_str()) || c.group.to_ascii_lowercase() == q
+            })
+            .collect()
     } else {
         exact
     };
     if hits.is_empty() {
         return Err(format!("no command {query:?}; try: help"));
     }
-    Ok(hits.iter().map(|c| entry(c)).collect::<Vec<_>>().join("\n\n"))
+    Ok(hits
+        .iter()
+        .map(|c| entry(c))
+        .collect::<Vec<_>>()
+        .join("\n\n"))
 }
 
 /// The settings table, from the rows the app sends: `{ path, values, now, text }`.
 fn settings_section(rows: &Value) -> String {
-    let mut s = String::from("## Settings\n\nRead with `get [PATH]`, change with `set KEY=VALUE...`. Wrong keys, types and out-of-range values are rejected, and then nothing changes.\n\n| setting | values | now | meaning |\n|---|---|---|---|");
+    let mut s = String::from(
+        "## Settings\n\nRead with `get [PATH]`, change with `set KEY=VALUE...`. Wrong keys, types and out-of-range values are rejected, and then nothing changes.\n\n| setting | values | now | meaning |\n|---|---|---|---|",
+    );
     for r in rows.as_array().into_iter().flatten() {
         let cell = |k: &str| r[k].as_str().unwrap_or("").replace('|', "\\|");
-        s.push_str(&format!("\n| `{}` | {} | {} | {} |", cell("path"), cell("values"), cell("now"), cell("text")));
+        s.push_str(&format!(
+            "\n| `{}` | {} | {} | {} |",
+            cell("path"),
+            cell("values"),
+            cell("now"),
+            cell("text")
+        ));
     }
     s
 }
@@ -154,12 +207,26 @@ mod tests {
     fn every_flag_is_documented_and_every_doc_names_a_flag() {
         for c in COMMANDS {
             for f in c.flags {
-                assert!(c.opts.iter().any(|o| o.name.split('|').any(|p| p == f.name)), "`{}` takes --{} but does not document it", c.name, f.name);
+                assert!(
+                    c.opts
+                        .iter()
+                        .any(|o| o.name.split('|').any(|p| p == f.name)),
+                    "`{}` takes --{} but does not document it",
+                    c.name,
+                    f.name
+                );
             }
             for o in c.opts {
                 for part in o.name.split('|') {
-                    let f = c.flags.iter().find(|f| f.name == part).unwrap_or_else(|| panic!("`{}` documents --{part}, which it does not take", c.name));
-                    assert_eq!(f.value, !o.arg.is_empty(), "`{}` --{part}: a value needs a placeholder and a switch must not have one", c.name);
+                    let f = c.flags.iter().find(|f| f.name == part).unwrap_or_else(|| {
+                        panic!("`{}` documents --{part}, which it does not take", c.name)
+                    });
+                    assert_eq!(
+                        f.value,
+                        !o.arg.is_empty(),
+                        "`{}` --{part}: a value needs a placeholder and a switch must not have one",
+                        c.name
+                    );
                 }
             }
         }
@@ -170,8 +237,16 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for c in COMMANDS {
             assert!(seen.insert(c.name), "{} is listed twice", c.name);
-            assert!(!c.summary.is_empty() && !c.usage.is_empty() && !c.group.is_empty(), "{} lacks text", c.name);
-            assert!(c.usage.starts_with(c.name.split(' ').next().unwrap()), "usage of {} should start with the command", c.name);
+            assert!(
+                !c.summary.is_empty() && !c.usage.is_empty() && !c.group.is_empty(),
+                "{} lacks text",
+                c.name
+            );
+            assert!(
+                c.usage.starts_with(c.name.split(' ').next().unwrap()),
+                "usage of {} should start with the command",
+                c.name
+            );
         }
     }
 
@@ -180,19 +255,32 @@ mod tests {
         let rows = json!([{ "path": "printing.tilt", "values": "0–60", "now": "30", "text": "tilt about X" }]);
         let text = full(Some(&rows));
         for c in COMMANDS {
-            assert!(text.contains(&format!("### `{}`", c.name)), "{} missing", c.name);
+            assert!(
+                text.contains(&format!("### `{}`", c.name)),
+                "{} missing",
+                c.name
+            );
         }
         assert!(text.contains("## Running commands") && text.contains("## The model"));
-        assert!(text.contains("| `printing.tilt` | 0–60 | 30 | tilt about X |"), "{text}");
+        assert!(
+            text.contains("| `printing.tilt` | 0–60 | 30 | tilt about X |"),
+            "{text}"
+        );
         assert!(full(None).contains("unavailable"));
     }
 
     #[test]
     fn options_render_with_short_forms_and_alternatives() {
         let grep = entries("src grep").unwrap();
-        assert!(grep.contains("`-E, --regex`") && grep.contains("`-C, --context N`"), "{grep}");
+        assert!(
+            grep.contains("`-E, --regex`") && grep.contains("`-C, --context N`"),
+            "{grep}"
+        );
         let shot = entries("shot").unwrap();
-        assert!(shot.contains("`--grid` / `--no-grid`") && shot.contains("`--zoom N`"), "{shot}");
+        assert!(
+            shot.contains("`--grid` / `--no-grid`") && shot.contains("`--zoom N`"),
+            "{shot}"
+        );
     }
 
     #[test]
@@ -201,7 +289,10 @@ mod tests {
         for c in COMMANDS {
             assert!(o.contains(c.name));
         }
-        assert!(o.contains("\n\nSource\n") && o.contains("\n\nSupports and sprue\n"), "{o}");
+        assert!(
+            o.contains("\n\nSource\n") && o.contains("\n\nSupports and sprue\n"),
+            "{o}"
+        );
         // the overview is a map, not the manual
         assert!(o.len() < 3000, "{} bytes", o.len());
     }
@@ -223,6 +314,11 @@ mod tests {
             { "path": "printing.tilt", "values": "0–60", "now": "30", "text": "tilt of the piece about X when printing (degrees)" },
             { "path": "material.metal", "values": "silver925, gold18y", "now": "silver925", "text": "the metal" }
         ]);
-        println!("{}\n\n=========== help ===========\n{}\n\n=========== help src edit ===========\n{}", full(Some(&rows)), overview(), entries("src edit").unwrap());
+        println!(
+            "{}\n\n=========== help ===========\n{}\n\n=========== help src edit ===========\n{}",
+            full(Some(&rows)),
+            overview(),
+            entries("src edit").unwrap()
+        );
     }
 }

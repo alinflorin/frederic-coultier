@@ -1,21 +1,21 @@
 mod agent;
-mod project;
 mod bvh;
 mod checks;
 mod hollow;
 mod meshtools;
+mod project;
 mod render;
 mod supports;
 
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::ipc::Response;
 use tauri::State;
+use tauri::ipc::Response;
 
+use meshtools::{Finding, MeshStats, SimplifyReport, SimplifySpec, SprueSpec};
 use project::Project;
 use render::{RenderCache, RenderFailure};
-use meshtools::{Finding, MeshStats, SimplifyReport, SimplifySpec, SprueSpec};
 use supports::{AutoParams, AutoResult, PrintParams, Support, TiltRow};
 
 #[tauri::command]
@@ -43,11 +43,19 @@ struct RenderInfo {
 /// Renders OpenSCAD source. The reply is binary, to avoid pushing megabytes of
 /// mesh through JSON: `u32 LE JSON length | RenderInfo JSON | binary STL`.
 #[tauri::command]
-async fn render_scad(source: String, cache: State<'_, RenderCache>) -> Result<Response, RenderFailure> {
+async fn render_scad(
+    source: String,
+    cache: State<'_, RenderCache>,
+) -> Result<Response, RenderFailure> {
     let cache = cache.inner().clone();
-    let rendered = tauri::async_runtime::spawn_blocking(move || render::render_on_big_stack(source, &cache))
-        .await
-        .map_err(|e| RenderFailure { message: e.to_string(), line: None, column: None })??;
+    let rendered =
+        tauri::async_runtime::spawn_blocking(move || render::render_on_big_stack(source, &cache))
+            .await
+            .map_err(|e| RenderFailure {
+                message: e.to_string(),
+                line: None,
+                column: None,
+            })??;
 
     let empty = rendered.mesh.is_empty();
     let info = serde_json::to_vec(&RenderInfo {
@@ -56,9 +64,17 @@ async fn render_scad(source: String, cache: State<'_, RenderCache>) -> Result<Re
         ms: rendered.ms,
         empty,
     })
-    .map_err(|e| RenderFailure { message: e.to_string(), line: None, column: None })?;
+    .map_err(|e| RenderFailure {
+        message: e.to_string(),
+        line: None,
+        column: None,
+    })?;
 
-    let stl = if empty { Vec::new() } else { rendered.mesh.to_binary_stl() };
+    let stl = if empty {
+        Vec::new()
+    } else {
+        rendered.mesh.to_binary_stl()
+    };
     let mut out = Vec::with_capacity(4 + info.len() + stl.len());
     out.extend_from_slice(&(info.len() as u32).to_le_bytes());
     out.extend_from_slice(&info);
@@ -95,14 +111,28 @@ async fn mesh_report(
         let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         let stats = meshtools::analyze(&mesh);
         let mut findings = meshtools::validate(&stats);
-        let watertight = stats.triangles > 0 && stats.open_edges + stats.non_manifold_edges + stats.winding_edges == 0;
+        let watertight = stats.triangles > 0
+            && stats.open_edges + stats.non_manifold_edges + stats.winding_edges == 0;
         if let Some(o) = checks.filter(|_| watertight) {
             findings.extend(checks::deep_checks(&mesh, &o));
         } else if checks.is_some() && stats.triangles > 0 {
-            findings.push(Finding { level: "info", code: "deepSkipped", detail: String::new(), at: Vec::new() });
+            findings.push(Finding {
+                level: "info",
+                code: "deepSkipped",
+                detail: String::new(),
+                at: Vec::new(),
+            });
         }
-        let simplify = if mesh.is_empty() { None } else { simplify.map(|s| meshtools::simplify(&mesh, &s).1) };
-        Ok(MeshReport { stats, findings, simplify })
+        let simplify = if mesh.is_empty() {
+            None
+        } else {
+            simplify.map(|s| meshtools::simplify(&mesh, &s).1)
+        };
+        Ok(MeshReport {
+            stats,
+            findings,
+            simplify,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -129,7 +159,14 @@ async fn suggest_tilt(
         if mesh.is_empty() {
             return Err("The model is empty.".to_string());
         }
-        Ok(supports::rank_tilts(&mesh, min, max, step.max(1.0), angle, lift))
+        Ok(supports::rank_tilts(
+            &mesh,
+            min,
+            max,
+            step.max(1.0),
+            angle,
+            lift,
+        ))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -222,18 +259,21 @@ async fn export_model(
         }
         if let Some(spec) = sprue {
             // placed on the solid piece, where the metal is thickest
-            let (stub, _) = meshtools::plan_sprue(&solid, &spec).ok_or("No free spot for a sprue on this piece.")?;
+            let (stub, _) = meshtools::plan_sprue(&solid, &spec)
+                .ok_or("No free spot for a sprue on this piece.")?;
             mesh = std::sync::Arc::new(hollow::fuse(vec![(*mesh).clone(), stub]));
         }
         if let Some(spec) = simplify {
             mesh = std::sync::Arc::new(meshtools::simplify(&mesh, &spec).0);
         }
         if let Some(spec) = print.filter(|s| !s.supports.is_empty()) {
-            let baked = supports::bake(&mesh, &spec.supports, &spec.params).ok_or("The model is empty.")?;
+            let baked =
+                supports::bake(&mesh, &spec.supports, &spec.params).ok_or("The model is empty.")?;
             mesh = std::sync::Arc::new(baked);
         }
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
-        let bytes = render::encode(&format, &mesh, name).ok_or_else(|| format!("unknown export format {format}"))?;
+        let bytes = render::encode(&format, &mesh, name)
+            .ok_or_else(|| format!("unknown export format {format}"))?;
         std::fs::write(&path, bytes).map_err(|e| e.to_string())
     })
     .await
@@ -258,7 +298,19 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
 
     builder
-        .invoke_handler(tauri::generate_handler![agent::bridge::agent_reply, agent::mcp_status, agent::mcp_configure, open_project, save_project, render_scad, export_model, suggest_tilt, auto_supports, print_layout, mesh_report])
+        .invoke_handler(tauri::generate_handler![
+            agent::bridge::agent_reply,
+            agent::mcp_status,
+            agent::mcp_configure,
+            open_project,
+            save_project,
+            render_scad,
+            export_model,
+            suggest_tilt,
+            auto_supports,
+            print_layout,
+            mesh_report
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
