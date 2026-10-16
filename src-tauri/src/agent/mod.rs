@@ -195,6 +195,67 @@ pub async fn mcp_configure(
     Ok(mcp.apply(&host, port).await)
 }
 
+/// A search result for the knowledge base window.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KbHit {
+    pub path: String,
+    pub heading: String,
+    pub start: usize,
+    pub end: usize,
+    pub snippet: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KbFile {
+    pub path: String,
+    pub sub: String,
+}
+
+/// Every file of the knowledge base, for browsing.
+#[tauri::command]
+pub async fn kb_files() -> Vec<KbFile> {
+    cli::kb::baked()()
+        .docs
+        .iter()
+        .map(|d| KbFile {
+            path: d.rel.clone(),
+            sub: d.sub.clone(),
+        })
+        .collect()
+}
+
+/// The best passages for a query, at most two per file.
+#[tauri::command]
+pub async fn kb_search(query: String) -> Vec<KbHit> {
+    let index = cli::kb::baked()();
+    let mut per_file = std::collections::HashMap::<usize, usize>::new();
+    index
+        .search(&query, &|_| true)
+        .iter()
+        .filter_map(|h| {
+            let p = &index.passages[h.passage];
+            let n = per_file.entry(p.doc).or_default();
+            *n += 1;
+            (*n <= 2).then(|| KbHit {
+                path: index.docs[p.doc].rel.clone(),
+                heading: p.heading.clone(),
+                start: p.start,
+                end: p.end,
+                snippet: index.docs[p.doc].lines[p.start - 1..p.end.min(p.start + 5)].join("\n"),
+            })
+        })
+        .take(30)
+        .collect()
+}
+
+/// A whole file of the knowledge base.
+#[tauri::command]
+pub async fn kb_read(path: String) -> Result<String, String> {
+    let index = cli::kb::baked()();
+    Ok(cli::kb::find(&index.docs, &path)?.lines.join("\n"))
+}
+
 /// Starts the MCP server on the host and port saved in the preferences (or the defaults).
 pub fn start(app: &tauri::AppHandle) {
     let pending = Arc::new(bridge::Pending::default());

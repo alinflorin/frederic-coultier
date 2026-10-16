@@ -24,6 +24,7 @@
     "close": "Închide proiectul",
     "settings": "Setările proiectului…",
     "settingsShort": "Setări",
+    "kb": "Bază de cunoștințe…",
     "preferences": "Preferințe"
   },
   "file": {
@@ -255,6 +256,20 @@
     "offTitle": "Serverul MCP nu rulează.",
     "last": "{{name}}: {{calls}} apeluri, ultimul acum {{secs}} s",
     "none": "Niciun agent nu s-a conectat încă."
+  },
+  "kb": {
+    "title": "Bază de cunoștințe",
+    "placeholder": "Caută în notițe…",
+    "none": "Nimic nu se potrivește. Încearcă alte cuvinte.",
+    "empty": "Baza de cunoștințe e goală.",
+    "topLevel": "Nivel superior",
+    "back": "Înapoi",
+    "load": "Încarcă în editor",
+    "replace": "Înlocuiești codul din editor?",
+    "replaceYes": "Înlocuiește",
+    "noProject": "Deschide mai întâi un proiect ca să încarci cod în editorul lui.",
+    "loaded": "Codul a fost încărcat în editor.",
+    "desktopOnly": "Baza de cunoștințe e disponibilă doar în aplicația desktop."
   },
   "prefs": {
     "title": "Preferințe",

@@ -5,28 +5,36 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use include_dir::{Dir, include_dir};
 
 /// The folder `src-tauri/kb/`, compiled into the program.
 static BAKED: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/kb");
 
-/// Where the documents come from. The program uses [`baked`]; tests supply their own.
-pub type Source = Arc<dyn Fn(&[String]) -> Vec<Doc> + Send + Sync>;
+/// Where the knowledge base comes from. The program uses [`baked`]; tests supply their own.
+pub type Source = Arc<dyn Fn() -> Arc<Index> + Send + Sync>;
 
-/// The knowledge base inside the program. A debug build reads the folder from disk instead, so
-/// edits show up without a rebuild.
+/// The knowledge base inside the program, indexed once. A debug build reads the folder from
+/// disk each time instead, so edits show up without a rebuild.
 pub fn baked() -> Source {
-    Arc::new(|exts| {
+    Arc::new(|| {
+        static INDEX: OnceLock<Arc<Index>> = OnceLock::new();
         #[cfg(debug_assertions)]
-        if let Ok(docs) = scan(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/kb")), exts) {
-            return docs;
+        {
+            let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/kb"));
+            if let Ok(docs) = scan(dir, &exts(None)) {
+                return Arc::new(Index::new(docs));
+            }
         }
-        let mut docs = Vec::new();
-        walk_baked(&BAKED, exts, &mut docs);
-        docs.sort_by(|a, b| a.rel.cmp(&b.rel));
-        docs
+        INDEX
+            .get_or_init(|| {
+                let mut docs = Vec::new();
+                walk_baked(&BAKED, &exts(None), &mut docs);
+                docs.sort_by(|a, b| a.rel.cmp(&b.rel));
+                Arc::new(Index::new(docs))
+            })
+            .clone()
     })
 }
 
@@ -55,6 +63,7 @@ const MAX_FILE: u64 = 2 * 1024 * 1024;
 const MAX_DEPTH: usize = 8;
 const MAX_FILES: usize = 20_000;
 
+#[derive(Clone)]
 pub struct Doc {
     /// Path below the knowledge base, with `/`.
     pub rel: String,
@@ -258,70 +267,113 @@ pub struct Hit {
     pub score: f64,
 }
 
-pub struct Index<'a> {
-    pub docs: &'a [Doc],
+/// Everything searchable, prepared once: the documents, their passages, and for each passage
+/// how often each word occurs. Words are numbered, which keeps big knowledge bases small in memory.
+pub struct Index {
+    pub docs: Vec<Doc>,
     pub passages: Vec<Passage>,
+    vocab: HashMap<String, u32>,
+    /// Per passage: occurrences of each word, and its length in words.
+    tf: Vec<HashMap<u32, u32>>,
+    len: Vec<u32>,
+    /// Per word: in how many passages it occurs.
+    df: Vec<u32>,
+    avg_len: f64,
+    /// Per document: the words of its path. Per passage: the words of its heading.
+    path_words: Vec<HashSet<u32>>,
+    head_words: Vec<HashSet<u32>>,
 }
 
-impl<'a> Index<'a> {
-    pub fn new(docs: &'a [Doc]) -> Self {
-        let passages = docs
+impl Index {
+    pub fn new(docs: Vec<Doc>) -> Self {
+        let passages: Vec<Passage> = docs
             .iter()
             .enumerate()
             .flat_map(|(i, d)| passages(i, d))
             .collect();
-        Self { docs, passages }
+        let mut vocab: HashMap<String, u32> = HashMap::new();
+        let mut id = |w: String| {
+            let next = vocab.len() as u32;
+            *vocab.entry(w).or_insert(next)
+        };
+        let path_words: Vec<HashSet<u32>> = docs
+            .iter()
+            .map(|d| words(&d.rel).into_iter().map(&mut id).collect())
+            .collect();
+        let mut tf = Vec::with_capacity(passages.len());
+        let mut len = Vec::with_capacity(passages.len());
+        let mut head_words = Vec::with_capacity(passages.len());
+        for p in &passages {
+            let text = docs[p.doc].lines[p.start - 1..p.end].join("\n");
+            let ws = words(&text);
+            len.push(ws.len() as u32);
+            let mut counts: HashMap<u32, u32> = HashMap::new();
+            for w in ws {
+                *counts.entry(id(w)).or_default() += 1;
+            }
+            tf.push(counts);
+            head_words.push(words(&p.heading).into_iter().map(&mut id).collect());
+        }
+        let mut df = vec![0u32; vocab.len()];
+        for counts in &tf {
+            for w in counts.keys() {
+                df[*w as usize] += 1;
+            }
+        }
+        let avg_len = len.iter().map(|l| *l as f64).sum::<f64>() / passages.len().max(1) as f64;
+        Self {
+            docs,
+            passages,
+            vocab,
+            tf,
+            len,
+            df,
+            avg_len,
+            path_words,
+            head_words,
+        }
     }
 
     fn text(&self, p: &Passage) -> String {
         self.docs[p.doc].lines[p.start - 1..p.end].join("\n")
     }
 
-    /// Passages ranked best first; those sharing no word with the query are left out.
-    pub fn search(&self, query: &str) -> Vec<Hit> {
-        let terms: Vec<String> = {
-            let mut seen = HashSet::new();
-            words(query)
-                .into_iter()
-                .filter(|w| seen.insert(w.clone()))
-                .collect()
-        };
+    /// Passages ranked best first; those sharing no word with the query are left out. Only
+    /// documents for which `keep` is true can match.
+    pub fn search(&self, query: &str, keep: &dyn Fn(&Doc) -> bool) -> Vec<Hit> {
+        let mut seen = HashSet::new();
+        let terms: Vec<u32> = words(query)
+            .into_iter()
+            .filter(|w| seen.insert(w.clone()))
+            .filter_map(|w| self.vocab.get(&w).copied())
+            .collect();
+        let asked = seen.len();
         if terms.is_empty() || self.passages.is_empty() {
             return Vec::new();
         }
-        let bodies: Vec<Vec<String>> = self.passages.iter().map(|p| words(&self.text(p))).collect();
-        let n = self.passages.len() as f64;
-        let avg = bodies.iter().map(Vec::len).sum::<usize>() as f64 / n;
-        let mut df: HashMap<&str, usize> = HashMap::new();
-        for b in &bodies {
-            let set: HashSet<&str> = b.iter().map(String::as_str).collect();
-            for t in &terms {
-                if set.contains(t.as_str()) {
-                    *df.entry(t.as_str()).or_default() += 1;
-                }
-            }
-        }
         let phrase = query.to_lowercase();
         let phrase = phrase.split_whitespace().collect::<Vec<_>>().join(" ");
+        let n = self.passages.len() as f64;
         let (k1, b) = (1.5, 0.75);
         let mut hits = Vec::new();
         for (i, p) in self.passages.iter().enumerate() {
-            let body = &bodies[i];
-            let len = body.len().max(1) as f64;
-            let path_words = words(&self.docs[p.doc].rel);
-            let head_words = words(&p.heading);
+            if !keep(&self.docs[p.doc]) {
+                continue;
+            }
+            let len = (self.len[i].max(1)) as f64;
             let (mut score, mut matched) = (0.0, 0usize);
             for t in &terms {
-                let tf = body.iter().filter(|w| *w == t).count() as f64;
-                let in_path = path_words.contains(t);
-                let in_head = head_words.contains(t);
+                let tf = *self.tf[i].get(t).unwrap_or(&0) as f64;
+                let in_path = self.path_words[p.doc].contains(t);
+                let in_head = self.head_words[i].contains(t);
                 if tf == 0.0 && !in_path && !in_head {
                     continue;
                 }
                 matched += 1;
-                let d = *df.get(t.as_str()).unwrap_or(&0) as f64;
+                let d = self.df[*t as usize] as f64;
                 let idf = (1.0 + (n - d + 0.5) / (d + 0.5)).ln();
-                score += idf * tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len / avg.max(1.0)));
+                score +=
+                    idf * tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len / self.avg_len.max(1.0)));
                 if in_path {
                     score += idf * 0.8;
                 }
@@ -332,8 +384,8 @@ impl<'a> Index<'a> {
             if matched == 0 || score <= 0.0 {
                 continue;
             }
-            score *= 0.5 + 0.5 * matched as f64 / terms.len() as f64;
-            if terms.len() > 1 && self.text(p).to_lowercase().contains(&phrase) {
+            score *= 0.5 + 0.5 * matched as f64 / asked as f64;
+            if asked > 1 && self.text(p).to_lowercase().contains(&phrase) {
                 score *= 1.4;
             }
             hits.push(Hit { passage: i, score });
@@ -452,6 +504,15 @@ pub fn list(docs: &[Doc]) -> String {
     out
 }
 
+/// Whether the document's extension is one of `exts`.
+pub fn has_ext(d: &Doc, exts: &[String]) -> bool {
+    let e = Path::new(&d.rel)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    exts.iter().any(|x| *x == e)
+}
+
 /// The file at `rel`, as `kb search` shows it.
 pub fn find<'a>(docs: &'a [Doc], rel: &str) -> Result<&'a Doc, String> {
     let rel = rel.trim_start_matches("./");
@@ -485,8 +546,8 @@ mod tests {
     }
 
     fn top(docs: &[Doc], q: &str) -> String {
-        let idx = Index::new(docs);
-        let hits = idx.search(q);
+        let idx = Index::new(docs.to_vec());
+        let hits = idx.search(q, &|_| true);
         let p = &idx.passages[hits[0].passage];
         format!("{}:{}", docs[p.doc].rel, p.heading)
     }
@@ -542,17 +603,22 @@ mod tests {
         assert_eq!(top(&docs, "bezel"), "settings/bezel.md:Bezel settings");
         // plurals and endings meet
         assert_eq!(top(&docs, "claw"), "settings/prongs.md:Prong settings");
-        let idx = Index::new(&docs);
-        assert!(idx.search("xylophone").is_empty());
-        assert!(idx.search("the of and").is_empty(), "only stop words");
+        let idx = Index::new(docs);
+        assert!(idx.search("xylophone", &|_| true).is_empty());
+        assert!(
+            idx.search("the of and", &|_| true).is_empty(),
+            "only stop words"
+        );
+        let only_notes = idx.search("polish", &|d| d.sub == "casting");
+        assert!(only_notes.is_empty(), "the filter keeps other folders out");
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn output_names_path_lines_and_how_to_read_more() {
         let (dir, docs) = make(FILES);
-        let idx = Index::new(&docs);
-        let hits = idx.search("prong");
+        let idx = Index::new(docs);
+        let hits = idx.search("prong", &|_| true);
         let o = Options {
             top: 5,
             per_file: 1,
@@ -605,13 +671,13 @@ mod tests {
     #[test]
     fn the_baked_in_folder_loads() {
         // whatever is in src-tauri/kb/ (it may be empty): it must load and be searchable
-        let docs = baked()(&exts(None));
-        let idx = Index::new(&docs);
-        let _ = idx.search("ring");
-        assert!(
-            docs.iter()
-                .all(|d| !d.rel.starts_with('.') && !d.rel.contains(".."))
-        );
+        let idx = baked()();
+        let _ = idx.search("ring", &|_| true);
+        assert!(idx.docs.iter().all(|d| {
+            !d.rel
+                .split('/')
+                .any(|part| part == ".." || part.starts_with('.'))
+        }));
     }
 
     #[test]
@@ -629,5 +695,37 @@ mod tests {
         assert!(ps.iter().all(|p| p.end - p.start < MAX_LINES + 1));
         assert_eq!(ps.first().unwrap().start, 1);
         assert_eq!(ps.last().unwrap().end, 80);
+    }
+
+    /// `cargo test print_kb_search -- --ignored --nocapture` shows what the real knowledge base answers.
+    #[test]
+    #[ignore]
+    fn print_kb_search() {
+        let t = std::time::Instant::now();
+        let idx = baked()();
+        println!(
+            "indexed {} files, {} passages in {:?}",
+            idx.docs.len(),
+            idx.passages.len(),
+            t.elapsed()
+        );
+        for q in [
+            "linear_extrude twist",
+            "hull of spheres rounded ring",
+            "rotate_extrude profile",
+        ] {
+            let t = std::time::Instant::now();
+            let hits = idx.search(q, &|_| true);
+            let o = Options {
+                top: 3,
+                per_file: 1,
+                lines: Some(4),
+            };
+            println!(
+                "\n== {q} ({:?})\n{}",
+                t.elapsed(),
+                render(&idx, &hits, q, &o)
+            );
+        }
     }
 }

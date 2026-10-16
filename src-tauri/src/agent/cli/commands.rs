@@ -404,23 +404,26 @@ async fn kb_search(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     } else {
         Some(count(&p, "lines", 14, 200)?)
     };
-    let mut docs = (c.kb)(&super::kb::exts(p.value("ext")));
+    let index = (c.kb)();
+    let wanted = p.value("ext").map(|e| super::kb::exts(Some(e)));
     let dirs: Vec<String> = p
         .values("dir")
         .iter()
         .map(|d| d.trim_matches('/').to_string())
         .collect();
-    if !dirs.is_empty() {
-        if let Some(bad) = dirs.iter().find(|d| !docs.iter().any(|x| &x.sub == *d)) {
-            return Err(format!(
-                "no subfolder {bad:?} in the knowledge base; try `kb ls`"
-            ));
-        }
-        docs.retain(|d| dirs.contains(&d.sub));
+    if let Some(bad) = dirs
+        .iter()
+        .find(|d| !index.docs.iter().any(|x| &x.sub == *d))
+    {
+        return Err(format!(
+            "no subfolder {bad:?} in the knowledge base; try `kb ls`"
+        ));
     }
-    use super::kb::{Index, Options, files, render};
-    let index = Index::new(&docs);
-    let hits = index.search(&query);
+    use super::kb::{Options, files, render};
+    let hits = index.search(&query, &|d| {
+        (dirs.is_empty() || dirs.contains(&d.sub))
+            && wanted.as_ref().is_none_or(|w| super::kb::has_ext(d, w))
+    });
     say(if p.has("files") {
         files(&index, &hits, top)
     } else {
@@ -444,8 +447,8 @@ async fn kb_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         [f, r] => (f, Some(parse::range(r)?)),
         _ => return Err("give a path and, optionally, a line range".into()),
     };
-    let docs = (c.kb)(&super::kb::exts(None));
-    let doc = super::kb::find(&docs, path)?;
+    let index = (c.kb)();
+    let doc = super::kb::find(&index.docs, path)?;
     let (offset, limit) = match range {
         Some((a, b)) => (Some(a), b.map(|b| (b + 1).saturating_sub(a).max(1))),
         None => (None, None),
@@ -455,7 +458,7 @@ async fn kb_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
 
 async fn kb_ls(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     expect_no_args(args)?;
-    say(super::kb::list(&(c.kb)(&super::kb::exts(None))))
+    say(super::kb::list(&(c.kb)().docs))
 }
 
 async fn src_grep(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -1767,9 +1770,14 @@ mod tests {
         )
         .unwrap();
         let source = |dir: Option<std::path::PathBuf>| -> super::super::kb::Source {
-            Arc::new(move |exts| match &dir {
-                Some(d) => super::super::kb::scan(d, exts).unwrap_or_default(),
-                None => Vec::new(),
+            Arc::new(move || {
+                let docs = match &dir {
+                    Some(d) => {
+                        super::super::kb::scan(d, &super::super::kb::exts(None)).unwrap_or_default()
+                    }
+                    None => Vec::new(),
+                };
+                Arc::new(super::super::kb::Index::new(docs))
             })
         };
         let cli = |input: &'static str, dir: Option<std::path::PathBuf>| async move {

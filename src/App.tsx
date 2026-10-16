@@ -28,6 +28,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { getPref, setPref } from "./prefs";
+import { KbDialog } from "./components/KbDialog";
 import { McpIndicator } from "./components/McpIndicator";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
@@ -39,7 +40,7 @@ import type { AgentApi } from "./agent/ops";
 import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
-type DialogId = "settings" | "export" | "prefs" | null;
+type DialogId = "settings" | "export" | "prefs" | "kb" | null;
 
 const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
 const RENDER_DELAY_MS = 200;
@@ -413,7 +414,11 @@ function App() {
       {
         id: "help",
         label: t("menu.help"),
-        items: [{ label: t("checkUpdates"), onSelect: checkForUpdates }],
+        items: [
+          { label: t("menu.kb"), onSelect: () => setDialog("kb") },
+          { separator: true, label: "" },
+          { label: t("checkUpdates"), onSelect: checkForUpdates },
+        ],
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -568,6 +573,20 @@ function App() {
       )}
       {dialog === "export" && project && (
         <ExportDialog project={project} name={docName} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
+      )}
+      {dialog === "kb" && (
+        <KbDialog
+          onClose={() => setDialog(null)}
+          onLoad={
+            project
+              ? (code) => {
+                  edit((p) => (p.source === code ? p : { ...p, source: code }));
+                  setDialog(null);
+                  notify(t("kb.loaded"));
+                }
+              : null
+          }
+        />
       )}
       {dialog === "prefs" && <PreferencesDialog chatEnabled={chatEnabled} onChatEnabled={setChatEnabled} onClose={() => setDialog(null)} />}
       {pending && (

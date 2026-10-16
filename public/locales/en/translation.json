@@ -24,6 +24,7 @@
     "close": "Close project",
     "settings": "Project settings…",
     "settingsShort": "Settings",
+    "kb": "Knowledge base…",
     "preferences": "Preferences"
   },
   "file": {
@@ -255,6 +256,20 @@
     "offTitle": "The MCP server is not running.",
     "last": "{{name}}: {{calls}} calls, last {{secs}} s ago",
     "none": "No agent has connected yet."
+  },
+  "kb": {
+    "title": "Knowledge base",
+    "placeholder": "Search the notes…",
+    "none": "Nothing matches. Try other words.",
+    "empty": "The knowledge base is empty.",
+    "topLevel": "Top level",
+    "back": "Back",
+    "load": "Load in editor",
+    "replace": "Replace the code in the editor?",
+    "replaceYes": "Replace",
+    "noProject": "Open a project first to load code into its editor.",
+    "loaded": "Code loaded into the editor.",
+    "desktopOnly": "The knowledge base is only available in the desktop app."
   },
   "prefs": {
     "title": "Preferences",

@@ -164,6 +164,19 @@ fieldset:disabled { opacity: 0.45; }
 .dropdown kbd { color: var(--muted); font: inherit; font-size: 12px; margin-left: 24px; }
 .dropdown .sep { height: 1px; background: var(--border); margin: 4px 2px; }
 .doc-title { flex: 1; text-align: center; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-search { width: 100%; margin-bottom: 10px; }
+.kb-hit, .kb-file { display: block; width: 100%; text-align: left; background: none; border-color: var(--border); margin: 0 0 6px; padding: 8px 10px; }
+.kb-file { border-color: transparent; padding: 4px 8px; margin: 0; }
+.kb-hit:hover, .kb-file:hover { background: var(--accent-soft); }
+.kb-hit-head { display: block; margin-bottom: 4px; font-size: 13px; }
+.kb-snippet { display: block; white-space: pre-wrap; word-break: break-word; font-size: 12px; color: var(--muted); max-height: 7.5em; overflow: hidden; }
+.kb-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.kb-path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.kb-prose { white-space: pre-wrap; word-break: break-word; margin: 0 0 10px; line-height: 1.5; }
+.kb-block { margin: 8px 0 12px; }
+.kb-block pre { margin: 0; padding: 10px; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--code-bg); font-size: 12px; }
+.kb-actions { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+.kb-confirm { display: inline-flex; align-items: center; gap: 8px; }
 .mcp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; font-size: 12px; background: none; border-color: var(--border); border-radius: 999px; color: var(--muted); flex: none; }
 .mcp-pill:hover { color: var(--text); background: var(--surface-2); }
 .mcp-pill.ready .mcp-dot, .mcp-pill.idle .mcp-dot { background: var(--ok); opacity: .55; }
