@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
+import { getPref, setPref } from "../prefs";
 import { Dialog } from "./Dialog";
 import { McpPrefs } from "./McpPrefs";
 
@@ -47,6 +48,7 @@ export function PreferencesDialog({
 }) {
   const { t, i18n } = useTranslation();
   const [theme, setThemeState] = useState<Theme>(getTheme);
+  const [allTools, setAllTools] = useState(() => getPref<boolean>("chatAllTools") === true);
   // someone may have signed in since the app started
   useEffect(() => {
     onRefreshEngines();
@@ -112,6 +114,20 @@ export function PreferencesDialog({
           />
         </span>
       </label>
+      <label className="field">
+        <span className="field-label">{t("prefs.chat.allTools")}</span>
+        <span className="field-input">
+          <input
+            type="checkbox"
+            checked={allTools}
+            onChange={(e) => {
+              setPref("chatAllTools", e.currentTarget.checked);
+              setAllTools(e.currentTarget.checked);
+            }}
+          />
+        </span>
+      </label>
+      <p className="muted">{t("prefs.chat.allToolsHint")}</p>
       <label className="field">
         <span className="field-label">{t("prefs.chat.agent")}</span>
         <span className="field-input">

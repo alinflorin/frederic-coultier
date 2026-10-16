@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { inTauri } from "../api";
+import { getPref } from "../prefs";
 import type { Attached, Limit, ToolCall, ToolPart } from "../types";
 
 /** An agent that could answer in the chat panel. */
@@ -60,7 +61,8 @@ export const sendToEngine = (
   model: string,
   effort: string,
   files: Attached[] = [],
-) => invoke<Reply>("chat_send", { engineId, prompt, files, session, model, effort });
+) =>
+  invoke<Reply>("chat_send", { engineId, prompt, files, session, model, effort, allTools: getPref<boolean>("chatAllTools") === true });
 
 export const stopEngine = () => invoke("chat_cancel");
 

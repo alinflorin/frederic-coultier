@@ -15,26 +15,14 @@ use super::{
 
 pub struct Codex;
 
-fn config(url: &str, instructions: &str) -> String {
-    let features = [
-        "shell_tool",
-        "unified_exec",
-        "multi_agent",
-        "view_image",
-        "apps",
-        "image_generation",
-        "browser_use",
-        "computer_use",
-        "goals",
-    ];
+fn config(url: &str, instructions: &str, all_tools: bool) -> String {
     // a JSON string is a valid TOML string; it has to come before the first table
     let mut s = format!(
-        "# written by the app before every run\nsandbox_mode = \"read-only\"\napproval_policy = \"never\"\ndeveloper_instructions = {}\n\n[features]\n",
+        "# written by the app before every run\nsandbox_mode = \"{}\"\nweb_search = \"live\"\ndeveloper_instructions = {}\n",
+        // without all tools, the shell can look at files but not change them
+        if all_tools { "workspace-write" } else { "read-only" },
         Value::String(instructions.into())
     );
-    for f in features {
-        s.push_str(&format!("{f} = false\n"));
-    }
     s.push_str(&format!(
         "\n[mcp_servers.fc]\nurl = {}\ndefault_tools_approval_mode = \"approve\"\n",
         Value::String(url.into())
@@ -131,7 +119,7 @@ impl Engine for Codex {
         let work = subdir(paths, "codex-work")?;
         std::fs::write(
             home.join("config.toml"),
-            config(turn.mcp_url, turn.instructions),
+            config(turn.mcp_url, turn.instructions, turn.all_tools),
         )
         .map_err(|e| format!("could not write the Codex settings: {e}"))?;
         share(&paths.codex_home.join("auth.json"), &home.join("auth.json"))?;
@@ -153,6 +141,9 @@ impl Engine for Codex {
         // ask for the reasoning summaries, so there is something to show while it thinks
         args.extend(["-c".into(), "model_reasoning_summary=\"auto\"".into()]);
         args.extend(["--json", "--skip-git-repo-check"].map(String::from));
+        if turn.all_tools {
+            args.push("--approve-for-me".into());
+        }
         // pictures are handed over as files; the rest is text that goes into the prompt
         let pics = subdir(paths, "codex-files")?;
         for old in std::fs::read_dir(&pics).into_iter().flatten().flatten() {
@@ -405,11 +396,12 @@ mod tests {
     }
 
     #[test]
-    fn the_config_has_our_server_alone_and_no_shell() {
-        let cfg = config("http://127.0.0.1:45555/mcp", "line one\n\"quoted\" \\ two");
+    fn the_config_has_our_server_and_the_agents_own_tools() {
+        let cfg = config("http://127.0.0.1:45555/mcp", "line one\n\"quoted\" \\ two", true);
         let v: toml_edit_free::Doc = toml_edit_free::parse(&cfg);
         assert_eq!(v.servers, vec!["fc"]);
-        assert!(cfg.contains("shell_tool = false") && cfg.contains("sandbox_mode = \"read-only\""));
+        assert!(config("u", "i", false).contains("read-only"));
+        assert!(!cfg.contains("shell_tool = false") && cfg.contains("workspace-write") && !cfg.contains("danger"));
         assert!(cfg.contains("url = \"http://127.0.0.1:45555/mcp\""));
     }
 
@@ -451,6 +443,7 @@ mod tests {
             files: &[],
             session: Some("t9"),
             mcp_url: "http://127.0.0.1:1/mcp",
+            all_tools: true,
         };
         let inv = Codex.prepare(&t, &p).unwrap();
         assert_eq!(inv.args[..3], ["exec", "resume", "t9"]);

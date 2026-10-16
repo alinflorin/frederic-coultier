@@ -16,6 +16,9 @@ use serde_json::json;
 
 use super::bridge::Bridge;
 
+/// Said to every agent, in the manual both ways of reading it share.
+const OTHER_TOOLS: &str = "# Other tools\n\nIf you have tools besides `exec_fc` (a shell, web search, file access, a calculator, …), you may use them whenever they help the design: to research real dimensions and standards, to calculate or check numbers, to read or convert files, or to test an idea with a script. `fc` stays the only way to change or look at the model.";
+
 /// The user's own instructions for the agent, kept in `docs/fc-cli.md`.
 const NOTES: &str = include_str!("../../../docs/fc-cli.md");
 
@@ -98,7 +101,7 @@ impl Cli {
             .call("settings.schema", json!({}), Duration::from_secs(5))
             .await
             .ok();
-        let reference = reference::full(settings.as_ref());
+        let reference = format!("{OTHER_TOOLS}\n\n{}", reference::full(settings.as_ref()));
         let notes = notes();
         if notes.is_empty() {
             reference

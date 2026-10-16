@@ -1,5 +1,5 @@
 //! The chat panel's agent: Claude Code or Codex, run as a child process on the user's own
-//! sign-in, with this app's MCP server as its only tool source.
+//! sign-in, with this app's MCP server next to the agent's own tools.
 //!
 //! Both vendors' SDKs do exactly this underneath (start their CLI and read its JSON lines), so
 //! the app does it directly and needs no Node.js. An [`Engine`] knows how to start one CLI and
@@ -187,6 +187,8 @@ pub struct Turn<'a> {
     /// Continue this conversation, if the engine knows it.
     pub session: Option<&'a str>,
     pub mcp_url: &'a str,
+    /// Every tool the agent has; otherwise web search, reading files and ours.
+    pub all_tools: bool,
 }
 
 /// A process to start.
@@ -562,6 +564,7 @@ pub async fn chat_send(
     session: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    all_tools: Option<bool>,
     app: AppHandle,
     mcp: State<'_, Arc<Mcp>>,
     running: State<'_, Running>,
@@ -606,6 +609,7 @@ pub async fn chat_send(
         files: files.as_deref().unwrap_or(&[]),
         session: session.as_deref(),
         mcp_url: &url,
+        all_tools: all_tools.unwrap_or(false),
     };
     let result = run(e.as_ref(), &turn, &paths, &cancel, &emit).await;
     *running.0.lock().unwrap() = None;
@@ -745,6 +749,7 @@ mod tests {
                 files: &[],
                 session: None,
                 mcp_url: &url,
+                all_tools: true,
             };
             let r1 = run(e.as_ref(), &first, &paths, &cancel, &say)
                 .await
@@ -763,6 +768,7 @@ mod tests {
                 files: &[],
                 session: r1.session.as_deref(),
                 mcp_url: &url,
+                all_tools: true,
             };
             let r2 = run(e.as_ref(), &second, &paths, &cancel, &say)
                 .await

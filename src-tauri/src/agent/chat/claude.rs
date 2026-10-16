@@ -101,10 +101,6 @@ impl Engine for Claude {
             // without this the thinking arrives empty (only its size), so there is nothing to show
             "--thinking-display",
             "summarized",
-            // our server and nothing else: no shell, no file access, no other servers, no user settings
-            "--strict-mcp-config",
-            "--tools",
-            "",
             "--setting-sources",
             "",
             "--allowedTools=mcp__fc__exec_fc",
@@ -113,6 +109,15 @@ impl Engine for Claude {
         .map(String::from)
         .into();
         args.push(config.to_string_lossy().into_owned());
+        if turn.all_tools {
+            // all of Claude's own tools (web, files, shell) next to ours; its auto mode reviews what they do
+            args.extend(["--permission-mode", "auto"].map(String::from));
+        } else {
+            // ours, web search and reading files; anything else is refused without asking
+            args.extend(["--permission-mode", "dontAsk"].map(String::from));
+            args.extend(["--tools", "WebSearch,WebFetch,Read,Glob,Grep"].map(String::from));
+            args.extend(["--allowedTools", "WebSearch,WebFetch,Read,Glob,Grep"].map(String::from));
+        }
         args.push("--append-system-prompt-file".into());
         args.push(manual.to_string_lossy().into_owned());
         for (flag, value) in [("--model", turn.model), ("--effort", turn.effort)] {
@@ -280,8 +285,8 @@ fn parts(content: &Value) -> Vec<Part> {
 mod tests {
     use super::*;
 
-    fn paths() -> Paths {
-        let d = std::env::temp_dir().join(format!("fc-claude-test-{}", std::process::id()));
+    fn paths(name: &str) -> Paths {
+        let d = std::env::temp_dir().join(format!("fc-claude-test-{}-{name}", std::process::id()));
         Paths {
             private: d,
             codex_home: std::env::temp_dir(),
@@ -362,7 +367,7 @@ mod tests {
 
     #[test]
     fn knows_who_is_signed_in() {
-        let p = paths();
+        let p = paths("knows_who_is_signed_in");
         let ok = r#"{"loggedIn":true,"authMethod":"claude.ai","email":"a@b.c"}"#;
         assert_eq!(Claude.judge(true, ok, &p).unwrap(), "a@b.c (claude.ai)");
         assert!(Claude.judge(false, r#"{"loggedIn":false}"#, &p).is_err());
@@ -386,8 +391,9 @@ mod tests {
             files: &files,
             session: None,
             mcp_url: "http://127.0.0.1:1/mcp",
+            all_tools: true,
         };
-        let inv = Claude.prepare(&t, &paths()).unwrap();
+        let inv = Claude.prepare(&t, &paths("pictures_and_text_files_go_in_one_structured_message")).unwrap();
         assert!(inv.args.join(" ").contains("--input-format stream-json"));
         let v: Value = serde_json::from_str(inv.stdin.trim()).unwrap();
         let c = v["message"]["content"].as_array().unwrap();
@@ -397,8 +403,28 @@ mod tests {
     }
 
     #[test]
-    fn only_our_server_and_no_tools_of_its_own() {
-        let p = paths();
+    fn without_all_tools_it_is_web_files_and_ours() {
+        let p = paths("without_all_tools_it_is_web_files_and_ours");
+        let t = Turn {
+            model: None,
+            effort: None,
+            instructions: "THE MANUAL",
+            prompt: "hi",
+            files: &[],
+            session: None,
+            mcp_url: "http://127.0.0.1:1/mcp",
+            all_tools: false,
+        };
+        let a = Claude.prepare(&t, &p).unwrap().args.join(" ");
+        assert!(
+            a.contains("--permission-mode dontAsk") && a.contains("--tools WebSearch,WebFetch,Read,Glob,Grep") && a.contains("--allowedTools WebSearch"),
+            "{a}"
+        );
+    }
+
+    #[test]
+    fn our_server_is_added_to_claudes_own_tools() {
+        let p = paths("our_server_is_added_to_claudes_own_tools");
         let t = Turn {
             model: Some("opus"),
             effort: Some("high"),
@@ -407,11 +433,12 @@ mod tests {
             files: &[],
             session: Some("s1"),
             mcp_url: "http://127.0.0.1:1/mcp",
+            all_tools: true,
         };
         let inv = Claude.prepare(&t, &p).unwrap();
         let a = inv.args.join(" ");
         assert!(
-            a.contains("--strict-mcp-config") && a.contains("--tools  --"),
+            a.contains("--permission-mode auto") && !a.contains("--tools") && !a.contains("bypass"),
             "{a}"
         );
         assert!(

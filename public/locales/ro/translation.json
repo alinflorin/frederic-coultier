@@ -332,6 +332,8 @@
     },
     "chat": {
       "title": "Chat agent",
+      "allTools": "Permite toate tool-urile agentului",
+      "allToolsHint": "Dezactivat: agentul poate căuta pe web, citi fișiere și folosi FC. Activat: și shell-ul, modificarea fișierelor și orice alt tool are.",
       "enabled": "Activat",
       "hint": "Afișează un panou de chat lângă editor, unde Claude sau Codex proiectează împreună cu tine. Folosește contul cu care ești deja autentificat pe acest calculator.",
       "agent": "Agent",

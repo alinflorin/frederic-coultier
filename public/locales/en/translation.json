@@ -332,6 +332,8 @@
     },
     "chat": {
       "title": "Agent Chat",
+      "allTools": "Allow all of the agent's tools",
+      "allToolsHint": "Off: the agent may use web search, read files and use FC. On: also its shell, file changes and any other tool it has.",
       "enabled": "Enabled",
       "hint": "Shows a chat panel next to the editor, where Claude or Codex designs with you. It uses the account you are already signed in with on this computer.",
       "agent": "Agent",
