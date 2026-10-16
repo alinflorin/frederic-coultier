@@ -98,6 +98,9 @@ impl Engine for Claude {
             "stream-json",
             "--verbose",
             "--include-partial-messages",
+            // without this the thinking arrives empty (only its size), so there is nothing to show
+            "--thinking-display",
+            "summarized",
             // our server and nothing else: no shell, no file access, no other servers, no user settings
             "--strict-mcp-config",
             "--tools",
