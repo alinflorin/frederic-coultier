@@ -152,6 +152,14 @@ impl Engine for Claude {
                     Some("content_block_start") if e["content_block"]["type"] == "text" => {
                         vec![Event::Break]
                     }
+                    Some("content_block_start") if e["content_block"]["type"] == "thinking" => {
+                        vec![Event::Thought("\n\n".into())]
+                    }
+                    Some("content_block_delta") if e["delta"]["type"] == "thinking_delta" => e
+                        ["delta"]["thinking"]
+                        .as_str()
+                        .map(|t| vec![Event::Thought(t.into())])
+                        .unwrap_or_default(),
                     Some("content_block_delta") if e["delta"]["type"] == "text_delta" => e["delta"]
                         ["text"]
                         .as_str()

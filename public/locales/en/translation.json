@@ -64,6 +64,7 @@
     "hint": "Enter to send · Shift+Enter for a new line",
     "send": "Send",
     "thinking": "Thinking",
+    "thoughts": "Thinking",
     "compact": "Compact",
     "compactHint": "Replace the agent's memory of this conversation with a short summary it writes itself. The messages stay on screen.",
     "compacting": "Compacting the conversation…",

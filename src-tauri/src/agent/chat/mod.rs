@@ -27,6 +27,8 @@ pub enum Event {
     Session(String),
     /// More of the reply.
     Delta(String),
+    /// More of the agent's thinking (a blank line separates one thought from the next).
+    Thought(String),
     /// A new paragraph of the reply starts (a gap is added if there is text already).
     Break,
     /// The agent called one of our tools.
@@ -398,6 +400,7 @@ impl Usage {
 pub struct Reply {
     pub session: Option<String>,
     pub text: String,
+    pub thinking: String,
     pub tools: Vec<ToolCall>,
     pub cancelled: bool,
     pub usage: Usage,
@@ -478,6 +481,11 @@ async fn drive(
                     emit(&Event::Delta(d));
                     continue;
                 }
+                Event::Thought(d) => {
+                    reply.thinking.push_str(d);
+                    emit(&ev);
+                    continue;
+                }
                 Event::ToolStart(call) => reply.tools.push(call.clone()),
                 Event::ToolEnd { id, output, error } => {
                     let Some(call) = reply.tools.iter_mut().find(|c| &c.id == id) else {
@@ -509,6 +517,7 @@ async fn drive(
     if let Some(f) = failed {
         return Err(f);
     }
+    reply.thinking = reply.thinking.trim().to_string();
     if !done {
         let why = warn
             .or_else(|| Some(stderr.trim().to_string()).filter(|s| !s.is_empty()))
@@ -526,6 +535,9 @@ pub struct Running(Mutex<Option<CancellationToken>>);
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum Wire<'a> {
     Delta {
+        text: &'a str,
+    },
+    Thought {
         text: &'a str,
     },
     /// A tool call began.
@@ -575,6 +587,7 @@ pub async fn chat_send(
     let emit = |ev: &Event| {
         let wire = match ev {
             Event::Delta(text) => Wire::Delta { text },
+            Event::Thought(text) => Wire::Thought { text },
             Event::ToolStart(call) => Wire::Tool { call },
             Event::ToolEnd { id, output, error } => Wire::ToolDone {
                 id,

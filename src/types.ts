@@ -95,6 +95,8 @@ export interface ChatMessage {
   text: string;
   /** User only: files sent along.  */
   files?: Attached[];
+  /** Assistant only: what the agent thought while answering, if it showed it. */
+  thinking?: string;
   /** Assistant only: the tools it used while answering, for display. */
   tools?: ToolCall[];
   /** Assistant only: summary of the change made to the source. */

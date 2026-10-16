@@ -9,6 +9,7 @@ import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
 /** The answer being written right now. */
 export interface Live {
   text: string;
+  thinking: string;
   tools: ToolCall[];
 }
 
@@ -117,6 +118,7 @@ export function useAgentChat({
       setLive((l) => {
         if (!l) return l;
         if (e.kind === "delta") return { ...l, text: l.text + e.text };
+        if (e.kind === "thought") return { ...l, thinking: l.thinking + e.text };
         if (e.kind === "tool") return { ...l, tools: [...l.tools, e.call] };
         return {
           ...l,
@@ -160,7 +162,7 @@ export function useAgentChat({
     busy.current = true;
     setError(null);
     setWorking(kind);
-    setLive({ text: "", tools: [] });
+    setLive({ text: "", thinking: "", tools: [] });
     try {
       const r = await sendToEngine(engine!, prompt, session, model, effort, files);
       if (r.session) patch((c) => ({ ...c, session: { engine: engine!, id: r.session! } }));
@@ -196,7 +198,7 @@ export function useAgentChat({
       const changed = change.added + change.removed > 0;
       const said = r.cancelled ? `${r.text}${r.text ? "\n\n" : ""}…` : r.text;
       if (said || r.tools.length) {
-        add({ role: "assistant", text: said, tools: r.tools.length ? r.tools : undefined, change: changed ? change : undefined });
+        add({ role: "assistant", text: said, thinking: r.thinking || undefined, tools: r.tools.length ? r.tools : undefined, change: changed ? change : undefined });
       }
     } catch (e) {
       setError(errorText(e));

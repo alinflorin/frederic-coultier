@@ -64,6 +64,7 @@
     "hint": "Enter trimite · Shift+Enter rând nou",
     "send": "Trimite",
     "thinking": "Se gândește",
+    "thoughts": "Gândire",
     "compact": "Compactează",
     "compactHint": "Înlocuiește memoria agentului despre conversație cu un rezumat scris de el. Mesajele rămân pe ecran.",
     "compacting": "Se compactează conversația…",

@@ -1,9 +1,35 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
 import type { Attached, ChatLog, Limit, ChatMessage, ToolCall } from "../types";
 import { Icon } from "./Icon";
+
+/** The agent's words, with their Markdown shown; links open outside the app. */
+function Say({ text }: { text: string }) {
+  return (
+    <div className="md">
+      <Markdown remarkPlugins={[remarkGfm]} components={{ a: ({ node: _, ...p }) => <a {...p} target="_blank" rel="noreferrer" /> }}>
+        {text}
+      </Markdown>
+    </div>
+  );
+}
+
+/** What the agent thought, folded up until clicked (open while it is still thinking). */
+function Thought({ text, open }: { text: string; open?: boolean }) {
+  const { t } = useTranslation();
+  const body = text.trim();
+  if (!body) return null;
+  return (
+    <details className="thought" open={open}>
+      <summary>{t("chat.thoughts")}</summary>
+      <Say text={body} />
+    </details>
+  );
+}
 
 /** The tool calls of one answer, each folded up until clicked: what was asked, what came back, pictures included. */
 function Tools({ tools }: { tools: ToolCall[] }) {
@@ -318,7 +344,8 @@ export function ChatPane({
             <div key={m.id} className={`msg ${m.role}`}>
               <div className="bubble">
                 {m.files && m.files.length > 0 && <Files files={m.files} />}
-                {m.text}
+                {m.thinking && <Thought text={m.thinking} />}
+                {m.role === "assistant" ? m.text && <Say text={m.text} /> : m.text}
                 {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                 {m.change && (
                   <div className="change">
@@ -336,8 +363,9 @@ export function ChatPane({
             {working === "compact" ? (
               <div className="chat-note">{t("chat.compacting")}</div>
             ) : (
-              <div className={`bubble${live.text ? "" : " typing"}`} aria-label={t("chat.thinking")}>
-                {live.text || (
+              <div className={`bubble${live.text || live.thinking ? "" : " typing"}`} aria-label={t("chat.thinking")}>
+                {live.thinking && <Thought text={live.thinking} open={!live.text} />}
+                {live.text ? <Say text={live.text} /> : !live.thinking && (
                   <>
                     <i />
                     <i />

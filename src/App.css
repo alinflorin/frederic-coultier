@@ -209,6 +209,20 @@ fieldset:disabled { opacity: 0.45; }
 .msg { display: flex; }
 .msg.user { justify-content: flex-end; }
 .bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.assistant .bubble { white-space: normal; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 0 0 8px; }
+.md ul, .md ol { padding-left: 20px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 1em; margin: 10px 0 4px; }
+.md code { font-family: var(--mono, monospace); font-size: 0.92em; background: var(--surface); padding: 1px 4px; border-radius: 4px; }
+.md pre { background: var(--surface); padding: 8px; border-radius: 8px; overflow: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--muted); }
+.md table { border-collapse: collapse; } .md th, .md td { border: 1px solid var(--border); padding: 2px 6px; }
+.md a { color: inherit; text-decoration: underline; }
+.thought { margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.thought > summary { cursor: pointer; }
+.thought .md { margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--border); font-style: italic; }
 .msg.user .bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
 .msg.assistant .bubble { background: var(--surface-2); border-bottom-left-radius: 4px; }
 .change { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 8px; font: 12px ui-monospace, Menlo, monospace; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; width: fit-content; }

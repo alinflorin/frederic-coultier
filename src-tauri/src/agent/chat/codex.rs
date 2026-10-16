@@ -232,6 +232,10 @@ impl Engine for Codex {
                 .as_str()
                 .map(|t| vec![Event::Break, Event::Delta(t.into())])
                 .unwrap_or_default(),
+            Some("item.completed") if item["type"] == "reasoning" => item["text"]
+                .as_str()
+                .map(|t| vec![Event::Thought(format!("\n\n{t}"))])
+                .unwrap_or_default(),
             Some("item.completed") if item["type"] == "error" => item["message"]
                 .as_str()
                 .map(|m| vec![Event::Warn(m.into())])

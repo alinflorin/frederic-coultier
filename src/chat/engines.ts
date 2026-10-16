@@ -33,12 +33,14 @@ export interface Reply {
   usage: Usage;
   session: string | null;
   text: string;
+  thinking: string;
   tools: ToolCall[];
   cancelled: boolean;
 }
 
 export type ChatEvent =
   | { kind: "delta"; text: string }
+  | { kind: "thought"; text: string }
   | { kind: "tool"; call: ToolCall }
   | { kind: "toolDone"; id: string; output: ToolPart[]; error: boolean };
 
