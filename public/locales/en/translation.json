@@ -59,9 +59,16 @@
     "placeholder": "Describe your piece or a change…",
     "hint": "Enter to send · Shift+Enter for a new line",
     "send": "Send",
-    "attach": "Attach reference photo",
     "thinking": "Thinking",
-    "mockReply": "Done — I updated the model and re-rendered it. Have a look at the preview and tell me what to adjust."
+    "compact": "Compact",
+    "compactHint": "Replace the agent's memory of this conversation with a short summary it writes itself. The messages stay on screen.",
+    "compacting": "Compacting the conversation…",
+    "compacted": "Conversation compacted",
+    "clear": "Clear",
+    "clearSure": "Click again to clear",
+    "stop": "Stop",
+    "noAgent": "No agent is available. Sign in to Claude Code or Codex, then open Preferences.",
+    "checking": "Checking for agents…"
   },
   "preview": {
     "title": "Preview",
@@ -282,7 +289,11 @@
     "chat": {
       "title": "Agent Chat",
       "enabled": "Enabled",
-      "hint": "Shows the chat panel next to the editor. Off by default."
+      "hint": "Shows a chat panel next to the editor, where Claude or Codex designs with you. It uses the account you are already signed in with on this computer.",
+      "agent": "Agent",
+      "none": "Neither Claude Code nor Codex is signed in on this computer, so the chat cannot be turned on.",
+      "refresh": "Check again",
+      "unavailable": "unavailable"
     },
     "mcp": {
       "title": "Agent connection (MCP)",

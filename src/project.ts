@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from "./defaults";
 import { getPref, setPref } from "./prefs";
-import type { ChatMessage, FcProject, Support, SupportsData } from "./types";
+import type { ChatLog, ChatMessage, FcProject, Support, SupportsData } from "./types";
 
 /** What the Rust side reads from and writes to a .fc file. */
 export interface WireProject {
@@ -36,12 +36,24 @@ function readSupports(raw: unknown): SupportsData {
   return { list, nextId };
 }
 
+/** Older files hold just the list of messages. */
+function readChat(raw: unknown): ChatLog {
+  if (Array.isArray(raw)) return { messages: raw as ChatMessage[] };
+  if (!isObject(raw) || !Array.isArray(raw.messages)) return { messages: [] };
+  const s = raw.session;
+  return {
+    messages: raw.messages as ChatMessage[],
+    session: isObject(s) && typeof s.engine === "string" && typeof s.id === "string" ? { engine: s.engine, id: s.id } : undefined,
+    summary: typeof raw.summary === "string" ? raw.summary : undefined,
+  };
+}
+
 export function fromWire(w: WireProject): FcProject {
   return {
     formatVersion: 1,
     source: w.source,
     settings: mergeDeep(DEFAULT_SETTINGS, w.settings),
-    chat: Array.isArray(w.chat) ? (w.chat as ChatMessage[]) : [],
+    chat: readChat(w.chat),
     supports: readSupports(w.supports),
   };
 }

@@ -1,6 +1,7 @@
 //! The agent side of the app: an MCP server whose tools drive the open project.
 
 pub mod bridge;
+pub mod chat;
 pub mod cli;
 pub mod connect;
 pub mod server;

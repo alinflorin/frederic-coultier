@@ -40,7 +40,7 @@ export function emptyProject(name: string): FcProject {
     formatVersion: 1,
     settings: { ...DEFAULT_SETTINGS, general: { ...DEFAULT_SETTINGS.general, name } },
     source: "// New project\n$fn = 128;\n",
-    chat: [],
+    chat: { messages: [] },
     supports: { list: [], nextId: 1 },
   };
 }
@@ -54,7 +54,7 @@ export function sampleProject(): FcProject {
       general: { name: "Solitaire ring", notes: "EU 54, 5 mm centre stone." },
     },
     source: sampleScad,
-    chat: [
+    chat: { messages: [
       { id: "1", role: "user", text: "A simple solitaire ring with four prongs for a 5 mm round stone, size EU 54." },
       {
         id: "2",
@@ -62,6 +62,6 @@ export function sampleProject(): FcProject {
         text: "Here's a first draft: a 2.4 mm wide, 1.6 mm thick band with a tapered basket and four 0.9 mm prongs. Want a thinner shank or a tapered band?",
         change: { added: 38, removed: 0 },
       },
-    ],
+    ] },
   };
 }

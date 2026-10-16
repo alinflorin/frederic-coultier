@@ -60,10 +60,22 @@ export interface ProjectSettings {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  /** `note` is the app speaking (e.g. "conversation compacted"), not either side. */
+  role: "user" | "assistant" | "note";
   text: string;
+  /** Assistant only: the tools it used while answering, for display. */
+  tools?: string[];
   /** Assistant only: summary of the change made to the source. */
   change?: { added: number; removed: number };
+}
+
+/** The one conversation of a project, and what the agent needs to carry on with it. */
+export interface ChatLog {
+  messages: ChatMessage[];
+  /** The agent's own id for the conversation; only that agent can continue it. */
+  session?: { engine: string; id: string };
+  /** What was kept when the conversation was compacted. */
+  summary?: string;
 }
 
 /** One support contact point, in the model's own coordinates. */
@@ -85,6 +97,6 @@ export interface FcProject {
   formatVersion: 1;
   settings: ProjectSettings;
   source: string; // model.scad
-  chat: ChatMessage[];
+  chat: ChatLog;
   supports: SupportsData;
 }

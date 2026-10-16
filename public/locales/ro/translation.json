@@ -59,9 +59,16 @@
     "placeholder": "Descrie piesa sau o modificare…",
     "hint": "Enter trimite · Shift+Enter rând nou",
     "send": "Trimite",
-    "attach": "Atașează fotografie de referință",
     "thinking": "Se gândește",
-    "mockReply": "Gata — am actualizat modelul și l-am randat din nou. Uită-te la previzualizare și spune-mi ce să ajustez."
+    "compact": "Compactează",
+    "compactHint": "Înlocuiește memoria agentului despre conversație cu un rezumat scris de el. Mesajele rămân pe ecran.",
+    "compacting": "Se compactează conversația…",
+    "compacted": "Conversație compactată",
+    "clear": "Șterge",
+    "clearSure": "Apasă din nou pentru a șterge",
+    "stop": "Oprește",
+    "noAgent": "Niciun agent nu este disponibil. Autentifică-te în Claude Code sau Codex, apoi deschide Preferințele.",
+    "checking": "Se caută agenți…"
   },
   "preview": {
     "title": "Previzualizare",
@@ -282,7 +289,11 @@
     "chat": {
       "title": "Chat agent",
       "enabled": "Activat",
-      "hint": "Afișează panoul de chat lângă editor. Dezactivat implicit."
+      "hint": "Afișează un panou de chat lângă editor, unde Claude sau Codex proiectează împreună cu tine. Folosește contul cu care ești deja autentificat pe acest calculator.",
+      "agent": "Agent",
+      "none": "Nici Claude Code, nici Codex nu sunt autentificate pe acest calculator, deci chat-ul nu poate fi pornit.",
+      "refresh": "Verifică din nou",
+      "unavailable": "indisponibil"
     },
     "mcp": {
       "title": "Conexiune agent (MCP)",

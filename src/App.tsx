@@ -36,6 +36,8 @@ import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
 import type { Viewer } from "./components/viewer/Viewer";
 import { useAgentBridge } from "./agent/useAgentBridge";
+import { listEngines, type EngineInfo } from "./chat/engines";
+import { useAgentChat } from "./chat/useAgentChat";
 import type { AgentApi } from "./agent/ops";
 import "./App.css";
 
@@ -72,7 +74,6 @@ function App() {
   const [dialog, setDialog] = useState<DialogId>(null);
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   // The chat pane is opt-in (Preferences > Agent Chat).
   const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") === true);
   const setChatEnabled = (on: boolean) => {
@@ -80,6 +81,18 @@ function App() {
     setChatEnabledState(on);
     if (!on) setMobilePane((p) => (p === "chat" ? "source" : p));
   };
+  // Which agents can answer (installed and signed in), and which one the user picked.
+  const [engines, setEngines] = useState<EngineInfo[] | null>(null);
+  const [engineChoice, setEngineChoice] = useState(() => getPref<string>("chatEngine") ?? null);
+  const refreshEngines = useCallback(() => listEngines().then(setEngines), []);
+  useEffect(() => {
+    void refreshEngines();
+  }, [refreshEngines]);
+  const setChatEngine = (id: string) => {
+    setPref("chatEngine", id);
+    setEngineChoice(id);
+  };
+  const engine = engines?.find((e) => e.available && e.id === engineChoice) ?? engines?.find((e) => e.available) ?? null;
   const [mobilePane, setMobilePane] = useState<PaneId>("source");
   const [cols, setCols] = useState(() => {
     // chat (middle) stays narrow by default; source and preview share the rest
@@ -116,6 +129,9 @@ function App() {
     },
     [commit],
   );
+
+  const chat = useAgentChat({ projectRef, edit, engine: engine?.id ?? null });
+  const noAgent = engines === null ? t("chat.checking") : engine ? null : t("chat.noAgent");
 
   const load = (p: FcProject, filePath: string | null) => {
     commit(p);
@@ -298,19 +314,6 @@ function App() {
       notify(errorText(e));
     }
   }
-
-  // --- chat (still a canned reply: the AI backend comes later) ---
-  const sendChat = (text: string) => {
-    edit((p) => ({ ...p, chat: [...p.chat, { id: crypto.randomUUID(), role: "user", text }] }));
-    setBusy(true);
-    setTimeout(() => {
-      edit((p) => ({
-        ...p,
-        chat: [...p.chat, { id: crypto.randomUUID(), role: "assistant", text: t("chat.mockReply") }],
-      }));
-      setBusy(false);
-    }, 1400);
-  };
 
   // --- window title, and asking before the window closes with unsaved work ---
   const title = project ? (path ? baseName(path) : t("file.untitled")) : "";
@@ -507,7 +510,21 @@ function App() {
         onChange={(src) => edit((p) => (p.source === src ? p : { ...p, source: src }))}
       />
     ),
-    chat: <ChatPane messages={project.chat} busy={busy} onSend={sendChat} />,
+    chat: (
+      <ChatPane
+        messages={project.chat.messages}
+        live={chat.live}
+        working={chat.working}
+        error={chat.error}
+        agent={engine?.label ?? null}
+        unavailable={noAgent}
+        canCompact={!!project.chat.session && project.chat.session.engine === engine?.id}
+        onSend={chat.send}
+        onStop={chat.stop}
+        onCompact={chat.compact}
+        onClear={chat.clear}
+      />
+    ),
     preview: (
       <PreviewPane
         key={projectId}
@@ -588,7 +605,15 @@ function App() {
           }
         />
       )}
-      {dialog === "prefs" && <PreferencesDialog chatEnabled={chatEnabled} onChatEnabled={setChatEnabled} onClose={() => setDialog(null)} />}
+      {dialog === "prefs" && <PreferencesDialog
+          chatEnabled={chatEnabled}
+          onChatEnabled={setChatEnabled}
+          engines={engines}
+          engine={engine?.id ?? null}
+          onEngine={setChatEngine}
+          onRefreshEngines={refreshEngines}
+          onClose={() => setDialog(null)}
+        />}
       {pending && (
         <ConfirmDialog
           name={title}

@@ -289,6 +289,7 @@ pub fn run() {
         .manage(RenderCache::default())
         .setup(|app| {
             agent::start(app.handle());
+            agent::chat::manage(app.handle());
             Ok(())
         });
 
@@ -305,6 +306,9 @@ pub fn run() {
             agent::connect::mcp_agents,
             agent::kb_search,
             agent::kb_read,
+            agent::chat::chat_engines,
+            agent::chat::chat_send,
+            agent::chat::chat_cancel,
             agent::connect::mcp_connect,
             open_project,
             save_project,

@@ -1,16 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
+import type { EngineInfo } from "../chat/engines";
 import { Dialog } from "./Dialog";
 import { McpPrefs } from "./McpPrefs";
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română" };
 
 /** App-wide preferences, as opposed to the settings stored in a project. */
-export function PreferencesDialog({ chatEnabled, onChatEnabled, onClose }: { chatEnabled: boolean; onChatEnabled: (on: boolean) => void; onClose: () => void }) {
+export function PreferencesDialog({
+  chatEnabled,
+  onChatEnabled,
+  engines,
+  engine,
+  onEngine,
+  onRefreshEngines,
+  onClose,
+}: {
+  chatEnabled: boolean;
+  onChatEnabled: (on: boolean) => void;
+  /** The agents that could answer in the chat; null until they have been looked up. */
+  engines: EngineInfo[] | null;
+  engine: string | null;
+  onEngine: (id: string) => void;
+  onRefreshEngines: () => void;
+  onClose: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const [theme, setThemeState] = useState<Theme>(getTheme);
+  // someone may have signed in since the app started
+  useEffect(() => {
+    onRefreshEngines();
+  }, [onRefreshEngines]);
+  const usable = engines?.some((e) => e.available) ?? false;
   return (
     <Dialog
       wide
@@ -55,9 +78,31 @@ export function PreferencesDialog({ chatEnabled, onChatEnabled, onClose }: { cha
       <label className="field">
         <span className="field-label">{t("prefs.chat.enabled")}</span>
         <span className="field-input">
-          <input type="checkbox" checked={chatEnabled} onChange={(e) => onChatEnabled(e.currentTarget.checked)} />
+          <input
+            type="checkbox"
+            checked={chatEnabled}
+            disabled={!chatEnabled && !usable}
+            onChange={(e) => onChatEnabled(e.currentTarget.checked)}
+          />
         </span>
       </label>
+      <label className="field">
+        <span className="field-label">{t("prefs.chat.agent")}</span>
+        <span className="field-input">
+          <select value={engine ?? ""} disabled={!usable} onChange={(e) => onEngine(e.currentTarget.value)}>
+            {(engines ?? []).map((e) => (
+              <option key={e.id} value={e.id} disabled={!e.available}>
+                {e.label} — {e.available ? e.detail : t("prefs.chat.unavailable")}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={onRefreshEngines}>{t("prefs.chat.refresh")}</button>
+        </span>
+      </label>
+      {engines && !usable && <p className="muted">{t("prefs.chat.none")}</p>}
+      {engines?.filter((e) => !e.available).map((e) => (
+        <p key={e.id} className="muted">{e.label}: {e.detail}</p>
+      ))}
       <p className="muted">{t("prefs.chat.hint")}</p>
 
       <h3>{t("prefs.mcp.title")}</h3>
