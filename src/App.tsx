@@ -560,6 +560,8 @@ function App() {
         unavailable={noAgent}
         models={models}
         model={override.model ?? ""}
+        modelDefault={models.find((m) => m.id === pref.model)?.label ?? ""}
+        effortDefault={settle(override.model ?? pref.model, pref.effort).effort}
         efforts={active.efforts}
         effort={override.effort ?? ""}
         onModel={(model) => setOverride({ model: model || undefined, effort: undefined })}

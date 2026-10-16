@@ -88,9 +88,10 @@
     "tooBig": "{{name}} is too big (15 MB at most)",
     "noPdf": "{{agent}} cannot read PDF files",
     "model": "Model",
-    "default": "App default",
+    "default": "Agent default",
+    "defaultNamed": "{{name}} (app default)",
     "effort": "Thinking level",
-    "effortDefault": "App default"
+    "effortDefault": "Agent default"
   },
   "preview": {
     "title": "Preview",

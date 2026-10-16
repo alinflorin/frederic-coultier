@@ -88,9 +88,10 @@
     "tooBig": "{{name}} e prea mare (maximum 15 MB)",
     "noPdf": "{{agent}} nu poate citi fișiere PDF",
     "model": "Model",
-    "default": "Implicit aplicație",
+    "default": "Implicit agent",
+    "defaultNamed": "{{name}} (implicit aplicație)",
     "effort": "Nivel de gândire",
-    "effortDefault": "Implicit aplicație"
+    "effortDefault": "Implicit agent"
   },
   "preview": {
     "title": "Previzualizare",

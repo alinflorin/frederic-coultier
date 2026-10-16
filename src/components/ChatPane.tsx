@@ -99,6 +99,8 @@ export function ChatPane({
   canCompact,
   models,
   model,
+  modelDefault,
+  effortDefault,
   efforts,
   effort,
   onModel,
@@ -134,6 +136,10 @@ export function ChatPane({
   models: ModelInfo[];
   /** The picked model, "" for the agent's own choice. */
   model: string;
+  /** Name of the model Preferences picked, "" if it leaves the choice to the agent. */
+  modelDefault: string;
+  /** Likewise for the thinking level that applies to the model on show. */
+  effortDefault: string;
   efforts: string[];
   effort: string;
   onModel: (id: string) => void;
@@ -216,7 +222,7 @@ export function ChatPane({
           <span className="grow" />
         {models.length > 0 && (
           <select className="chat-pick" aria-label={t("chat.model")} title={t("chat.model")} value={model} disabled={busy} onChange={(e) => onModel(e.currentTarget.value)}>
-            <option value="">{t("chat.default")}</option>
+            <option value="">{modelDefault ? t("chat.defaultNamed", { name: modelDefault }) : t("chat.default")}</option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
@@ -224,7 +230,7 @@ export function ChatPane({
         )}
         {efforts.length > 0 && (
           <select className="chat-pick" aria-label={t("chat.effort")} title={t("chat.effort")} value={effort} disabled={busy} onChange={(e) => onEffort(e.currentTarget.value)}>
-            <option value="">{t("chat.effortDefault")}</option>
+            <option value="">{effortDefault ? t("chat.defaultNamed", { name: effortDefault }) : t("chat.effortDefault")}</option>
             {efforts.map((l) => (
               <option key={l} value={l}>{l}</option>
             ))}
