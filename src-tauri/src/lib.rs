@@ -303,7 +303,6 @@ pub fn run() {
             agent::mcp_status,
             agent::mcp_configure,
             agent::connect::mcp_agents,
-            agent::kb_files,
             agent::kb_search,
             agent::kb_read,
             agent::connect::mcp_connect,

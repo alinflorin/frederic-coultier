@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { inTauri } from "../api";
 import { Dialog } from "./Dialog";
@@ -10,10 +10,6 @@ interface Hit {
   start: number;
   end: number;
   snippet: string;
-}
-interface KbFile {
-  path: string;
-  sub: string;
 }
 /** A piece of a document: prose, or a fenced block with its language. */
 type Part = { code: false; text: string } | { code: true; lang: string; text: string };
@@ -63,15 +59,9 @@ function LoadButton({ code, onLoad }: { code: string; onLoad: ((code: string) =>
 export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void) | null; onClose: () => void }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const [files, setFiles] = useState<KbFile[]>([]);
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [open, setOpen] = useState<{ path: string; text: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!inTauri()) return;
-    invoke<KbFile[]>("kb_files").then(setFiles, (e) => setProblem(errorText(e)));
-  }, []);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -94,12 +84,6 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
       setProblem(errorText(e));
     }
   }
-
-  const folders = useMemo(() => {
-    const m = new Map<string, KbFile[]>();
-    for (const f of files) m.set(f.sub, [...(m.get(f.sub) ?? []), f]);
-    return [...m.entries()];
-  }, [files]);
 
   const doc = open && (open.path.toLowerCase().endsWith(".scad") ? [{ code: true, lang: "scad", text: open.text } as Part] : parts(open.text));
 
@@ -153,19 +137,8 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
                 </button>
               ))
             )
-          ) : files.length === 0 ? (
-            <p className="muted note">{t("kb.empty")}</p>
           ) : (
-            folders.map(([sub, list]) => (
-              <section key={sub}>
-                <h3>{sub || t("kb.topLevel")}</h3>
-                {list.map((f) => (
-                  <button key={f.path} className="kb-file" onClick={() => show(f.path)}>
-                    {f.path.slice(sub ? sub.length + 1 : 0)}
-                  </button>
-                ))}
-              </section>
-            ))
+            <p className="muted note">{t("kb.hint")}</p>
           )}
         </>
       )}

@@ -206,25 +206,6 @@ pub struct KbHit {
     pub snippet: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct KbFile {
-    pub path: String,
-    pub sub: String,
-}
-
-/// Every file of the knowledge base, for browsing.
-#[tauri::command]
-pub async fn kb_files() -> Vec<KbFile> {
-    cli::kb::baked()()
-        .docs
-        .iter()
-        .map(|d| KbFile {
-            path: d.rel.clone(),
-            sub: d.sub.clone(),
-        })
-        .collect()
-}
-
 /// The best passages for a query, at most two per file.
 #[tauri::command]
 pub async fn kb_search(query: String) -> Vec<KbHit> {
