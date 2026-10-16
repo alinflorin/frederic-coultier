@@ -363,9 +363,9 @@ export function ChatPane({
             {working === "compact" ? (
               <div className="chat-note">{t("chat.compacting")}</div>
             ) : (
-              <div className={`bubble${live.text || live.thinking ? "" : " typing"}`} aria-label={t("chat.thinking")}>
-                {live.thinking && <Thought text={live.thinking} open={!live.text} />}
-                {live.text ? <Say text={live.text} /> : !live.thinking && (
+              <div className={`bubble${live.text || live.thinking.trim() ? "" : " typing"}`} aria-label={t("chat.thinking")}>
+                {live.thinking.trim() && <Thought text={live.thinking} open={!live.text} />}
+                {live.text ? <Say text={live.text} /> : !live.thinking.trim() && (
                   <>
                     <i />
                     <i />

@@ -294,6 +294,8 @@ mod tests {
         assert_eq!(c.parse(start), vec![Event::Break]);
         let delta = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}}"#;
         assert_eq!(c.parse(delta), vec![Event::Delta("Hello".into())]);
+        let th = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}}"#;
+        assert_eq!(c.parse(th), vec![Event::Thought("hmm".into())]);
         let tool = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"x"},{"type":"tool_use","id":"t1","name":"mcp__fc__exec_fc","input":{"args":"look front"}}]}}"#;
         assert_eq!(
             c.parse(tool),

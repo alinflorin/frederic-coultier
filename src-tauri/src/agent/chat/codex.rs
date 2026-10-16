@@ -150,6 +150,8 @@ impl Engine for Codex {
                 format!("model_reasoning_effort={}", Value::String(e.into())),
             ]);
         }
+        // ask for the reasoning summaries, so there is something to show while it thinks
+        args.extend(["-c".into(), "model_reasoning_summary=\"auto\"".into()]);
         args.extend(["--json", "--skip-git-repo-check"].map(String::from));
         // pictures are handed over as files; the rest is text that goes into the prompt
         let pics = subdir(paths, "codex-files")?;
