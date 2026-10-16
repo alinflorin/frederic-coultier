@@ -14,7 +14,7 @@ use super::{
 
 pub struct Codex;
 
-fn config(url: &str) -> String {
+fn config(url: &str, instructions: &str) -> String {
     let features = [
         "shell_tool",
         "unified_exec",
@@ -26,8 +26,10 @@ fn config(url: &str) -> String {
         "computer_use",
         "goals",
     ];
-    let mut s = String::from(
-        "# written by the app before every run\nsandbox_mode = \"read-only\"\napproval_policy = \"never\"\n\n[features]\n",
+    // a JSON string is a valid TOML string; it has to come before the first table
+    let mut s = format!(
+        "# written by the app before every run\nsandbox_mode = \"read-only\"\napproval_policy = \"never\"\ndeveloper_instructions = {}\n\n[features]\n",
+        Value::String(instructions.into())
     );
     for f in features {
         s.push_str(&format!("{f} = false\n"));
@@ -126,11 +128,11 @@ impl Engine for Codex {
     fn prepare(&self, turn: &Turn, paths: &Paths) -> Result<Invocation, String> {
         let home = subdir(paths, "codex-home")?;
         let work = subdir(paths, "codex-work")?;
-        std::fs::write(home.join("config.toml"), config(turn.mcp_url))
-            .map_err(|e| format!("could not write the Codex settings: {e}"))?;
-        // Codex reads AGENTS.md from its home as standing instructions
-        std::fs::write(home.join("AGENTS.md"), turn.instructions)
-            .map_err(|e| format!("could not write the Codex instructions: {e}"))?;
+        std::fs::write(
+            home.join("config.toml"),
+            config(turn.mcp_url, turn.instructions),
+        )
+        .map_err(|e| format!("could not write the Codex settings: {e}"))?;
         share(&paths.codex_home.join("auth.json"), &home.join("auth.json"))?;
 
         let mut args: Vec<String> = vec!["exec".into()];
@@ -324,7 +326,7 @@ mod tests {
 
     #[test]
     fn the_config_has_our_server_alone_and_no_shell() {
-        let cfg = config("http://127.0.0.1:45555/mcp");
+        let cfg = config("http://127.0.0.1:45555/mcp", "line one\n\"quoted\" \\ two");
         let v: toml_edit_free::Doc = toml_edit_free::parse(&cfg);
         assert_eq!(v.servers, vec!["fc"]);
         assert!(cfg.contains("shell_tool = false") && cfg.contains("sandbox_mode = \"read-only\""));
@@ -368,9 +370,10 @@ mod tests {
         assert_eq!(inv.stdin, "hello");
         let home = &inv.env.iter().find(|(k, _)| k == "CODEX_HOME").unwrap().1;
         assert!(Path::new(home).join("config.toml").is_file());
-        assert_eq!(
-            std::fs::read_to_string(Path::new(home).join("AGENTS.md")).unwrap(),
-            "THE MANUAL"
+        let cfg = std::fs::read_to_string(Path::new(home).join("config.toml")).unwrap();
+        assert!(
+            cfg.contains("developer_instructions = \"THE MANUAL\""),
+            "{cfg}"
         );
         assert!(
             Path::new(home).join("auth.json").exists(),
