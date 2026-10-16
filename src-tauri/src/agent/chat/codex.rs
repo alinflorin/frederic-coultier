@@ -9,7 +9,8 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::{
-    Engine, Event, Invocation, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    Engine, Event, Invocation, Kind, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    with_text_files,
 };
 
 pub struct Codex;
@@ -149,12 +150,31 @@ impl Engine for Codex {
                 format!("model_reasoning_effort={}", Value::String(e.into())),
             ]);
         }
-        args.extend(["--json", "--skip-git-repo-check", "-"].map(String::from));
+        args.extend(["--json", "--skip-git-repo-check"].map(String::from));
+        // pictures are handed over as files; the rest is text that goes into the prompt
+        let pics = subdir(paths, "codex-files")?;
+        for old in std::fs::read_dir(&pics).into_iter().flatten().flatten() {
+            let _ = std::fs::remove_file(old.path());
+        }
+        for (i, f) in turn.files.iter().enumerate() {
+            match f.kind()? {
+                Kind::Image => {
+                    let ext = f.mime.rsplit('/').next().unwrap_or("png");
+                    let file = pics.join(format!("{i}.{ext}"));
+                    std::fs::write(&file, f.bytes()?)
+                        .map_err(|e| format!("could not write {}: {e}", file.display()))?;
+                    args.extend(["-i".into(), file.to_string_lossy().into_owned()]);
+                }
+                Kind::Pdf => return Err(format!("Codex cannot read PDF files ({})", f.name)),
+                Kind::Text(_) => {}
+            }
+        }
+        args.push("-".into());
         Ok(Invocation {
             args,
             env: vec![("CODEX_HOME".into(), home.to_string_lossy().into_owned())],
             dir: work,
-            stdin: turn.prompt.to_string(),
+            stdin: with_text_files(turn.prompt, turn.files)?,
         })
     }
 
@@ -356,6 +376,7 @@ mod tests {
             effort: Some("high"),
             instructions: "THE MANUAL",
             prompt: "hello",
+            files: &[],
             session: Some("t9"),
             mcp_url: "http://127.0.0.1:1/mcp",
         };

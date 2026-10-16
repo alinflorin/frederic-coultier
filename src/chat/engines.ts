@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { inTauri } from "../api";
-import type { ToolCall, ToolPart } from "../types";
+import type { Attached, ToolCall, ToolPart } from "../types";
 
 /** An agent that could answer in the chat panel. */
 export interface EngineInfo {
@@ -50,7 +50,8 @@ export const sendToEngine = (
   session: string | null,
   model: string,
   effort: string,
-) => invoke<Reply>("chat_send", { engineId, prompt, session, model, effort });
+  files: Attached[] = [],
+) => invoke<Reply>("chat_send", { engineId, prompt, files, session, model, effort });
 
 export const stopEngine = () => invoke("chat_cancel");
 

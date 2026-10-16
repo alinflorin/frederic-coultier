@@ -557,6 +557,7 @@ function App() {
         onModel={(model) => setOverride({ model: model || undefined, effort: undefined })}
         onEffort={(effort) => setOverride({ effort: effort || undefined })}
         canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
+        pdf={engine?.id === "claude"}
         onSend={chat.send}
         onStop={chat.stop}
         onCompact={chat.compact}

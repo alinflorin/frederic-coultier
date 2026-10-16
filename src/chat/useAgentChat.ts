@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
+import type { Attached, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
 import { inTauri } from "../api";
 import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
@@ -122,7 +122,7 @@ export function useAgentChat({
   );
 
   /** Runs one turn against the agent; the caller decides what its text becomes. */
-  async function turn(prompt: string, kind: "answer" | "compact") {
+  async function turn(prompt: string, kind: "answer" | "compact", files: Attached[] = []) {
     const c = logRef.current;
     const session = c.session?.engine === engine ? c.session.id : null;
     busy.current = true;
@@ -130,7 +130,7 @@ export function useAgentChat({
     setWorking(kind);
     setLive({ text: "", tools: [] });
     try {
-      const r = await sendToEngine(engine!, prompt, session, model, effort);
+      const r = await sendToEngine(engine!, prompt, session, model, effort, files);
       if (r.session) patch((c) => ({ ...c, session: { engine: engine!, id: r.session! } }));
       return r;
     } finally {
@@ -140,16 +140,18 @@ export function useAgentChat({
     }
   }
 
-  const send = async (text: string) => {
+  const send = async (text: string, files: Attached[] = []) => {
     const p = projectRef.current;
     if (!p || !engine || busy.current) return;
     const c = logRef.current;
     const known = c.session?.engine === engine;
     const prompt = known ? text : opening(text, c.summary, c.messages);
-    add({ role: "user", text });
+    // the saved conversation keeps pictures to show again, but not other files
+    const kept = files.map((f) => (f.mime.startsWith("image/") ? f : { name: f.name, mime: f.mime }));
+    add({ role: "user", text, files: kept.length ? kept : undefined });
     const before = p.source;
     try {
-      const r = await turn(prompt, "answer");
+      const r = await turn(prompt, "answer", files);
       const change = lineChange(before, projectRef.current!.source);
       const changed = change.added + change.removed > 0;
       const said = r.cancelled ? `${r.text}${r.text ? "\n\n" : ""}…` : r.text;

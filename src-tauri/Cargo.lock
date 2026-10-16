@@ -1297,6 +1297,7 @@ name = "frederic-coultier"
 version = "0.1.1"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "include_dir",
  "meshopt-rs",
  "openrscad-eval",

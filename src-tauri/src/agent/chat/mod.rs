@@ -13,7 +13,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
@@ -112,6 +112,65 @@ pub struct ModelInfo {
     pub efforts: Vec<String>,
 }
 
+/// A file the user attached to a message.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Attachment {
+    pub name: String,
+    pub mime: String,
+    /// The bytes, base64.
+    pub data: String,
+}
+
+/// What an attachment is, as far as the agents are concerned.
+pub enum Kind {
+    Image,
+    Pdf,
+    /// A text file, already read.
+    Text(String),
+}
+
+const MAX_FILE: usize = 15_000_000;
+const MAX_FILE_TEXT: usize = 200_000;
+
+impl Attachment {
+    pub fn bytes(&self) -> Result<Vec<u8>, String> {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD
+            .decode(&self.data)
+            .map_err(|_| format!("{} could not be read", self.name))
+    }
+
+    pub fn kind(&self) -> Result<Kind, String> {
+        if self.data.len() > MAX_FILE {
+            return Err(format!("{} is too big to send", self.name));
+        }
+        match self.mime.as_str() {
+            "image/png" | "image/jpeg" | "image/gif" | "image/webp" => Ok(Kind::Image),
+            "application/pdf" => Ok(Kind::Pdf),
+            _ => {
+                let text = String::from_utf8(self.bytes()?).map_err(|_| {
+                    format!("{}: this kind of file cannot be sent to an agent", self.name)
+                })?;
+                if text.len() > MAX_FILE_TEXT {
+                    return Err(format!("{} is too long to send as text", self.name));
+                }
+                Ok(Kind::Text(text))
+            }
+        }
+    }
+}
+
+/// The prompt with the text files put in front of it.
+pub fn with_text_files(prompt: &str, files: &[Attachment]) -> Result<String, String> {
+    let mut out = String::new();
+    for f in files {
+        if let Kind::Text(t) = f.kind()? {
+            out.push_str(&format!("Attached file \"{}\":\n````\n{t}\n````\n\n", f.name));
+        }
+    }
+    Ok(out + prompt)
+}
+
 pub struct Turn<'a> {
     /// The model to use; the CLI's own choice if `None`.
     pub model: Option<&'a str>,
@@ -120,6 +179,7 @@ pub struct Turn<'a> {
     /// The manual of `fc`, put in the agent's standing instructions.
     pub instructions: &'a str,
     pub prompt: &'a str,
+    pub files: &'a [Attachment],
     /// Continue this conversation, if the engine knows it.
     pub session: Option<&'a str>,
     pub mcp_url: &'a str,
@@ -438,6 +498,7 @@ enum Wire<'a> {
 pub async fn chat_send(
     engine_id: String,
     prompt: String,
+    files: Option<Vec<Attachment>>,
     session: Option<String>,
     model: Option<String>,
     effort: Option<String>,
@@ -481,6 +542,7 @@ pub async fn chat_send(
         effort: effort.as_deref().filter(|m| !m.is_empty()),
         instructions: &instructions,
         prompt: &prompt,
+        files: files.as_deref().unwrap_or(&[]),
         session: session.as_deref(),
         mcp_url: &url,
     };
@@ -548,6 +610,25 @@ pub(crate) fn subdir(paths: &Paths, name: &str) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn attachments_are_sorted_by_what_they_are() {
+        let a = |name: &str, mime: &str, bytes: &[u8]| {
+            use base64::Engine as _;
+            Attachment {
+                name: name.into(),
+                mime: mime.into(),
+                data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            }
+        };
+        assert!(matches!(a("a.png", "image/png", b"x").kind(), Ok(Kind::Image)));
+        assert!(matches!(a("a.pdf", "application/pdf", b"x").kind(), Ok(Kind::Pdf)));
+        let t = a("a.scad", "", b"cube(1);");
+        assert!(matches!(t.kind(), Ok(Kind::Text(ref s)) if s == "cube(1);"));
+        assert!(a("a.bin", "application/zip", &[0xff, 0xfe, 0x00]).kind().is_err());
+        let p = with_text_files("hi", &[t]).unwrap();
+        assert!(p.contains("a.scad") && p.contains("cube(1);") && p.ends_with("hi"));
+    }
+
     use super::*;
     use crate::agent::bridge::mock::Mock;
 
@@ -600,6 +681,7 @@ mod tests {
                 effort: None,
                 instructions: "The secret code in these instructions is ZEBRA42.",
                 prompt: "Remember the word PINEAPPLE. Call exec_fc with args \"help\" once, then reply with just OK. Do not call anything else.",
+                files: &[],
                 session: None,
                 mcp_url: &url,
             };
@@ -617,6 +699,7 @@ mod tests {
                 effort: None,
                 instructions: "The secret code in these instructions is ZEBRA42.",
                 prompt: "Which word did I ask you to remember, and what is the secret code in your instructions? Give both.",
+                files: &[],
                 session: r1.session.as_deref(),
                 mcp_url: &url,
             };

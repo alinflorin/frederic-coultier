@@ -3,12 +3,34 @@
 use serde_json::{Value, json};
 
 use super::{
-    Engine, Event, Invocation, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    Engine, Event, Invocation, Kind, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    with_text_files,
 };
 
 pub struct Claude;
 
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// The user's message as one line of Claude's stream-json input.
+fn message(turn: &Turn) -> Result<String, String> {
+    let mut content = Vec::new();
+    for f in turn.files {
+        match f.kind()? {
+            Kind::Image => content.push(json!({
+                "type": "image",
+                "source": { "type": "base64", "media_type": f.mime, "data": f.data },
+            })),
+            Kind::Pdf => content.push(json!({
+                "type": "document",
+                "source": { "type": "base64", "media_type": "application/pdf", "data": f.data },
+            })),
+            Kind::Text(_) => {}
+        }
+    }
+    let text = with_text_files(turn.prompt, turn.files)?;
+    content.push(json!({ "type": "text", "text": text }));
+    Ok(json!({ "type": "user", "message": { "role": "user", "content": content } }).to_string() + "\n")
+}
 
 impl Engine for Claude {
     fn id(&self) -> &'static str {
@@ -100,11 +122,18 @@ impl Engine for Claude {
             args.push("--resume".into());
             args.push(id.into());
         }
+        let stdin = if turn.files.is_empty() {
+            turn.prompt.to_string()
+        } else {
+            // pictures and PDFs need the structured input; the CLI reads one message per line
+            args.extend(["--input-format", "stream-json"].map(String::from));
+            message(turn)?
+        };
         Ok(Invocation {
             args,
             env: Vec::new(),
             dir,
-            stdin: turn.prompt.to_string(),
+            stdin,
         })
     }
 
@@ -266,6 +295,33 @@ mod tests {
     }
 
     #[test]
+    fn pictures_and_text_files_go_in_one_structured_message() {
+        use super::super::Attachment;
+        let f = |name: &str, mime: &str, data: &str| Attachment {
+            name: name.into(),
+            mime: mime.into(),
+            data: data.into(),
+        };
+        let files = [f("a.png", "image/png", "aGk="), f("n.txt", "text/plain", "aGk=")];
+        let t = Turn {
+            model: None,
+            effort: None,
+            instructions: "",
+            prompt: "look",
+            files: &files,
+            session: None,
+            mcp_url: "http://127.0.0.1:1/mcp",
+        };
+        let inv = Claude.prepare(&t, &paths()).unwrap();
+        assert!(inv.args.join(" ").contains("--input-format stream-json"));
+        let v: Value = serde_json::from_str(inv.stdin.trim()).unwrap();
+        let c = v["message"]["content"].as_array().unwrap();
+        assert_eq!(c[0]["type"], "image");
+        assert_eq!(c[0]["source"]["data"], "aGk=");
+        assert!(c[1]["text"].as_str().unwrap().contains("n.txt"));
+    }
+
+    #[test]
     fn only_our_server_and_no_tools_of_its_own() {
         let p = paths();
         let t = Turn {
@@ -273,6 +329,7 @@ mod tests {
             effort: Some("high"),
             instructions: "THE MANUAL",
             prompt: "hi \"there\"",
+            files: &[],
             session: Some("s1"),
             mcp_url: "http://127.0.0.1:1/mcp",
         };

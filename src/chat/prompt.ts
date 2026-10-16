@@ -17,7 +17,10 @@ export function opening(text: string, summary: string | undefined, earlier: Chat
     const lines = earlier
       .filter((m) => m.role !== "note")
       .slice(-KEEP)
-      .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text.slice(0, CLIP)}`);
+      .map((m) => {
+        const files = m.files?.length ? ` [attached: ${m.files.map((f) => f.name).join(", ")}]` : "";
+        return `${m.role === "user" ? "User" : "You"}: ${m.text.slice(0, CLIP)}${files}`;
+      });
     context = `The conversation so far (another assistant may have said some of it):\n${lines.join("\n")}\n\n`;
   }
   return `${PREFACE}\n\n${context}${text}`;

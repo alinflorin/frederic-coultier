@@ -70,11 +70,21 @@ export interface ToolCall {
   done: boolean;
 }
 
+/** A file attached to a message. */
+export interface Attached {
+  name: string;
+  mime: string;
+  /** Base64; dropped from the saved conversation unless it is a picture. */
+  data?: string;
+}
+
 export interface ChatMessage {
   id: string;
   /** `note` is the app speaking (e.g. "conversation compacted"), not either side. */
   role: "user" | "assistant" | "note";
   text: string;
+  /** User only: files sent along. Pictures keep their bytes (base64) so they can be shown again. */
+  files?: Attached[];
   /** Assistant only: the tools it used while answering, for display. */
   tools?: ToolCall[];
   /** Assistant only: summary of the change made to the source. */
