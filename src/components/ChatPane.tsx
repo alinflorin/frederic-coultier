@@ -1,15 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Live } from "../chat/useAgentChat";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, ToolCall } from "../types";
 import { Icon } from "./Icon";
 
-/** "exec_fc ×3, read_instructions" */
-const toolSummary = (tools: string[]) => {
-  const n = new Map<string, number>();
-  for (const t of tools) n.set(t, (n.get(t) ?? 0) + 1);
-  return [...n].map(([t, c]) => (c > 1 ? `${t} ×${c}` : t)).join(", ");
-};
+/** The tool calls of one answer, each folded up until clicked: what was asked, what came back, pictures included. */
+function Tools({ tools }: { tools: ToolCall[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="tools">
+      {tools.map((c, i) => (
+        <details key={c.id || i} className={`tool${c.error ? " failed" : ""}`}>
+          <summary>
+            <span className="tool-name">{c.name}</span>
+            {c.input && <span className="tool-arg">{c.input.split("\n")[0]}</span>}
+            {!c.done && <span className="tool-wait">…</span>}
+          </summary>
+          {c.input && <pre className="tool-in">{c.input}</pre>}
+          {c.output.map((p, j) =>
+            p.type === "text" ? (
+              <pre key={j} className="tool-out">{p.text}</pre>
+            ) : (
+              <img key={j} className="tool-img" alt={t("chat.picture")} src={`data:${p.mime};base64,${p.data}`} />
+            ),
+          )}
+        </details>
+      ))}
+    </div>
+  );
+}
 
 export function ChatPane({
   messages,
@@ -109,7 +128,7 @@ export function ChatPane({
             <div key={m.id} className={`msg ${m.role}`}>
               <div className="bubble">
                 {m.text}
-                {m.tools && <div className="tools">{toolSummary(m.tools)}</div>}
+                {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                 {m.change && (
                   <div className="change">
                     <Icon name="code" size={13} /> model.scad
@@ -134,7 +153,7 @@ export function ChatPane({
                     <i />
                   </>
                 )}
-                {live.tools.length > 0 && <div className="tools">{toolSummary(live.tools)}</div>}
+                {live.tools.length > 0 && <Tools tools={live.tools} />}
               </div>
             )}
           </div>

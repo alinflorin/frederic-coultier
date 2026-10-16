@@ -30,13 +30,68 @@ pub enum Event {
     /// A new paragraph of the reply starts (a gap is added if there is text already).
     Break,
     /// The agent called one of our tools.
-    Tool(String),
+    ToolStart(ToolCall),
+    /// The tool answered (matched to its call by `id`).
+    ToolEnd {
+        id: String,
+        output: Vec<Part>,
+        error: bool,
+    },
     /// Something went wrong that may or may not matter; kept in case the run ends badly.
     Warn(String),
     /// The turn ended well.
     Done,
     /// The turn ended badly.
     Failed(String),
+}
+
+/// A piece of what a tool answered.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Part {
+    Text { text: String },
+    Image { mime: String, data: String },
+}
+
+/// One use of a tool, for the chat to show.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    /// What the agent asked for, as text.
+    pub input: String,
+    pub output: Vec<Part>,
+    pub error: bool,
+    pub done: bool,
+}
+
+/// Longest text kept of a tool's answer, and biggest picture (base64), so a project file stays small.
+const MAX_TEXT: usize = 20_000;
+const MAX_IMAGE: usize = 1_500_000;
+
+fn trimmed(parts: Vec<Part>) -> Vec<Part> {
+    parts
+        .into_iter()
+        .map(|p| match p {
+            Part::Text { text } if text.chars().count() > MAX_TEXT => Part::Text {
+                text: text.chars().take(MAX_TEXT).collect::<String>() + "\n… (cut)",
+            },
+            Part::Image { data, .. } if data.len() > MAX_IMAGE => Part::Text {
+                text: "(picture left out: too large)".into(),
+            },
+            p => p,
+        })
+        .collect()
+}
+
+/// How a tool's arguments read in the chat: `exec_fc`'s command line as it is, anything else as JSON.
+pub(crate) fn input_text(args: &serde_json::Value) -> String {
+    match args.get("args").and_then(|a| a.as_str()) {
+        Some(a) if args.as_object().is_some_and(|o| o.len() == 1) => a.to_string(),
+        _ if args.is_null() || args.as_object().is_some_and(|o| o.is_empty()) => String::new(),
+        _ => args.to_string(),
+    }
 }
 
 /// Where the engines may work.
@@ -200,7 +255,7 @@ pub async fn chat_engines(app: AppHandle) -> Result<Vec<EngineInfo>, String> {
 pub struct Reply {
     pub session: Option<String>,
     pub text: String,
-    pub tools: Vec<String>,
+    pub tools: Vec<ToolCall>,
     pub cancelled: bool,
 }
 
@@ -274,7 +329,21 @@ async fn drive(
                     emit(&Event::Delta(d));
                     continue;
                 }
-                Event::Tool(t) => reply.tools.push(t.clone()),
+                Event::ToolStart(call) => reply.tools.push(call.clone()),
+                Event::ToolEnd { id, output, error } => {
+                    let Some(call) = reply.tools.iter_mut().find(|c| &c.id == id) else {
+                        continue;
+                    };
+                    call.output = trimmed(output.clone());
+                    call.error = *error;
+                    call.done = true;
+                    emit(&Event::ToolEnd {
+                        id: id.clone(),
+                        output: call.output.clone(),
+                        error: *error,
+                    });
+                    continue;
+                }
                 Event::Warn(w) => warn = Some(w.clone()),
                 Event::Done => done = true,
                 Event::Failed(f) => failed = Some(f.clone()),
@@ -301,9 +370,21 @@ async fn drive(
 pub struct Running(Mutex<Option<CancellationToken>>);
 
 #[derive(Clone, Serialize)]
-struct Wire<'a> {
-    kind: &'a str,
-    text: &'a str,
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum Wire<'a> {
+    Delta {
+        text: &'a str,
+    },
+    /// A tool call began.
+    Tool {
+        call: &'a ToolCall,
+    },
+    /// It ended; `call` is the whole call, as it will be kept.
+    ToolDone {
+        id: &'a str,
+        output: &'a [Part],
+        error: bool,
+    },
 }
 
 /// Sends one message to the agent and waits for its whole answer. What it says is also sent as
@@ -333,12 +414,17 @@ pub async fn chat_send(
         *slot = Some(cancel.clone());
     }
     let emit = |ev: &Event| {
-        let (kind, text) = match ev {
-            Event::Delta(t) => ("delta", t.as_str()),
-            Event::Tool(t) => ("tool", t.as_str()),
+        let wire = match ev {
+            Event::Delta(text) => Wire::Delta { text },
+            Event::ToolStart(call) => Wire::Tool { call },
+            Event::ToolEnd { id, output, error } => Wire::ToolDone {
+                id,
+                output,
+                error: *error,
+            },
             _ => return,
         };
-        let _ = app.emit("chat-event", Wire { kind, text });
+        let _ = app.emit("chat-event", wire);
     };
     let turn = Turn {
         prompt: &prompt,
@@ -358,6 +444,44 @@ pub fn chat_cancel(running: State<'_, Running>) {
     }
 }
 
+/// Where the conversation about a project file is kept: with the app, never inside the project.
+fn history_file(paths: &Paths, key: &str) -> Result<PathBuf, String> {
+    // FNV-1a: the same name for the same path on every run
+    let hash = key.bytes().fold(0xcbf29ce484222325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    });
+    Ok(subdir(paths, "history")?.join(format!("{hash:016x}.json")))
+}
+
+/// The saved conversation of the project at `key` (its path), if there is one.
+#[tauri::command]
+pub fn chat_load(key: String, app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    let file = history_file(&paths(&app)?, &key)?;
+    match std::fs::read(&file) {
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes).ok()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("could not read {}: {e}", file.display())),
+    }
+}
+
+/// Keeps the conversation of the project at `key`; `None` forgets it.
+#[tauri::command]
+pub fn chat_save(
+    key: String,
+    log: Option<serde_json::Value>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let file = history_file(&paths(&app)?, &key)?;
+    match log {
+        None => {
+            let _ = std::fs::remove_file(&file);
+            Ok(())
+        }
+        Some(v) => std::fs::write(&file, v.to_string())
+            .map_err(|e| format!("could not write {}: {e}", file.display())),
+    }
+}
+
 pub fn manage(app: &AppHandle) {
     app.manage(Running::default());
 }
@@ -373,6 +497,19 @@ pub(crate) fn subdir(paths: &Paths, name: &str) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use crate::agent::bridge::mock::Mock;
+
+    #[test]
+    fn a_conversation_is_filed_under_its_project_path() {
+        let p = Paths {
+            private: std::env::temp_dir().join(format!("fc-hist-{}", std::process::id())),
+            codex_home: PathBuf::new(),
+        };
+        let a = history_file(&p, "/home/a/ring.fc").unwrap();
+        assert_eq!(a, history_file(&p, "/home/a/ring.fc").unwrap());
+        assert_ne!(a, history_file(&p, "/home/a/band.fc").unwrap());
+        assert!(a.starts_with(&p.private));
+        let _ = std::fs::remove_dir_all(&p.private);
+    }
 
     /// Talks to the real, signed-in CLIs on this computer: `cargo test -- --ignored --nocapture real_agents`.
     #[tokio::test]
@@ -409,7 +546,11 @@ mod tests {
                 .await
                 .unwrap();
             eprintln!("{} first: {r1:?}", e.id());
-            assert!(r1.session.is_some() && !r1.text.is_empty() && !r1.tools.is_empty());
+            assert!(
+                r1.session.is_some()
+                    && !r1.text.is_empty()
+                    && r1.tools.iter().all(|t| t.done && !t.output.is_empty())
+            );
             let second = Turn {
                 prompt: "Which word did I ask you to remember? One word.",
                 session: r1.session.as_deref(),

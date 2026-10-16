@@ -8,7 +8,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Engine, Event, Invocation, Paths, Turn, subdir};
+use super::{Engine, Event, Invocation, Part, Paths, ToolCall, Turn, input_text, subdir};
 
 pub struct Codex;
 
@@ -128,10 +128,26 @@ impl Engine for Codex {
                 .as_str()
                 .map(|id| vec![Event::Session(id.into())])
                 .unwrap_or_default(),
-            Some("item.started") if item["type"] == "mcp_tool_call" => item["tool"]
-                .as_str()
-                .map(|t| vec![Event::Tool(t.into())])
-                .unwrap_or_default(),
+            Some("item.started") if item["type"] == "mcp_tool_call" => {
+                vec![Event::ToolStart(ToolCall {
+                    id: item["id"].as_str().unwrap_or_default().into(),
+                    name: item["tool"].as_str().unwrap_or("tool").into(),
+                    input: input_text(&item["arguments"]),
+                    ..Default::default()
+                })]
+            }
+            Some("item.completed") if item["type"] == "mcp_tool_call" => {
+                let failed = item["status"] == "failed" || !item["error"].is_null();
+                let mut output = parts(&item["result"]["content"]);
+                if let Some(m) = item["error"]["message"].as_str() {
+                    output.push(Part::Text { text: m.into() });
+                }
+                vec![Event::ToolEnd {
+                    id: item["id"].as_str().unwrap_or_default().into(),
+                    output,
+                    error: failed,
+                }]
+            }
             // a whole message at a time, not word by word
             Some("item.completed") if item["type"] == "agent_message" => item["text"]
                 .as_str()
@@ -157,6 +173,24 @@ impl Engine for Codex {
     }
 }
 
+fn parts(content: &Value) -> Vec<Part> {
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|b| match b["type"].as_str()? {
+            "text" => Some(Part::Text {
+                text: b["text"].as_str()?.into(),
+            }),
+            "image" => Some(Part::Image {
+                mime: b["mimeType"].as_str()?.into(),
+                data: b["data"].as_str()?.into(),
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,7 +213,29 @@ mod tests {
             vec![Event::Session("t1".into())]
         );
         let call = r#"{"type":"item.started","item":{"id":"i","type":"mcp_tool_call","server":"fc","tool":"exec_fc","status":"in_progress"}}"#;
-        assert_eq!(c.parse(call), vec![Event::Tool("exec_fc".into())]);
+        assert_eq!(
+            c.parse(call),
+            vec![Event::ToolStart(ToolCall {
+                id: "i".into(),
+                name: "exec_fc".into(),
+                ..Default::default()
+            })]
+        );
+        let done = r#"{"type":"item.completed","item":{"id":"i","type":"mcp_tool_call","tool":"exec_fc","result":{"content":[{"type":"text","text":"ok"},{"type":"image","data":"AAAA","mimeType":"image/png"}]},"error":null,"status":"completed"}}"#;
+        assert_eq!(
+            c.parse(done),
+            vec![Event::ToolEnd {
+                id: "i".into(),
+                output: vec![
+                    Part::Text { text: "ok".into() },
+                    Part::Image {
+                        mime: "image/png".into(),
+                        data: "AAAA".into()
+                    }
+                ],
+                error: false
+            }]
+        );
         let msg = r#"{"type":"item.completed","item":{"type":"agent_message","text":"Hi"}}"#;
         assert_eq!(c.parse(msg), vec![Event::Break, Event::Delta("Hi".into())]);
         assert_eq!(

@@ -130,7 +130,7 @@ function App() {
     [commit],
   );
 
-  const chat = useAgentChat({ projectRef, edit, engine: engine?.id ?? null });
+  const chat = useAgentChat({ projectRef, engine: engine?.id ?? null, path, projectId });
   const noAgent = engines === null ? t("chat.checking") : engine ? null : t("chat.noAgent");
 
   const load = (p: FcProject, filePath: string | null) => {
@@ -512,13 +512,13 @@ function App() {
     ),
     chat: (
       <ChatPane
-        messages={project.chat.messages}
+        messages={chat.log.messages}
         live={chat.live}
         working={chat.working}
         error={chat.error}
         agent={engine?.label ?? null}
         unavailable={noAgent}
-        canCompact={!!project.chat.session && project.chat.session.engine === engine?.id}
+        canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
         onSend={chat.send}
         onStop={chat.stop}
         onCompact={chat.compact}

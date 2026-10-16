@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 
-use super::{Engine, Event, Invocation, Paths, Turn, subdir};
+use super::{Engine, Event, Invocation, Part, Paths, ToolCall, Turn, input_text, subdir};
 
 pub struct Claude;
 
@@ -102,8 +102,26 @@ impl Engine for Claude {
                 .into_iter()
                 .flatten()
                 .filter(|b| b["type"] == "tool_use")
-                .filter_map(|b| b["name"].as_str())
-                .map(|n| Event::Tool(n.strip_prefix("mcp__fc__").unwrap_or(n).into()))
+                .map(|b| {
+                    let n = b["name"].as_str().unwrap_or("tool");
+                    Event::ToolStart(ToolCall {
+                        id: b["id"].as_str().unwrap_or_default().into(),
+                        name: n.strip_prefix("mcp__fc__").unwrap_or(n).into(),
+                        input: input_text(&b["input"]),
+                        ..Default::default()
+                    })
+                })
+                .collect(),
+            Some("user") => v["message"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|b| b["type"] == "tool_result")
+                .map(|b| Event::ToolEnd {
+                    id: b["tool_use_id"].as_str().unwrap_or_default().into(),
+                    output: parts(&b["content"]),
+                    error: b["is_error"].as_bool() == Some(true),
+                })
                 .collect(),
             Some("result") => {
                 if v["is_error"].as_bool() == Some(true) {
@@ -116,6 +134,28 @@ impl Engine for Claude {
             _ => Vec::new(),
         }
     }
+}
+
+/// A tool result's content: plain text, or blocks of text and pictures.
+fn parts(content: &Value) -> Vec<Part> {
+    if let Some(t) = content.as_str() {
+        return vec![Part::Text { text: t.into() }];
+    }
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|b| match b["type"].as_str()? {
+            "text" => Some(Part::Text {
+                text: b["text"].as_str()?.into(),
+            }),
+            "image" => Some(Part::Image {
+                mime: b["source"]["media_type"].as_str()?.into(),
+                data: b["source"]["data"].as_str()?.into(),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -139,8 +179,31 @@ mod tests {
         assert_eq!(c.parse(start), vec![Event::Break]);
         let delta = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}}"#;
         assert_eq!(c.parse(delta), vec![Event::Delta("Hello".into())]);
-        let tool = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"x"},{"type":"tool_use","name":"mcp__fc__exec_fc","input":{}}]}}"#;
-        assert_eq!(c.parse(tool), vec![Event::Tool("exec_fc".into())]);
+        let tool = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"x"},{"type":"tool_use","id":"t1","name":"mcp__fc__exec_fc","input":{"args":"look front"}}]}}"#;
+        assert_eq!(
+            c.parse(tool),
+            vec![Event::ToolStart(ToolCall {
+                id: "t1".into(),
+                name: "exec_fc".into(),
+                input: "look front".into(),
+                ..Default::default()
+            })]
+        );
+        let result = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"ok"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}}"#;
+        assert_eq!(
+            c.parse(result),
+            vec![Event::ToolEnd {
+                id: "t1".into(),
+                output: vec![
+                    Part::Text { text: "ok".into() },
+                    Part::Image {
+                        mime: "image/png".into(),
+                        data: "AAAA".into()
+                    }
+                ],
+                error: false
+            }]
+        );
         assert_eq!(
             c.parse(r#"{"type":"result","is_error":false,"result":"ok"}"#),
             vec![Event::Done]

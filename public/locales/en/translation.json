@@ -68,7 +68,8 @@
     "clearSure": "Click again to clear",
     "stop": "Stop",
     "noAgent": "No agent is available. Sign in to Claude Code or Codex, then open Preferences.",
-    "checking": "Checking for agents…"
+    "checking": "Checking for agents…",
+    "picture": "Picture from the tool"
   },
   "preview": {
     "title": "Preview",

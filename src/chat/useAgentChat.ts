@@ -1,30 +1,86 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { ChatLog, ChatMessage, FcProject } from "../types";
-import { onChatEvent, sendToEngine, stopEngine } from "./engines";
+import type { ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
+import { inTauri } from "../api";
+import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
 
 /** The answer being written right now. */
 export interface Live {
   text: string;
-  tools: string[];
+  tools: ToolCall[];
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
 const id = () => crypto.randomUUID();
 
+const EMPTY: ChatLog = { messages: [] };
+
+const isLog = (v: unknown): v is ChatLog =>
+  typeof v === "object" && v !== null && Array.isArray((v as ChatLog).messages);
+
 /**
- * The chat with the agent: one conversation per project, kept in the project. `engine` is the
- * agent that answers; a conversation started with another one is carried over as text.
+ * The chat with the agent: one conversation per project file. It is kept by the app (filed under
+ * the project's path), never inside the .fc file. `engine` is the agent that answers; a
+ * conversation started with another one is carried over as text.
  */
 export function useAgentChat({
   projectRef,
-  edit,
   engine,
+  path,
+  projectId,
 }: {
   projectRef: MutableRefObject<FcProject | null>;
-  edit: (fn: (p: FcProject) => FcProject) => void;
   engine: string | null;
+  /** Where the project lives on disk; null while it has never been saved. */
+  path: string | null;
+  /** Changes whenever a different project is loaded. */
+  projectId: number;
 }) {
+  const [log, setLog] = useState<ChatLog>(EMPTY);
+  const logRef = useRef<ChatLog>(EMPTY);
+  const pathRef = useRef(path);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const store = useCallback((next: ChatLog) => {
+    logRef.current = next;
+    setLog(next);
+    clearTimeout(saveTimer.current);
+    const key = pathRef.current;
+    if (!key || !inTauri()) return;
+    saveTimer.current = setTimeout(() => {
+      saveChat(key, next.messages.length ? next : null).catch(() => {});
+    }, 400);
+  }, []);
+
+  // another project: its conversation, if it has one
+  useEffect(() => {
+    pathRef.current = path;
+    store(EMPTY);
+    clearTimeout(saveTimer.current);
+    if (!path || !inTauri()) return;
+    let stale = false;
+    loadChat(path).then(
+      (v) => {
+        if (!stale && isLog(v) && logRef.current.messages.length === 0) {
+          logRef.current = v;
+          setLog(v);
+        }
+      },
+      () => {},
+    );
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // saved under another name: the conversation goes along
+  useEffect(() => {
+    if (pathRef.current === path) return;
+    pathRef.current = path;
+    store(logRef.current);
+  }, [path, store]);
+
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<"answer" | "compact" | null>(null);
@@ -37,7 +93,12 @@ export function useAgentChat({
     onChatEvent((e) => {
       setLive((l) => {
         if (!l) return l;
-        return e.kind === "delta" ? { ...l, text: l.text + e.text } : { ...l, tools: [...l.tools, e.text] };
+        if (e.kind === "delta") return { ...l, text: l.text + e.text };
+        if (e.kind === "tool") return { ...l, tools: [...l.tools, e.call] };
+        return {
+          ...l,
+          tools: l.tools.map((c) => (c.id === e.id ? { ...c, output: e.output, error: e.error, done: true } : c)),
+        };
       });
     }).then(
       (f) => (gone ? f() : (off = f)),
@@ -49,10 +110,7 @@ export function useAgentChat({
     };
   }, []);
 
-  const patch = useCallback(
-    (fn: (c: ChatLog) => ChatLog) => edit((p) => ({ ...p, chat: fn(p.chat) })),
-    [edit],
-  );
+  const patch = useCallback((fn: (c: ChatLog) => ChatLog) => store(fn(logRef.current)), [store]);
   const add = useCallback(
     (m: Omit<ChatMessage, "id">) => patch((c) => ({ ...c, messages: [...c.messages, { id: id(), ...m }] })),
     [patch],
@@ -60,7 +118,7 @@ export function useAgentChat({
 
   /** Runs one turn against the agent; the caller decides what its text becomes. */
   async function turn(prompt: string, kind: "answer" | "compact") {
-    const c = projectRef.current!.chat;
+    const c = logRef.current;
     const session = c.session?.engine === engine ? c.session.id : null;
     busy.current = true;
     setError(null);
@@ -80,8 +138,9 @@ export function useAgentChat({
   const send = async (text: string) => {
     const p = projectRef.current;
     if (!p || !engine || busy.current) return;
-    const known = p.chat.session?.engine === engine;
-    const prompt = known ? text : opening(text, p.chat.summary, p.chat.messages);
+    const c = logRef.current;
+    const known = c.session?.engine === engine;
+    const prompt = known ? text : opening(text, c.summary, c.messages);
     add({ role: "user", text });
     const before = p.source;
     try {
@@ -99,7 +158,7 @@ export function useAgentChat({
 
   /** Replaces the agent's memory of the conversation with a summary it writes itself. */
   const compact = async () => {
-    const c = projectRef.current?.chat;
+    const c = logRef.current;
     if (!engine || busy.current || !c?.session || c.session.engine !== engine) return;
     try {
       const r = await turn(COMPACT_PROMPT, "compact");
@@ -125,5 +184,5 @@ export function useAgentChat({
     stopEngine().catch(() => {});
   };
 
-  return { live, error, working, send, compact, clear, stop };
+  return { log, live, error, working, send, compact, clear, stop };
 }

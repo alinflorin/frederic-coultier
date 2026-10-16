@@ -309,6 +309,8 @@ pub fn run() {
             agent::chat::chat_engines,
             agent::chat::chat_send,
             agent::chat::chat_cancel,
+            agent::chat::chat_load,
+            agent::chat::chat_save,
             agent::connect::mcp_connect,
             open_project,
             save_project,

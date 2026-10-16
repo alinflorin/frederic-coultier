@@ -58,18 +58,30 @@ export interface ProjectSettings {
   };
 }
 
+export type ToolPart = { type: "text"; text: string } | { type: "image"; mime: string; data: string };
+
+/** One use of a tool by the agent: what it asked and what came back. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: string;
+  output: ToolPart[];
+  error: boolean;
+  done: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   /** `note` is the app speaking (e.g. "conversation compacted"), not either side. */
   role: "user" | "assistant" | "note";
   text: string;
   /** Assistant only: the tools it used while answering, for display. */
-  tools?: string[];
+  tools?: ToolCall[];
   /** Assistant only: summary of the change made to the source. */
   change?: { added: number; removed: number };
 }
 
-/** The one conversation of a project, and what the agent needs to carry on with it. */
+/** The conversation about a project, and what the agent needs to carry on with it. Kept by the app, not in the .fc file. */
 export interface ChatLog {
   messages: ChatMessage[];
   /** The agent's own id for the conversation; only that agent can continue it. */
@@ -97,6 +109,5 @@ export interface FcProject {
   formatVersion: 1;
   settings: ProjectSettings;
   source: string; // model.scad
-  chat: ChatLog;
   supports: SupportsData;
 }

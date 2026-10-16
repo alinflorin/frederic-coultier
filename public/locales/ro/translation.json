@@ -68,7 +68,8 @@
     "clearSure": "Apasă din nou pentru a șterge",
     "stop": "Oprește",
     "noAgent": "Niciun agent nu este disponibil. Autentifică-te în Claude Code sau Codex, apoi deschide Preferințele.",
-    "checking": "Se caută agenți…"
+    "checking": "Se caută agenți…",
+    "picture": "Imagine de la unealtă"
   },
   "preview": {
     "title": "Previzualizare",
