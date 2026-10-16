@@ -39,6 +39,8 @@ pub enum Event {
     },
     /// Something went wrong that may or may not matter; kept in case the run ends badly.
     Warn(String),
+    /// How full the conversation is and how much of the plan is used up.
+    Usage(Usage),
     /// The turn ended well.
     Done,
     /// The turn ended badly.
@@ -221,6 +223,10 @@ pub trait Engine: Send + Sync {
     fn prepare(&self, turn: &Turn, paths: &Paths) -> Result<Invocation, String>;
     /// Reads one line of output.
     fn parse(&self, line: &str) -> Vec<Event>;
+    /// What the engine keeps on record about a conversation, for CLIs that do not print it.
+    fn usage(&self, _paths: &Paths, _session: &str) -> Option<Usage> {
+        None
+    }
     /// Called after a run, to put back anything `prepare` set aside.
     fn finish(&self, _paths: &Paths) {}
 }
@@ -354,6 +360,38 @@ pub async fn chat_engines(app: AppHandle) -> Result<Vec<EngineInfo>, String> {
     Ok(out)
 }
 
+/// A usage limit of the account: a share of a time window.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Limit {
+    /// "5h", "weekly".
+    pub label: String,
+    /// 0 to 100.
+    pub percent: f64,
+    /// Unix seconds when the window starts over.
+    pub resets_at: Option<i64>,
+}
+
+/// What the agent said about its own load; each engine fills in what it knows.
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    /// Tokens the conversation takes up now.
+    pub context_used: Option<u64>,
+    pub context_window: Option<u64>,
+    pub limits: Vec<Limit>,
+}
+
+impl Usage {
+    fn merge(&mut self, o: Usage) {
+        self.context_used = o.context_used.or(self.context_used);
+        self.context_window = o.context_window.or(self.context_window);
+        if !o.limits.is_empty() {
+            self.limits = o.limits;
+        }
+    }
+}
+
 /// What a finished turn left behind.
 #[derive(Debug, Default, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -362,6 +400,7 @@ pub struct Reply {
     pub text: String,
     pub tools: Vec<ToolCall>,
     pub cancelled: bool,
+    pub usage: Usage,
 }
 
 /// Runs one turn to its end. `emit` hears everything as it happens.
@@ -373,8 +412,13 @@ pub async fn run(
     emit: &(dyn Fn(&Event) + Send + Sync),
 ) -> Result<Reply, String> {
     let inv = e.prepare(turn, paths)?;
-    let result = drive(e, inv, cancel, emit).await;
+    let mut result = drive(e, inv, cancel, emit).await;
     e.finish(paths);
+    if let Ok(r) = &mut result {
+        if let Some(u) = r.session.as_deref().and_then(|s| e.usage(paths, s)) {
+            r.usage.merge(u);
+        }
+    }
     result
 }
 
@@ -447,6 +491,10 @@ async fn drive(
                         output: call.output.clone(),
                         error: *error,
                     });
+                    continue;
+                }
+                Event::Usage(u) => {
+                    reply.usage.merge(u.clone());
                     continue;
                 }
                 Event::Warn(w) => warn = Some(w.clone()),

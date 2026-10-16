@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 
 use super::{
-    Engine, Event, Invocation, Kind, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    Engine, Event, Invocation, Kind, Limit, ModelInfo, Part, Paths, ToolCall, Turn, Usage, input_text, subdir,
     with_text_files,
 };
 
@@ -160,21 +160,56 @@ impl Engine for Claude {
                     _ => Vec::new(),
                 }
             }
-            Some("assistant") => v["message"]["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|b| b["type"] == "tool_use")
-                .map(|b| {
-                    let n = b["name"].as_str().unwrap_or("tool");
-                    Event::ToolStart(ToolCall {
-                        id: b["id"].as_str().unwrap_or_default().into(),
-                        name: n.strip_prefix("mcp__fc__").unwrap_or(n).into(),
-                        input: input_text(&b["input"]),
-                        ..Default::default()
+            Some("rate_limit_event") => {
+                let windows = &v["rate_limit_info"]["unifiedWindows"];
+                let limits: Vec<Limit> = [("five_hour", "5h"), ("seven_day", "weekly")]
+                    .into_iter()
+                    .filter_map(|(key, label)| {
+                        Some(Limit {
+                            label: label.into(),
+                            percent: windows[key]["utilization"].as_f64()? * 100.0,
+                            resets_at: windows[key]["resetsAt"].as_i64(),
+                        })
                     })
-                })
-                .collect(),
+                    .collect();
+                vec![Event::Usage(Usage {
+                    limits,
+                    ..Default::default()
+                })]
+            }
+            Some("assistant") => {
+                let u = &v["message"]["usage"];
+                let n = |k: &str| u[k].as_u64().unwrap_or(0);
+                let mut out: Vec<Event> = Vec::new();
+                if u.is_object() {
+                    out.push(Event::Usage(Usage {
+                        context_used: Some(
+                            n("input_tokens")
+                                + n("cache_read_input_tokens")
+                                + n("cache_creation_input_tokens")
+                                + n("output_tokens"),
+                        ),
+                        ..Default::default()
+                    }));
+                }
+                out.extend(
+                    v["message"]["content"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|b| b["type"] == "tool_use")
+                        .map(|b| {
+                            let n = b["name"].as_str().unwrap_or("tool");
+                            Event::ToolStart(ToolCall {
+                                id: b["id"].as_str().unwrap_or_default().into(),
+                                name: n.strip_prefix("mcp__fc__").unwrap_or(n).into(),
+                                input: input_text(&b["input"]),
+                                ..Default::default()
+                            })
+                        }),
+                );
+                out
+            }
             Some("user") => v["message"]["content"]
                 .as_array()
                 .into_iter()
@@ -191,7 +226,16 @@ impl Engine for Claude {
                     let why = v["result"].as_str().unwrap_or("the agent failed");
                     vec![Event::Failed(why.into())]
                 } else {
-                    vec![Event::Done]
+                    let window = v["modelUsage"]
+                        .as_object()
+                        .and_then(|m| m.values().find_map(|u| u["contextWindow"].as_u64()));
+                    vec![
+                        Event::Usage(Usage {
+                            context_window: window,
+                            ..Default::default()
+                        }),
+                        Event::Done,
+                    ]
                 }
             }
             _ => Vec::new(),
@@ -268,8 +312,27 @@ mod tests {
             }]
         );
         assert_eq!(
-            c.parse(r#"{"type":"result","is_error":false,"result":"ok"}"#),
-            vec![Event::Done]
+            c.parse(r#"{"type":"result","is_error":false,"result":"ok","modelUsage":{"m":{"contextWindow":1000}}}"#),
+            vec![
+                Event::Usage(Usage {
+                    context_window: Some(1000),
+                    ..Default::default()
+                }),
+                Event::Done
+            ]
+        );
+        let rl = r#"{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.57,"resetsAt":5},"seven_day":{"utilization":0.13,"resetsAt":9}}}}"#;
+        let Event::Usage(u) = &c.parse(rl)[0] else { panic!() };
+        assert_eq!(u.limits.len(), 2);
+        assert_eq!((u.limits[0].label.as_str(), u.limits[0].resets_at), ("5h", Some(5)));
+        assert!((u.limits[1].percent - 13.0).abs() < 1e-9);
+        let a = r#"{"type":"assistant","message":{"usage":{"input_tokens":2,"cache_read_input_tokens":10,"cache_creation_input_tokens":100,"output_tokens":5},"content":[]}}"#;
+        assert_eq!(
+            c.parse(a),
+            vec![Event::Usage(Usage {
+                context_used: Some(117),
+                ..Default::default()
+            })]
         );
         assert_eq!(
             c.parse(r#"{"type":"result","is_error":true,"result":"Not logged in"}"#),
@@ -278,7 +341,6 @@ mod tests {
         for noise in [
             "",
             "not json",
-            r#"{"type":"rate_limit_event"}"#,
             r#"{"type":"user"}"#,
         ] {
             assert!(c.parse(noise).is_empty(), "{noise}");

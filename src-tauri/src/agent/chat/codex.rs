@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::{
-    Engine, Event, Invocation, Kind, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+    Engine, Event, Invocation, Kind, Limit, ModelInfo, Part, Paths, ToolCall, Turn, Usage, input_text, subdir,
     with_text_files,
 };
 
@@ -178,6 +178,12 @@ impl Engine for Codex {
         })
     }
 
+    fn usage(&self, paths: &Paths, session: &str) -> Option<Usage> {
+        let file = find_rollout(&paths.private.join("codex-home").join("sessions"), session)?;
+        let text = std::fs::read_to_string(file).ok()?;
+        read_usage(&text)
+    }
+
     fn finish(&self, paths: &Paths) {
         // where the sign-in had to be copied, Codex may have refreshed the copy
         let mine = paths.private.join("codex-home").join("auth.json");
@@ -262,6 +268,54 @@ fn parts(content: &Value) -> Vec<Part> {
             _ => None,
         })
         .collect()
+}
+
+/// Codex's record of a conversation, `rollout-<time>-<session>.jsonl`, in dated folders.
+fn find_rollout(dir: &Path, session: &str) -> Option<std::path::PathBuf> {
+    let suffix = format!("{session}.jsonl");
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            if let Some(found) = find_rollout(&p, session) {
+                return Some(found);
+            }
+        } else if p.file_name().is_some_and(|n| n.to_string_lossy().ends_with(&suffix)) {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// The last `token_count` of a record: the size of the conversation and the account's limits.
+fn read_usage(record: &str) -> Option<Usage> {
+    let v = record
+        .lines()
+        .rev()
+        .filter(|l| l.contains("\"token_count\""))
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["payload"]["info"].is_object())?;
+    let p = &v["payload"];
+    let limit = |w: &Value| {
+        let minutes = w["window_minutes"].as_i64()?;
+        Some(Limit {
+            label: match minutes {
+                300 => "5h".into(),
+                10080 => "weekly".into(),
+                m if m % 60 == 0 => format!("{}h", m / 60),
+                m => format!("{m}m"),
+            },
+            percent: w["used_percent"].as_f64()?,
+            resets_at: w["resets_at"].as_i64(),
+        })
+    };
+    Some(Usage {
+        context_used: p["info"]["last_token_usage"]["total_tokens"].as_u64(),
+        context_window: p["info"]["model_context_window"].as_u64(),
+        limits: [&p["rate_limits"]["primary"], &p["rate_limits"]["secondary"]]
+            .into_iter()
+            .filter_map(limit)
+            .collect(),
+    })
 }
 
 #[cfg(test)]
@@ -366,6 +420,18 @@ mod tests {
                 .collect();
             Doc { servers }
         }
+    }
+
+    #[test]
+    fn usage_comes_from_the_last_token_count() {
+        let record = r#"{"payload":{"type":"token_count","info":null}}
+{"payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":22558},"model_context_window":475000},"rate_limits":{"primary":{"used_percent":5.0,"window_minutes":300,"resets_at":10},"secondary":{"used_percent":21.0,"window_minutes":10080,"resets_at":20}}}}
+{"payload":{"type":"token_count","info":null}}"#;
+        let u = read_usage(record).unwrap();
+        assert_eq!((u.context_used, u.context_window), (Some(22558), Some(475000)));
+        assert_eq!(u.limits.len(), 2);
+        assert_eq!((u.limits[0].label.as_str(), u.limits[0].percent), ("5h", 5.0));
+        assert_eq!(u.limits[1].label, "weekly");
     }
 
     #[test]

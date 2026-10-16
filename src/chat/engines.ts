@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { inTauri } from "../api";
-import type { Attached, ToolCall, ToolPart } from "../types";
+import type { Attached, Limit, ToolCall, ToolPart } from "../types";
 
 /** An agent that could answer in the chat panel. */
 export interface EngineInfo {
@@ -23,7 +23,14 @@ export interface ModelInfo {
   efforts: string[];
 }
 
+export interface Usage {
+  contextUsed: number | null;
+  contextWindow: number | null;
+  limits: Limit[];
+}
+
 export interface Reply {
+  usage: Usage;
   session: string | null;
   text: string;
   tools: ToolCall[];

@@ -554,6 +554,8 @@ function App() {
         agent={engine?.label ?? null}
         engines={engines ?? []}
         engineId={engine?.id ?? ""}
+        context={chat.log.context}
+        limits={chat.limits}
         onEngine={setChatEngine}
         unavailable={noAgent}
         models={models}

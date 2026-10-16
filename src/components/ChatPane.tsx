@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
-import type { Attached, ChatLog, ChatMessage, ToolCall } from "../types";
+import type { Attached, ChatLog, Limit, ChatMessage, ToolCall } from "../types";
 import { Icon } from "./Icon";
 
 /** The tool calls of one answer, each folded up until clicked: what was asked, what came back, pictures included. */
@@ -68,6 +68,20 @@ function Files({ files, onRemove }: { files: Attached[]; onRemove?: (i: number) 
   );
 }
 
+/** A small bar with a number: how much of something is used up. */
+function Meter({ label, percent, title }: { label: string; percent: number; title: string }) {
+  const p = Math.max(0, Math.min(100, percent));
+  return (
+    <span className={`meter${p >= 95 ? " full" : p >= 80 ? " high" : ""}`} title={title}>
+      <span className="meter-label">{label}</span>
+      <span className="meter-bar">
+        <i style={{ width: `${p}%` }} />
+      </span>
+      <span className="meter-num">{Math.round(percent)}%</span>
+    </span>
+  );
+}
+
 export function ChatPane({
   conversations,
   activeId,
@@ -79,6 +93,8 @@ export function ChatPane({
   engines,
   engineId,
   onEngine,
+  context,
+  limits,
   unavailable,
   canCompact,
   models,
@@ -108,6 +124,10 @@ export function ChatPane({
   engineId: string;
   /** Switches the agent for the whole app, not just this project. */
   onEngine: (id: string) => void;
+  /** How full the conversation is, if the agent said. */
+  context?: ChatLog["context"];
+  /** The account's plan limits, if the agent said. */
+  limits: Limit[];
   /** Why nobody can answer, if so. */
   unavailable: string | null;
   canCompact: boolean;
@@ -170,6 +190,10 @@ export function ChatPane({
       setProblem(t("chat.attach"));
     }
   }
+
+  const usedContext = context && context.engine === engineId && context.window > 0 ? context : null;
+  // a window that has started over since the agent last said is no use
+  const shownLimits = limits.filter((l) => !l.resetsAt || l.resetsAt * 1000 > Date.now());
 
   const suggestions = [t("chat.s1"), t("chat.s2"), t("chat.s3")];
 
@@ -239,6 +263,25 @@ export function ChatPane({
         </button>
         </div>
       </div>
+      {(usedContext || shownLimits.length > 0) && (
+        <div className="chat-usage">
+          {usedContext && (
+            <Meter
+              label={t("chat.context")}
+              percent={(usedContext.used / usedContext.window) * 100}
+              title={t("chat.contextHint", { used: usedContext.used.toLocaleString(), window: usedContext.window.toLocaleString() })}
+            />
+          )}
+          {shownLimits.map((l) => (
+            <Meter
+              key={l.label}
+              label={l.label === "5h" ? t("chat.limit5h") : l.label === "weekly" ? t("chat.limitWeek") : l.label}
+              percent={l.percent}
+              title={l.resetsAt ? t("chat.resets", { when: new Date(l.resetsAt * 1000).toLocaleString() }) : t("chat.limit")}
+            />
+          ))}
+        </div>
+      )}
       <div className="messages" role="log" aria-live="polite">
         {messages.length === 0 && !live && (
           <div className="chat-empty">

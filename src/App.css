@@ -418,3 +418,9 @@ fieldset:disabled { opacity: 0.45; }
 .chat-bars .chat-bar { border-bottom: 0; }
 .chat-bars .chat-bar + .chat-bar { padding-top: 0; }
 .chat-convo { flex: 1 1 0; max-width: none; }
+.chat-usage { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 4px 10px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); flex: none; }
+.meter { display: inline-flex; align-items: center; gap: 5px; }
+.meter-bar { width: 44px; height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.meter-bar i { display: block; height: 100%; background: var(--accent, currentColor); }
+.meter.high .meter-bar i { background: #d9a400; }
+.meter.full .meter-bar i { background: var(--danger, #c0392b); }

@@ -70,6 +70,16 @@ export interface ToolCall {
   done: boolean;
 }
 
+/** A share of a time window of the account's plan that is used up. */
+export interface Limit {
+  /** "5h", "weekly". */
+  label: string;
+  /** 0 to 100. */
+  percent: number;
+  /** Unix seconds when it starts over. */
+  resetsAt: number | null;
+}
+
 /** A file attached to a message. */
 export interface Attached {
   name: string;
@@ -101,6 +111,8 @@ export interface ChatLog {
   messages: ChatMessage[];
   /** The agent's own id for the conversation; only that agent can continue it. */
   session?: { engine: string; id: string };
+  /** How much of the agent's memory the conversation takes up, as of its last answer. */
+  context?: { engine: string; used: number; window: number };
   /** What was kept when the conversation was compacted. */
   summary?: string;
 }

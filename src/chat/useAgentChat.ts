@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { Attached, ChatBook, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
+import type { Limit as ChatLimit, Attached, ChatBook, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
 import { inTauri } from "../api";
+import { getPref, setPref } from "../prefs";
 import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
 import { freshBook, freshLog, portableBook, mergeBooks, readBook, titleOf } from "./book";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
@@ -96,6 +97,13 @@ export function useAgentChat({
     store(bookRef.current, false);
   }, [path, store]);
 
+  // the account's limits, as last reported by the agent in use; they only change when it answers
+  type Limits = ChatLimit[];
+  const [limits, setLimits] = useState<Limits>([]);
+  useEffect(() => {
+    setLimits(engine ? (getPref<Record<string, Limits>>("chatLimits") ?? {})[engine] ?? [] : []);
+  }, [engine]);
+
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<"answer" | "compact" | null>(null);
@@ -156,6 +164,16 @@ export function useAgentChat({
     try {
       const r = await sendToEngine(engine!, prompt, session, model, effort, files);
       if (r.session) patch((c) => ({ ...c, session: { engine: engine!, id: r.session! } }));
+      const u = r.usage;
+      if (u?.contextUsed != null && kind === "answer") {
+        const window = u.contextWindow ?? (logRef.current.context?.engine === engine ? logRef.current.context.window : 0);
+        if (window > 0) patch((c) => ({ ...c, context: { engine: engine!, used: u.contextUsed!, window } }));
+      }
+      if (u?.limits?.length) {
+        const next = { ...(getPref<Record<string, Limits>>("chatLimits") ?? {}), [engine!]: u.limits };
+        setPref("chatLimits", next);
+        setLimits(u.limits);
+      }
       return r;
     } finally {
       busy.current = false;
@@ -196,6 +214,7 @@ export function useAgentChat({
         ...c,
         summary: r.text.trim(),
         session: undefined,
+        context: undefined,
         messages: [...c.messages, { id: id(), role: "note", text: "compacted" }],
       }));
     } catch (e) {
@@ -231,5 +250,5 @@ export function useAgentChat({
     stopEngine().catch(() => {});
   };
 
-  return { book, log, live, error, working, send, compact, select, create, remove, stop };
+  return { limits, book, log, live, error, working, send, compact, select, create, remove, stop };
 }
