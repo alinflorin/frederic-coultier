@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { FcProject, ShadingMode } from "../types";
+import type { Attached, FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
 import { Viewer, type Section, type ViewerStats } from "./viewer/Viewer";
 import { Gizmo } from "./viewer/Gizmo";
+import { Annotator } from "./viewer/Annotator";
 import type { Diagnostic, PrintLayout, RenderError } from "../api";
 import { Icon } from "./Icon";
 
@@ -31,6 +32,7 @@ export function PreviewPane({
   onPatchRender,
   onStats,
   onViewer,
+  onAnnotated,
 }: {
   project: FcProject;
   render: RenderState;
@@ -46,6 +48,8 @@ export function PreviewPane({
   onStats: (s: ViewerStats | null) => void;
   /** The 3D viewer, once it exists (null again when it goes away). */
   onViewer?: (v: Viewer | null) => void;
+  /** Drawing on the view to show the agent: given, the tool is offered and its picture goes here. */
+  onAnnotated?: (picture: Attached) => void;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -59,6 +63,7 @@ export function PreviewPane({
   const [turntable, setTurntable] = useState(false);
   const [menu, setMenu] = useState(false);
   const [console_, setConsole] = useState(false);
+  const [annotate, setAnnotate] = useState(false);
   const [editMode, setEditMode] = useState<"supports" | "sprue" | null>(null);
   const toggleEdit = (m: "supports" | "sprue") => setEditMode((v) => (v === m ? null : m));
   const down = useRef<{ x: number; y: number } | null>(null);
@@ -68,8 +73,8 @@ export function PreviewPane({
   const supOn = project.settings.printing.supports.enabled;
   const sprueOn = project.settings.printing.sprue;
   const showLayout = layout && (!supOn || printView);
-  const editSup = editMode === "supports" && supOn && printView;
-  const editSprue = editMode === "sprue" && sprueOn && !!showLayout;
+  const editSup = !annotate && editMode === "supports" && supOn && printView;
+  const editSprue = !annotate && editMode === "sprue" && sprueOn && !!showLayout;
 
   useEffect(() => {
     if (!host.current) return;
@@ -157,6 +162,7 @@ export function PreviewPane({
       >
         <div className="vp-host" ref={host} />
         <Gizmo viewer={viewer} />
+        {annotate && onAnnotated && <Annotator viewer={viewer} onSend={onAnnotated} onClose={() => setAnnotate(false)} />}
 
         <div className="vp-tools" onPointerDown={(e) => e.stopPropagation()}>
           <button className="vp-btn" onClick={() => viewer?.fit()} title={t("preview.fit")} aria-label={t("preview.fit")}>
@@ -248,6 +254,11 @@ export function PreviewPane({
           <button className={`vp-btn${cut ? " on" : ""}`} aria-pressed={cut} onClick={() => setCut(!cut)} title={t("preview.section")} aria-label={t("preview.section")}>
             <Icon name="section" size={18} />
           </button>
+          {onAnnotated && (
+            <button className={`vp-btn${annotate ? " on" : ""}`} aria-pressed={annotate} onClick={() => setAnnotate(!annotate)} title={t("annotate.title")} aria-label={t("annotate.title")}>
+              <Icon name="pen" size={18} />
+            </button>
+          )}
           <button className={`vp-btn${turntable ? " on" : ""}`} aria-pressed={turntable} onClick={() => setTurntable(!turntable)} title={t("preview.turntable")} aria-label={t("preview.turntable")}>
             <Icon name="rotate" size={18} />
           </button>

@@ -295,6 +295,16 @@
     "title": "About",
     "version": "Version {{version}}"
   },
+  "annotate": {
+    "title": "Draw on the view",
+    "color": "Colour",
+    "width": "Brush size",
+    "undo": "Undo",
+    "clear": "Clear",
+    "send": "Send to chat",
+    "done": "Done",
+    "attached": "Drawing attached to the chat message."
+  },
   "kb": {
     "title": "Knowledge base",
     "placeholder": "Search the notes…",

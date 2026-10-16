@@ -24,6 +24,7 @@ const PATHS: Record<string, string> = {
   axes: "M5 19V4M5 19h15M5 19l7-7M3 7l2-3 2 3M17 17l3 2-3 2",
   section: "M3 12h3M9 12h3M15 12h3M20 12h1M6 4h12v16H6z",
   plus: "M12 5v14M5 12h14",
+  pen: "M4 20l1-4L16 5l3 3L8 19zM14 7l3 3",
   sparkle: "M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z",
 };
 

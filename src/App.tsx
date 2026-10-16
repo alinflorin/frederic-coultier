@@ -21,7 +21,7 @@ import {
 } from "./api";
 import { emptyProject, sampleProject } from "./defaults";
 import { addRecent, baseName, fromWire, getRecents, removeRecent, toWire } from "./project";
-import type { ExportFormat, FcProject, ProjectSettings, SupportsData } from "./types";
+import type { Attached, ExportFormat, FcProject, ProjectSettings, SupportsData } from "./types";
 import { MenuBar, type Menu } from "./components/MenuBar";
 import { SourcePane } from "./components/SourcePane";
 import { ChatPane } from "./components/ChatPane";
@@ -79,6 +79,8 @@ function App() {
 
   const [dialog, setDialog] = useState<DialogId>(null);
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
+  // Pictures and files waiting to go with the next chat message (the preview can add a drawing).
+  const [draftFiles, setDraftFiles] = useState<Attached[]>([]);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // The chat pane is on unless turned off (Preferences > Agent Chat, or the first-run choice).
@@ -607,6 +609,8 @@ function App() {
         onEffort={(effort) => setOverride({ effort: effort || undefined })}
         canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
         pdf={engine?.id === "claude"}
+        files={draftFiles}
+        setFiles={setDraftFiles}
         onSend={chat.send}
         onStop={chat.stop}
         onCompact={chat.compact}
@@ -627,6 +631,15 @@ function App() {
         onPickSprue={pickSprue}
         onStats={(s) => setTriangles(s ? s.tris : null)}
         onViewer={(v) => (viewerRef.current = v)}
+        onAnnotated={
+          chatEnabled
+            ? (picture) => {
+                setDraftFiles((cur) => [...cur, picture]);
+                setMobilePane("chat");
+                notify(t("annotate.attached"));
+              }
+            : undefined
+        }
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
     ),

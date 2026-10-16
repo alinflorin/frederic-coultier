@@ -295,6 +295,16 @@
     "title": "Despre",
     "version": "Versiunea {{version}}"
   },
+  "annotate": {
+    "title": "Desenează pe vizualizare",
+    "color": "Culoare",
+    "width": "Grosimea pensulei",
+    "undo": "Anulează",
+    "clear": "Șterge tot",
+    "send": "Trimite în chat",
+    "done": "Gata",
+    "attached": "Desenul a fost atașat mesajului din chat."
+  },
   "kb": {
     "title": "Bază de cunoștințe",
     "placeholder": "Caută în notițe…",

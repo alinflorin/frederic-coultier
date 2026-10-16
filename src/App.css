@@ -451,3 +451,15 @@ fieldset:disabled { opacity: 0.45; }
 .about { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; text-align: center; }
 .about h3 { margin: 8px 0 0; text-transform: none; letter-spacing: 0; font-size: 16px; color: inherit; }
 .about p { margin: 0; color: var(--muted); }
+
+.annotate-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; cursor: crosshair; touch-action: none; }
+.vp-annotate { position: absolute; left: 12px; right: 56px; top: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); z-index: 6; }
+.vp-annotate button { padding: 2px 8px; }
+.vp-annotate .swatches { display: inline-flex; align-items: center; gap: 4px; }
+.vp-annotate .swatch { width: 20px; height: 20px; min-width: 0; padding: 0; border-radius: 50%; border: 1px solid var(--border); }
+.vp-annotate .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vp-annotate input[type="color"] { width: 24px; height: 24px; padding: 0; border: 0; background: none; }
+.vp-annotate .thickness { display: inline-flex; align-items: center; gap: 8px; }
+.vp-annotate .thickness input { width: 110px; accent-color: var(--accent); }
+.vp-annotate .thickness i { display: inline-block; border-radius: 50%; border: 1px solid var(--border); flex: none; }
+.vp-annotate .bad { color: var(--bad); font-size: 12px; }

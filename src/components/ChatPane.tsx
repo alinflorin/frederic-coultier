@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
@@ -106,6 +106,8 @@ export function ChatPane({
   onModel,
   onEffort,
   pdf,
+  files,
+  setFiles,
   onSend,
   onStop,
   onCompact,
@@ -146,6 +148,9 @@ export function ChatPane({
   onEffort: (level: string) => void;
   /** Whether the agent can read PDF files. */
   pdf: boolean;
+  /** What is attached to the message being written (kept by the app, so the preview can add to it). */
+  files: Attached[];
+  setFiles: Dispatch<SetStateAction<Attached[]>>;
   onSend: (text: string, files?: Attached[]) => void;
   onStop: () => void;
   onCompact: () => void;
@@ -156,7 +161,6 @@ export function ChatPane({
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [sure, setSure] = useState(false);
-  const [files, setFiles] = useState<Attached[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
