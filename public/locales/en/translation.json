@@ -274,7 +274,11 @@
       "running": "Running",
       "stopped": "Not running.",
       "copy": "Copy",
-      "connect": "To add it to Claude Code, run:",
+      "agents": "Connect an agent",
+      "connect": "Press play to set the agent up with this server. Running it again after a port change updates the entry.",
+      "run": "Run for {{name}}",
+      "needsServer": "Start the server first.",
+      "running_cmd": "Running…",
       "local": "There is no password: only programs on this computer can connect.",
       "desktopOnly": "The agent connection is only available in the desktop app."
     }

@@ -274,7 +274,11 @@
       "running": "Pornit",
       "stopped": "Oprit.",
       "copy": "Copiază",
-      "connect": "Ca să-l adaugi în Claude Code, rulează:",
+      "agents": "Conectează un agent",
+      "connect": "Apasă play ca să configurezi agentul cu acest server. Rulează din nou după o schimbare de port ca să actualizezi intrarea.",
+      "run": "Rulează pentru {{name}}",
+      "needsServer": "Pornește mai întâi serverul.",
+      "running_cmd": "Se rulează…",
       "local": "Nu există parolă: se pot conecta doar programele de pe acest calculator.",
       "desktopOnly": "Conexiunea agentului este disponibilă doar în aplicația desktop."
     }

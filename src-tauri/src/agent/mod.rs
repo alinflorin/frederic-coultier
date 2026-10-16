@@ -2,6 +2,7 @@
 
 pub mod bridge;
 pub mod cli;
+pub mod connect;
 pub mod server;
 pub mod text;
 pub mod tools;

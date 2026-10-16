@@ -302,6 +302,8 @@ pub fn run() {
             agent::bridge::agent_reply,
             agent::mcp_status,
             agent::mcp_configure,
+            agent::connect::mcp_agents,
+            agent::connect::mcp_connect,
             open_project,
             save_project,
             render_scad,

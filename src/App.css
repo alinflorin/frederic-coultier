@@ -357,6 +357,11 @@ fieldset:disabled { opacity: 0.45; }
 .mcp-status { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; font-size: 13px; }
 .mcp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
 .mcp-dot.on { background: var(--ok); }
+.mcp-ok { color: var(--ok); }
+.mcp-sub { margin: 14px 0 2px; font-size: 14px; }
+.mcp-agent { margin: 8px 0; }
+.mcp-agent-name { font-weight: 600; font-size: 13px; }
+.mcp-agent .note { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
 .mcp-bad { color: var(--bad); }
 .mcp-warn { color: var(--accent); }
 .mcp-copy { display: flex; align-items: center; gap: 8px; margin: 4px 0; }

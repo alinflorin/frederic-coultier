@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { inTauri } from "../api";
 import { getPref, setPref } from "../prefs";
+import { Icon } from "./Icon";
 
 export const MCP_DEFAULT_HOST = "127.0.0.1";
 export const MCP_DEFAULT_PORT = 45555;
@@ -40,6 +41,52 @@ function Copy({ text, label }: { text: string; label: string }) {
   );
 }
 
+interface AgentInfo {
+  id: string;
+  name: string;
+  command: string | null;
+  note: string | null;
+  supported: boolean;
+}
+
+/** One agent: the command that sets it up, a play button that runs it, and what came of it. */
+function AgentRow({ agent, onRun }: { agent: AgentInfo; onRun: (id: string) => Promise<string> }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<{ ok: boolean; text: string } | "running" | null>(null);
+  const run = async () => {
+    setState("running");
+    try {
+      setState({ ok: true, text: await onRun(agent.id) });
+    } catch (e) {
+      setState({ ok: false, text: errorText(e) });
+    }
+  };
+  return (
+    <div className="mcp-agent">
+      <div className="mcp-agent-name">{agent.name}</div>
+      {agent.supported ? (
+        <div className="mcp-copy">
+          <code>{agent.command ?? t("prefs.mcp.needsServer")}</code>
+          <button
+            type="button"
+            className="icon-btn"
+            title={t("prefs.mcp.run", { name: agent.name })}
+            aria-label={t("prefs.mcp.run", { name: agent.name })}
+            disabled={!agent.command || state === "running"}
+            onClick={run}
+          >
+            <Icon name="play" />
+          </button>
+          {agent.command && <Copy text={agent.command} label={t("prefs.mcp.copy")} />}
+        </div>
+      ) : null}
+      {agent.note && <p className={agent.supported ? "muted note" : "note mcp-warn"}>{agent.note}</p>}
+      {state === "running" && <p className="muted note">{t("prefs.mcp.running_cmd")}</p>}
+      {state && state !== "running" && <p className={`note ${state.ok ? "mcp-ok" : "mcp-bad"}`}>{state.text}</p>}
+    </div>
+  );
+}
+
 /** Host and port of the MCP server that agents connect to, and whether it is running. */
 export function McpPrefs() {
   const { t } = useTranslation();
@@ -48,6 +95,13 @@ export function McpPrefs() {
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const runningUrl = status?.url ?? null;
+
+  useEffect(() => {
+    if (!inTauri()) return;
+    invoke<AgentInfo[]>("mcp_agents").then(setAgents, () => setAgents([]));
+  }, [runningUrl]);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -78,7 +132,6 @@ export function McpPrefs() {
   }
 
   const url = status?.url ?? null;
-  const command = url ? `claude mcp add --transport http fc ${url}` : null;
 
   return (
     <>
@@ -134,13 +187,13 @@ export function McpPrefs() {
             <code>{url}</code>
             <Copy text={url} label={t("prefs.mcp.copy")} />
           </div>
-          <p className="muted note">{t("prefs.mcp.connect")}</p>
-          <div className="mcp-copy">
-            <code>{command}</code>
-            <Copy text={command!} label={t("prefs.mcp.copy")} />
-          </div>
         </>
       )}
+      <h4 className="mcp-sub">{t("prefs.mcp.agents")}</h4>
+      <p className="muted note">{t("prefs.mcp.connect")}</p>
+      {agents.map((a) => (
+        <AgentRow key={`${a.id}${a.command}`} agent={a} onRun={(id) => invoke<string>("mcp_connect", { id })} />
+      ))}
       {status?.running && status.loopback && <p className="muted note">{t("prefs.mcp.local")}</p>}
     </>
   );
