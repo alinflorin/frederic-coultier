@@ -27,6 +27,7 @@ import { PreviewPane, type RenderState } from "./components/PreviewPane";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
+import { getPref, setPref } from "./prefs";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
 import { Welcome } from "./components/Welcome";
@@ -70,7 +71,14 @@ function App() {
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [mobilePane, setMobilePane] = useState<PaneId>("chat");
+  // The chat pane is opt-in (Preferences > Agent Chat).
+  const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") === true);
+  const setChatEnabled = (on: boolean) => {
+    setPref("chatEnabled", on);
+    setChatEnabledState(on);
+    if (!on) setMobilePane((p) => (p === "chat" ? "source" : p));
+  };
+  const [mobilePane, setMobilePane] = useState<PaneId>("source");
   const [cols, setCols] = useState(() => {
     // chat (middle) stays narrow by default; source and preview share the rest
     const side = Math.max(300, Math.floor((window.innerWidth - 360 - 12) / 2));
@@ -521,7 +529,7 @@ function App() {
         <>
           <div className="single">{panes![mobilePane]}</div>
           <nav className="tabbar" aria-label={t("app.panes")}>
-            {(["source", "chat", "preview"] as PaneId[]).map((id) => (
+            {((chatEnabled ? ["source", "chat", "preview"] : ["source", "preview"]) as PaneId[]).map((id) => (
               <button key={id} className={mobilePane === id ? "on" : ""} onClick={() => setMobilePane(id)}>
                 <Icon name={id === "source" ? "code" : id === "chat" ? "chat" : "cube"} size={20} />
                 {t(`${id}.title`)}
@@ -536,12 +544,20 @@ function App() {
       ) : (
         <div
           className="workspace"
-          style={{ gridTemplateColumns: `${cols.source}px 6px minmax(260px, 1fr) 6px ${cols.preview}px` }}
+          style={{
+            gridTemplateColumns: chatEnabled
+              ? `${cols.source}px 6px minmax(260px, 1fr) 6px ${cols.preview}px`
+              : `${cols.source}px 6px minmax(260px, 1fr)`,
+          }}
         >
           {panes!.source}
           <div className="splitter" onPointerDown={startDrag("source")} role="separator" aria-orientation="vertical" />
-          {panes!.chat}
-          <div className="splitter" onPointerDown={startDrag("preview")} role="separator" aria-orientation="vertical" />
+          {chatEnabled && (
+            <>
+              {panes!.chat}
+              <div className="splitter" onPointerDown={startDrag("preview")} role="separator" aria-orientation="vertical" />
+            </>
+          )}
           {panes!.preview}
         </div>
       )}
@@ -552,7 +568,7 @@ function App() {
       {dialog === "export" && project && (
         <ExportDialog project={project} name={docName} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
       )}
-      {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
+      {dialog === "prefs" && <PreferencesDialog chatEnabled={chatEnabled} onChatEnabled={setChatEnabled} onClose={() => setDialog(null)} />}
       {pending && (
         <ConfirmDialog
           name={title}

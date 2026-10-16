@@ -8,7 +8,7 @@ import { McpPrefs } from "./McpPrefs";
 const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română" };
 
 /** App-wide preferences, as opposed to the settings stored in a project. */
-export function PreferencesDialog({ onClose }: { onClose: () => void }) {
+export function PreferencesDialog({ chatEnabled, onChatEnabled, onClose }: { chatEnabled: boolean; onChatEnabled: (on: boolean) => void; onClose: () => void }) {
   const { t, i18n } = useTranslation();
   const [theme, setThemeState] = useState<Theme>(getTheme);
   return (
@@ -50,6 +50,15 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
           </select>
         </span>
       </label>
+
+      <h3>{t("prefs.chat.title")}</h3>
+      <label className="field">
+        <span className="field-label">{t("prefs.chat.enabled")}</span>
+        <span className="field-input">
+          <input type="checkbox" checked={chatEnabled} onChange={(e) => onChatEnabled(e.currentTarget.checked)} />
+        </span>
+      </label>
+      <p className="muted">{t("prefs.chat.hint")}</p>
 
       <h3>{t("prefs.mcp.title")}</h3>
       <McpPrefs />

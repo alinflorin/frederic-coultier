@@ -255,6 +255,11 @@
       "light": "Luminos",
       "dark": "Întunecat"
     },
+    "chat": {
+      "title": "Chat agent",
+      "enabled": "Activat",
+      "hint": "Afișează panoul de chat lângă editor. Dezactivat implicit."
+    },
     "mcp": {
       "title": "Conexiune agent (MCP)",
       "intro": "Un agent AI, precum Claude Code, se poate conecta la aplicație și poate lucra pe proiectul deschis. Se conectează la această adresă:",

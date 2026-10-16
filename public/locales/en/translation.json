@@ -255,6 +255,11 @@
       "light": "Light",
       "dark": "Dark"
     },
+    "chat": {
+      "title": "Agent Chat",
+      "enabled": "Enabled",
+      "hint": "Shows the chat panel next to the editor. Off by default."
+    },
     "mcp": {
       "title": "Agent connection (MCP)",
       "intro": "An AI agent such as Claude Code can connect to this app and work on the open project. It connects to this address:",
