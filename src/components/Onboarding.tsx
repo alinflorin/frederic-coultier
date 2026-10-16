@@ -9,16 +9,20 @@ export type RunMode = "chat" | "mcp";
 /** First-run walkthrough: what the app is, then how the user wants to drive it. */
 export function Onboarding({
   chatAvailable,
+  onRefresh,
   onDone,
 }: {
   /** False once we know neither Claude Code nor Codex is signed in; null while still looking. */
   chatAvailable: boolean | null;
-  onDone: (mode: RunMode) => void;
+  /** Looks for signed-in agents again, after the user followed the sign-in steps. */
+  onRefresh: () => void;
+  onDone: (mode: RunMode, allTools: boolean) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [theme, setThemeState] = useState<Theme>(getTheme);
   const [mode, setMode] = useState<RunMode>("chat");
+  const [allTools, setAllTools] = useState(false);
   const chatBlocked = chatAvailable === false;
   const chosen: RunMode = chatBlocked ? "mcp" : mode;
 
@@ -98,6 +102,30 @@ export function Onboarding({
                 );
               })}
             </div>
+            {chatBlocked && (
+              <div className="onboarding-signin">
+                <b>{t("onboarding.signin.title")}</b>
+                <ol>
+                  <li>{t("onboarding.signin.step1")}</li>
+                  <li>
+                    <code>claude auth login</code> {t("onboarding.signin.or")} <code>codex login</code>
+                  </li>
+                  <li>{t("onboarding.signin.step3")}</li>
+                </ol>
+                <button type="button" onClick={onRefresh}>{t("onboarding.signin.check")}</button>
+              </div>
+            )}
+            {chosen === "chat" && !chatBlocked && (
+              <>
+                <label className="field">
+                  <span className="field-label">{t("prefs.chat.allTools")}</span>
+                  <span className="field-input">
+                    <input type="checkbox" checked={allTools} onChange={(e) => setAllTools(e.currentTarget.checked)} />
+                  </span>
+                </label>
+                <p className="muted note">{t("prefs.chat.allToolsHint")}</p>
+              </>
+            )}
             <p className="muted note">{t("onboarding.later")}</p>
           </div>
         )}
@@ -111,7 +139,7 @@ export function Onboarding({
           {step < 2 ? (
             <button className="primary" onClick={() => setStep((step + 1) as 1 | 2)}>{t("onboarding.next")}</button>
           ) : (
-            <button className="primary" onClick={() => onDone(chosen)}>{t("onboarding.start")}</button>
+            <button className="primary" onClick={() => onDone(chosen, chosen === "chat" && allTools)}>{t("onboarding.start")}</button>
           )}
         </footer>
       </div>

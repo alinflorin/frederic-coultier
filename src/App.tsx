@@ -650,8 +650,10 @@ function App() {
       {onboarding && (
         <Onboarding
           chatAvailable={engines === null ? null : !!engine}
-          onDone={(mode) => {
+          onRefresh={() => void refreshEngines()}
+          onDone={(mode, allTools) => {
             setChatEnabled(mode === "chat");
+            setPref("chatAllTools", allTools);
             setPref("onboarded", true);
             setOnboarding(false);
           }}

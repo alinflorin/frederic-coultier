@@ -421,6 +421,13 @@
       "what": "Fără panou de chat. Aplicația oferă doar uneltele ei, iar tu vorbești cu propriul agent în altă parte.",
       "how": "Cât rulează, aplicația expune un endpoint MCP local. Conectează Claude Code, Codex sau orice client MCP la el (Preferințe → Conexiune agent) și lucrează din terminalul sau editorul lui. Schimbările apar live în aplicație."
     },
-    "lookTitle": "Aspect și limbă"
+    "lookTitle": "Aspect și limbă",
+    "signin": {
+      "title": "Autentifică-te mai întâi la un agent",
+      "step1": "Instalează Claude Code sau Codex, dacă nu le ai încă.",
+      "or": "sau",
+      "step3": "Apoi verifică din nou. Până atunci poți continua doar cu MCP.",
+      "check": "Verifică din nou"
+    }
   }
 }

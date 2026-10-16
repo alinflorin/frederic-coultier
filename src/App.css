@@ -456,6 +456,8 @@ fieldset:disabled { opacity: 0.45; }
 .mode-head b { color: var(--text); font-size: 15px; }
 .mode-tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--accent); color: var(--accent-text); }
 .onboarding-foot { justify-content: flex-end; }
+.onboarding-signin { margin: 10px 0 0; font-size: 13px; }
+.onboarding-signin ol { margin: 6px 0 8px; padding-left: 20px; }
 .onboarding-dots { display: flex; gap: 6px; margin-right: auto; }
 .onboarding-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
 .onboarding-dots i.on { background: var(--accent); }

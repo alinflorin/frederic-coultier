@@ -421,6 +421,13 @@
       "what": "No chat panel. The app only offers its tools, and you talk to your own agent somewhere else.",
       "how": "While the app runs it serves a local MCP endpoint. Connect Claude Code, Codex or any MCP client to it (Preferences → Agent connection) and work from its terminal or editor. Changes show up live in the app."
     },
-    "lookTitle": "Look and language"
+    "lookTitle": "Look and language",
+    "signin": {
+      "title": "Sign in to an agent first",
+      "step1": "Install Claude Code or Codex if you have not yet.",
+      "or": "or",
+      "step3": "Then check again. Until then you can continue with MCP only.",
+      "check": "Check again"
+    }
   }
 }
