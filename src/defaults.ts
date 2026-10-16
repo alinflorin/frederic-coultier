@@ -1,3 +1,4 @@
+import { freshBook } from "./chat/book";
 import type { FcProject } from "./types";
 import sampleScad from "./sample.scad?raw";
 
@@ -41,6 +42,7 @@ export function emptyProject(name: string): FcProject {
     settings: { ...DEFAULT_SETTINGS, general: { ...DEFAULT_SETTINGS.general, name } },
     source: "// New project\n$fn = 128;\n",
     supports: { list: [], nextId: 1 },
+    chats: freshBook(),
   };
 }
 

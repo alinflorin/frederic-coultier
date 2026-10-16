@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ModelInfo } from "../chat/engines";
+import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
-import type { Attached, ChatMessage, ToolCall } from "../types";
+import type { Attached, ChatLog, ChatMessage, ToolCall } from "../types";
 import { Icon } from "./Icon";
 
 /** The tool calls of one answer, each folded up until clicked: what was asked, what came back, pictures included. */
@@ -69,11 +69,16 @@ function Files({ files, onRemove }: { files: Attached[]; onRemove?: (i: number) 
 }
 
 export function ChatPane({
+  conversations,
+  activeId,
   messages,
   live,
   working,
   error,
   agent,
+  engines,
+  engineId,
+  onEngine,
   unavailable,
   canCompact,
   models,
@@ -86,14 +91,23 @@ export function ChatPane({
   onSend,
   onStop,
   onCompact,
-  onClear,
+  onSelect,
+  onNew,
+  onDelete,
 }: {
+  conversations: ChatLog[];
+  activeId: string;
   messages: ChatMessage[];
   live: Live | null;
   working: "answer" | "compact" | null;
   error: string | null;
   /** Who answers, e.g. "Claude". */
   agent: string | null;
+  /** Every agent the app knows, usable or not. */
+  engines: EngineInfo[];
+  engineId: string;
+  /** Switches the agent for the whole app, not just this project. */
+  onEngine: (id: string) => void;
   /** Why nobody can answer, if so. */
   unavailable: string | null;
   canCompact: boolean;
@@ -109,7 +123,9 @@ export function ChatPane({
   onSend: (text: string, files?: Attached[]) => void;
   onStop: () => void;
   onCompact: () => void;
-  onClear: () => void;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
@@ -159,11 +175,21 @@ export function ChatPane({
 
   return (
     <section className="pane chat-pane" aria-label={t("chat.title")}>
-      <div className="chat-bar">
+      <div className="chat-bars">
+        <div className="chat-bar">
         <span className="chat-agent">
-          <Icon name="sparkle" size={14} /> {agent ?? t("chat.title")}
+          <Icon name="sparkle" size={14} />
+          {engines.length > 1 && engineId ? (
+            <select className="chat-pick" aria-label={t("chat.agent")} title={t("chat.agentHint")} value={engineId} disabled={busy} onChange={(e) => onEngine(e.currentTarget.value)}>
+              {engines.map((e) => (
+                <option key={e.id} value={e.id} disabled={!e.available}>{e.label}</option>
+              ))}
+            </select>
+          ) : (
+            agent ?? t("chat.title")
+          )}
         </span>
-        <span className="grow" />
+          <span className="grow" />
         {models.length > 0 && (
           <select className="chat-pick" aria-label={t("chat.model")} title={t("chat.model")} value={model} disabled={busy} onChange={(e) => onModel(e.currentTarget.value)}>
             <option value="">{t("chat.default")}</option>
@@ -180,20 +206,38 @@ export function ChatPane({
             ))}
           </select>
         )}
+        </div>
+        <div className="chat-bar">
+        <select
+          className="chat-pick chat-convo"
+          aria-label={t("chat.conversation")}
+          title={t("chat.conversation")}
+          value={activeId}
+          disabled={busy}
+          onChange={(e) => onSelect(e.currentTarget.value)}
+        >
+          {conversations.map((c) => (
+            <option key={c.id} value={c.id}>{c.title || t("chat.untitled")}</option>
+          ))}
+        </select>
+        <button className="chat-tool" disabled={busy || messages.length === 0} onClick={onNew} title={t("chat.new")}>
+          +
+        </button>
         <button className="chat-tool" disabled={busy || !canCompact} onClick={onCompact} title={t("chat.compactHint")}>
           {t("chat.compact")}
         </button>
         <button
           className={`chat-tool${sure ? " danger" : ""}`}
-          disabled={busy || messages.length === 0}
+          disabled={busy || (messages.length === 0 && conversations.length === 1)}
           onClick={() => {
             if (!sure) return setSure(true);
             setSure(false);
-            onClear();
+            onDelete();
           }}
         >
-          {sure ? t("chat.clearSure") : t("chat.clear")}
+          {sure ? t("chat.deleteSure") : t("chat.delete")}
         </button>
+        </div>
       </div>
       <div className="messages" role="log" aria-live="polite">
         {messages.length === 0 && !live && (

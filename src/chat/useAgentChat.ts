@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { Attached, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
+import type { Attached, ChatBook, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
 import { inTauri } from "../api";
 import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
+import { freshBook, freshLog, portableBook, mergeBooks, readBook, titleOf } from "./book";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
 
 /** The answer being written right now. */
@@ -13,15 +14,11 @@ export interface Live {
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
 const id = () => crypto.randomUUID();
 
-const EMPTY: ChatLog = { messages: [] };
-
-const isLog = (v: unknown): v is ChatLog =>
-  typeof v === "object" && v !== null && Array.isArray((v as ChatLog).messages);
-
 /**
- * The chat with the agent: one conversation per project file. It is kept by the app (filed under
- * the project's path), never inside the .fc file. `engine` is the agent that answers; a
- * conversation started with another one is carried over as text.
+ * The conversations with the agent: any number per project. The .fc file keeps all of them
+ * (`onLite` hands it over to be saved with the project); the app keeps the full copy, filed under
+ * the project's path. `engine` is the agent that answers; a conversation started with another
+ * one is carried over as text.
  */
 export function useAgentChat({
   projectRef,
@@ -30,6 +27,7 @@ export function useAgentChat({
   effort,
   path,
   projectId,
+  onLite,
 }: {
   projectRef: MutableRefObject<FcProject | null>;
   engine: string | null;
@@ -40,36 +38,48 @@ export function useAgentChat({
   path: string | null;
   /** Changes whenever a different project is loaded. */
   projectId: number;
+  /** The conversations as the project file keeps them; called when they change. */
+  onLite: (book: ChatBook) => void;
 }) {
-  const [log, setLog] = useState<ChatLog>(EMPTY);
-  const logRef = useRef<ChatLog>(EMPTY);
+  const [book, setBook] = useState<ChatBook>(() => projectRef.current?.chats ?? freshBook());
+  const bookRef = useRef(book);
   const pathRef = useRef(path);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const liteRef = useRef("");
+  const onLiteRef = useRef(onLite);
+  onLiteRef.current = onLite;
 
-  const store = useCallback((next: ChatLog) => {
-    logRef.current = next;
-    setLog(next);
+  const active = book.list.find((l) => l.id === book.active) ?? book.list[0];
+  const log = active;
+  const logRef = { get current() { return bookRef.current.list.find((l) => l.id === bookRef.current.active)!; } };
+
+  /** Takes a new state of the book. `notify`: the project should hear of it (not for a book just loaded). */
+  const store = useCallback((next: ChatBook, notify = true) => {
+    bookRef.current = next;
+    setBook(next);
+    const lite = JSON.stringify(portableBook(next));
+    if (notify && lite !== liteRef.current) onLiteRef.current(portableBook(next));
+    liteRef.current = lite;
     clearTimeout(saveTimer.current);
     const key = pathRef.current;
     if (!key || !inTauri()) return;
     saveTimer.current = setTimeout(() => {
-      saveChat(key, next.messages.length ? next : null).catch(() => {});
+      saveChat(key, next.list.some((l) => l.messages.length) ? next : null).catch(() => {});
     }, 400);
   }, []);
 
-  // another project: its conversation, if it has one
+  // another project: its conversations, and the app's fuller copies of them if it has any
   useEffect(() => {
     pathRef.current = path;
-    store(EMPTY);
     clearTimeout(saveTimer.current);
+    const mine = projectRef.current?.chats ?? freshBook();
+    store(mine, false);
     if (!path || !inTauri()) return;
     let stale = false;
     loadChat(path).then(
       (v) => {
-        if (!stale && isLog(v) && logRef.current.messages.length === 0) {
-          logRef.current = v;
-          setLog(v);
-        }
+        if (stale || v == null || bookRef.current !== mine) return;
+        store(mergeBooks(mine, readBook(v)), false);
       },
       () => {},
     );
@@ -79,11 +89,11 @@ export function useAgentChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // saved under another name: the conversation goes along
+  // saved under another name: the conversations go along
   useEffect(() => {
     if (pathRef.current === path) return;
     pathRef.current = path;
-    store(logRef.current);
+    store(bookRef.current, false);
   }, [path, store]);
 
   const [live, setLive] = useState<Live | null>(null);
@@ -115,7 +125,21 @@ export function useAgentChat({
     };
   }, []);
 
-  const patch = useCallback((fn: (c: ChatLog) => ChatLog) => store(fn(logRef.current)), [store]);
+  /** Changes the conversation on show. */
+  const patch = useCallback(
+    (fn: (c: ChatLog) => ChatLog) => {
+      const b = bookRef.current;
+      store({
+        ...b,
+        list: b.list.map((l) => {
+          if (l.id !== b.active) return l;
+          const next = fn(l);
+          return { ...next, title: next.title || titleOf(next.messages), updated: Date.now() };
+        }),
+      });
+    },
+    [store],
+  );
   const add = useCallback(
     (m: Omit<ChatMessage, "id">) => patch((c) => ({ ...c, messages: [...c.messages, { id: id(), ...m }] })),
     [patch],
@@ -146,9 +170,7 @@ export function useAgentChat({
     const c = logRef.current;
     const known = c.session?.engine === engine;
     const prompt = known ? text : opening(text, c.summary, c.messages);
-    // the saved conversation keeps pictures to show again, but not other files
-    const kept = files.map((f) => (f.mime.startsWith("image/") ? f : { name: f.name, mime: f.mime }));
-    add({ role: "user", text, files: kept.length ? kept : undefined });
+    add({ role: "user", text, files: files.length ? files : undefined });
     const before = p.source;
     try {
       const r = await turn(prompt, "answer", files);
@@ -181,15 +203,33 @@ export function useAgentChat({
     }
   };
 
-  const clear = () => {
+  const select = (id: string) => {
+    if (busy.current || id === bookRef.current.active) return;
+    setError(null);
+    store({ ...bookRef.current, active: id });
+  };
+
+  /** A new conversation; the empty one already on show is reused. */
+  const create = () => {
+    if (busy.current || logRef.current.messages.length === 0) return;
+    const fresh = freshLog();
+    setError(null);
+    store({ active: fresh.id, list: [...bookRef.current.list, fresh] });
+  };
+
+  /** Deletes the conversation on show; the last one is emptied instead. */
+  const remove = () => {
     if (busy.current) return;
     setError(null);
-    patch(() => ({ messages: [] }));
+    const b = bookRef.current;
+    const rest = b.list.filter((l) => l.id !== b.active);
+    if (rest.length === 0) return store(freshBook());
+    store({ active: rest[rest.length - 1].id, list: rest });
   };
 
   const stop = () => {
     stopEngine().catch(() => {});
   };
 
-  return { log, live, error, working, send, compact, clear, stop };
+  return { book, log, live, error, working, send, compact, select, create, remove, stop };
 }

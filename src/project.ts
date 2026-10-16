@@ -1,3 +1,4 @@
+import { portableBook, readBook } from "./chat/book";
 import { DEFAULT_SETTINGS } from "./defaults";
 import { getPref, setPref } from "./prefs";
 import type { FcProject, Support, SupportsData } from "./types";
@@ -42,11 +43,12 @@ export function fromWire(w: WireProject): FcProject {
     source: w.source,
     settings: mergeDeep(DEFAULT_SETTINGS, w.settings),
     supports: readSupports(w.supports),
+    chats: readBook(w.chat),
   };
 }
 
 export function toWire(p: FcProject): WireProject {
-  return { source: p.source, settings: p.settings, chat: [], supports: p.supports };
+  return { source: p.source, settings: p.settings, chat: { version: 1, ...portableBook(p.chats) }, supports: p.supports };
 }
 
 export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;

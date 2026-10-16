@@ -413,3 +413,8 @@ fieldset:disabled { opacity: 0.45; }
 .file img { width: 28px; height: 28px; object-fit: cover; border-radius: 3px; }
 .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-x { border: 0; background: none; padding: 0 2px; cursor: pointer; color: inherit; }
+.chat-convo { max-width: 160px; min-width: 0; }
+.chat-bars { flex: none; border-bottom: 1px solid var(--border); }
+.chat-bars .chat-bar { border-bottom: 0; }
+.chat-bars .chat-bar + .chat-bar { padding-top: 0; }
+.chat-convo { flex: 1 1 0; max-width: none; }

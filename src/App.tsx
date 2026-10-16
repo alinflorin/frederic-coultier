@@ -100,8 +100,8 @@ function App() {
   const [overrides, setOverrides] = useState<Record<string, { model?: string; effort?: string }>>({});
   const [mobilePane, setMobilePane] = useState<PaneId>("source");
   const [cols, setCols] = useState(() => {
-    // chat (middle) stays narrow by default; source and preview share the rest
-    const side = Math.max(300, Math.floor((window.innerWidth - 360 - 12) / 2));
+    // source, chat and preview start a third of the window each
+    const side = Math.max(300, Math.floor((window.innerWidth - 12) / 3));
     return { source: side, preview: side };
   });
   const [render, setRender] = useState<RenderState>(IDLE);
@@ -162,6 +162,7 @@ function App() {
     effort: active.effort,
     path,
     projectId,
+    onLite: (chats) => edit((p) => ({ ...p, chats })),
   });
   const noAgent = engines === null ? t("chat.checking") : engine ? null : t("chat.noAgent");
 
@@ -544,11 +545,16 @@ function App() {
     ),
     chat: (
       <ChatPane
+        conversations={chat.book.list}
+        activeId={chat.book.active}
         messages={chat.log.messages}
         live={chat.live}
         working={chat.working}
         error={chat.error}
         agent={engine?.label ?? null}
+        engines={engines ?? []}
+        engineId={engine?.id ?? ""}
+        onEngine={setChatEngine}
         unavailable={noAgent}
         models={models}
         model={override.model ?? ""}
@@ -561,7 +567,9 @@ function App() {
         onSend={chat.send}
         onStop={chat.stop}
         onCompact={chat.compact}
-        onClear={chat.clear}
+        onSelect={chat.select}
+        onNew={chat.create}
+        onDelete={chat.remove}
       />
     ),
     preview: (

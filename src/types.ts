@@ -74,7 +74,7 @@ export interface ToolCall {
 export interface Attached {
   name: string;
   mime: string;
-  /** Base64; dropped from the saved conversation unless it is a picture. */
+  /** Base64. */
   data?: string;
 }
 
@@ -83,7 +83,7 @@ export interface ChatMessage {
   /** `note` is the app speaking (e.g. "conversation compacted"), not either side. */
   role: "user" | "assistant" | "note";
   text: string;
-  /** User only: files sent along. Pictures keep their bytes (base64) so they can be shown again. */
+  /** User only: files sent along.  */
   files?: Attached[];
   /** Assistant only: the tools it used while answering, for display. */
   tools?: ToolCall[];
@@ -91,13 +91,25 @@ export interface ChatMessage {
   change?: { added: number; removed: number };
 }
 
-/** The conversation about a project, and what the agent needs to carry on with it. Kept by the app, not in the .fc file. */
+/** One conversation with an agent, and what the agent needs to carry on with it. */
 export interface ChatLog {
+  id: string;
+  /** Shown in the list; made from the first question until there is one. */
+  title: string;
+  /** Milliseconds since 1970 of the last change. */
+  updated: number;
   messages: ChatMessage[];
   /** The agent's own id for the conversation; only that agent can continue it. */
   session?: { engine: string; id: string };
   /** What was kept when the conversation was compacted. */
   summary?: string;
+}
+
+/** All the conversations of a project. Saved in the .fc file, and also kept by the app. */
+export interface ChatBook {
+  /** The one on show. */
+  active: string;
+  list: ChatLog[];
 }
 
 /** One support contact point, in the model's own coordinates. */
@@ -120,4 +132,6 @@ export interface FcProject {
   settings: ProjectSettings;
   source: string; // model.scad
   supports: SupportsData;
+  /** Saved whole in the file, attachments and tool results included. */
+  chats: ChatBook;
 }
