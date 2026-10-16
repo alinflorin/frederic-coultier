@@ -3,6 +3,9 @@
   "checkUpdates": "Check for updates",
   "upToDate": "You're up to date.",
   "downloading": "Downloading {{version}}...",
+  "updateAvailable": "Version {{version}} is available. This install is managed by your package manager.",
+  "updateReady": "Version {{version}} was installed. Restart to use it.",
+  "restartToUpdate": "Restart to update ({{version}})",
   "language": "Language",
   "common": {
     "close": "Close",
@@ -25,6 +28,7 @@
     "settings": "Project settings…",
     "settingsShort": "Settings",
     "kb": "Knowledge base…",
+    "about": "About…",
     "preferences": "Preferences"
   },
   "file": {
@@ -287,6 +291,10 @@
     "last": "{{name}}: {{calls}} calls, last {{secs}} s ago",
     "none": "No agent has connected yet."
   },
+  "about": {
+    "title": "About",
+    "version": "Version {{version}}"
+  },
   "kb": {
     "title": "Knowledge base",
     "placeholder": "Search the notes…",
@@ -304,6 +312,8 @@
     "title": "Preferences",
     "hint": "Applies to the whole app, not just this project.",
     "theme": "Theme",
+    "autoUpdate": "Check for updates at startup",
+    "autoUpdateManaged": "Updates are handled by your package manager; the app only tells you when a new version exists.",
     "themes": {
       "auto": "Auto (follow system)",
       "light": "Light",

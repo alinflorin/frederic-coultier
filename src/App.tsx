@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -8,6 +9,7 @@ import {
   type PrintLayout,
   exportModel,
   inTauri,
+  canSelfUpdate,
   openProject,
   pickExportPath,
   pickProjectToOpen,
@@ -29,6 +31,7 @@ import { ExportDialog } from "./components/ExportDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { getPref, setPref } from "./prefs";
 import { KbDialog } from "./components/KbDialog";
+import { AboutDialog } from "./components/AboutDialog";
 import { McpIndicator } from "./components/McpIndicator";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
@@ -43,7 +46,9 @@ import type { AgentApi } from "./agent/ops";
 import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
-type DialogId = "settings" | "export" | "prefs" | "kb" | null;
+const RELEASES_URL = "https://github.com/alinflorin/frederic-coultier/releases/latest";
+
+type DialogId = "settings" | "export" | "prefs" | "kb" | "about" | null;
 
 const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
 const RENDER_DELAY_MS = 200;
@@ -74,11 +79,21 @@ function App() {
 
   const [dialog, setDialog] = useState<DialogId>(null);
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
+  const [updateReady, setUpdateReady] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // The chat pane is on unless turned off (Preferences > Agent Chat, or the first-run choice).
   const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") !== false);
   // Shown once per install, also to people upgrading from a version without it.
   const [onboarding, setOnboarding] = useState(() => getPref<boolean>("onboarded") !== true);
+  const [autoUpdate, setAutoUpdateState] = useState(() => getPref<boolean>("autoUpdate") !== false);
+  const [selfUpdate, setSelfUpdate] = useState(true);
+  useEffect(() => {
+    if (inTauri()) canSelfUpdate().then(setSelfUpdate).catch(() => {});
+  }, []);
+  const setAutoUpdate = (on: boolean) => {
+    setPref("autoUpdate", on);
+    setAutoUpdateState(on);
+  };
   const setChatEnabled = (on: boolean) => {
     setPref("chatEnabled", on);
     setChatEnabledState(on);
@@ -339,17 +354,34 @@ function App() {
     }
   };
 
-  async function checkForUpdates() {
+  // `silent` is the startup check: no toasts unless an update was installed.
+  // Installing never restarts by itself; the restart goes through the unsaved-work guard.
+  const restartToUpdate = () => (dirtyRef.current ? setPending({ next: () => void relaunch() }) : void relaunch());
+  async function checkForUpdates(silent = false) {
     try {
       const update = await check();
-      if (!update) return notify(t("upToDate"));
-      notify(t("downloading", { version: update.version }));
+      if (!update) return silent ? undefined : notify(t("upToDate"));
+      if (!(await canSelfUpdate())) {
+        // installed through a package manager: tell, but leave the install to it
+        notify(t("updateAvailable", { version: update.version }));
+        if (!silent) await openUrl(RELEASES_URL);
+        return;
+      }
+      if (!silent) notify(t("downloading", { version: update.version }));
       await update.downloadAndInstall();
-      await relaunch();
+      setUpdateReady(update.version);
+      if (silent) notify(t("updateReady", { version: update.version }));
+      else restartToUpdate();
     } catch (e) {
-      notify(errorText(e));
+      if (!silent) notify(errorText(e));
     }
   }
+  useEffect(() => {
+    if (!inTauri() || !import.meta.env.PROD || !autoUpdate) return;
+    const id = setTimeout(() => void checkForUpdates(true), 5000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- window title, and asking before the window closes with unsaved work ---
   const title = project ? (path ? baseName(path) : t("file.untitled")) : "";
@@ -456,12 +488,16 @@ function App() {
         items: [
           { label: t("menu.kb"), onSelect: () => setDialog("kb") },
           { separator: true, label: "" },
-          { label: t("checkUpdates"), onSelect: checkForUpdates },
+          updateReady
+            ? { label: t("restartToUpdate", { version: updateReady }), onSelect: restartToUpdate }
+            : { label: t("checkUpdates"), onSelect: () => checkForUpdates() },
+          { separator: true, label: "" },
+          { label: t("menu.about"), onSelect: () => setDialog("about") },
         ],
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, open, dirty, path, project],
+    [t, open, dirty, path, project, updateReady],
   );
 
   // keyboard shortcuts
@@ -669,7 +705,11 @@ function App() {
           }
         />
       )}
+      {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
       {dialog === "prefs" && <PreferencesDialog
+          autoUpdate={autoUpdate}
+          autoUpdateAvailable={selfUpdate}
+          onAutoUpdate={setAutoUpdate}
           chatEnabled={chatEnabled}
           onChatEnabled={setChatEnabled}
           engines={engines}

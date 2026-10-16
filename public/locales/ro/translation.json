@@ -3,6 +3,9 @@
   "checkUpdates": "Caută actualizări",
   "upToDate": "Ai cea mai recentă versiune.",
   "downloading": "Se descarcă {{version}}...",
+  "updateAvailable": "Versiunea {{version}} este disponibilă. Această instalare este gestionată de managerul de pachete.",
+  "updateReady": "Versiunea {{version}} a fost instalată. Repornește pentru a o folosi.",
+  "restartToUpdate": "Repornește pentru actualizare ({{version}})",
   "language": "Limbă",
   "common": {
     "close": "Închide",
@@ -25,6 +28,7 @@
     "settings": "Setările proiectului…",
     "settingsShort": "Setări",
     "kb": "Bază de cunoștințe…",
+    "about": "Despre…",
     "preferences": "Preferințe"
   },
   "file": {
@@ -287,6 +291,10 @@
     "last": "{{name}}: {{calls}} apeluri, ultimul acum {{secs}} s",
     "none": "Niciun agent nu s-a conectat încă."
   },
+  "about": {
+    "title": "Despre",
+    "version": "Versiunea {{version}}"
+  },
   "kb": {
     "title": "Bază de cunoștințe",
     "placeholder": "Caută în notițe…",
@@ -304,6 +312,8 @@
     "title": "Preferințe",
     "hint": "Se aplică întregii aplicații, nu doar acestui proiect.",
     "theme": "Temă",
+    "autoUpdate": "Caută actualizări la pornire",
+    "autoUpdateManaged": "Actualizările sunt gestionate de managerul de pachete; aplicația doar te anunță când există o versiune nouă.",
     "themes": {
       "auto": "Automat (ca sistemul)",
       "light": "Luminos",

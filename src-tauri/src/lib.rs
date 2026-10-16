@@ -18,6 +18,13 @@ use project::Project;
 use render::{RenderCache, RenderFailure};
 use supports::{AutoParams, AutoResult, PrintParams, Support, TiltRow};
 
+/// Whether the updater can replace this installation. On Linux only an AppImage can;
+/// a .deb or .rpm belongs to the package manager.
+#[tauri::command]
+fn can_self_update() -> bool {
+    !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
+}
+
 #[tauri::command]
 fn open_project(path: PathBuf) -> Result<Project, String> {
     project::read_project(&path).map_err(|e| e.to_string())
@@ -300,6 +307,7 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            can_self_update,
             agent::bridge::agent_reply,
             agent::mcp_status,
             agent::mcp_configure,

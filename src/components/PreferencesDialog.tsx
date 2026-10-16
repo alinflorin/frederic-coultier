@@ -8,6 +8,9 @@ import { McpPrefs } from "./McpPrefs";
 
 /** App-wide preferences, as opposed to the settings stored in a project. */
 export function PreferencesDialog({
+  autoUpdate,
+  autoUpdateAvailable,
+  onAutoUpdate,
   chatEnabled,
   onChatEnabled,
   engines,
@@ -22,6 +25,10 @@ export function PreferencesDialog({
   onRefreshEngines,
   onClose,
 }: {
+  autoUpdate: boolean;
+  /** False when a package manager owns the installation. */
+  autoUpdateAvailable: boolean;
+  onAutoUpdate: (on: boolean) => void;
   chatEnabled: boolean;
   onChatEnabled: (on: boolean) => void;
   /** The agents that could answer in the chat; null until they have been looked up. */
@@ -84,6 +91,14 @@ export function PreferencesDialog({
           </select>
         </span>
       </label>
+
+      <label className="field">
+        <span className="field-label">{t("prefs.autoUpdate")}</span>
+        <span className="field-input">
+          <input type="checkbox" checked={autoUpdate} disabled={!autoUpdateAvailable} onChange={(e) => onAutoUpdate(e.currentTarget.checked)} />
+        </span>
+      </label>
+      {!autoUpdateAvailable && <p className="muted">{t("prefs.autoUpdateManaged")}</p>}
 
       <h3>{t("prefs.chat.title")}</h3>
       <label className="field">

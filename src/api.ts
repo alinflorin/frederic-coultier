@@ -262,3 +262,6 @@ export async function printLayout(
     sprueAt: info.sprueAt,
   };
 }
+
+/** False when the installation is managed by a package manager (a Linux .deb or .rpm). */
+export const canSelfUpdate = () => invoke<boolean>("can_self_update");
