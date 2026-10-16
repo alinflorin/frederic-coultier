@@ -2,13 +2,18 @@
 //! that lives inside the app, and `exec_fc` runs it. Everything the app can do is a command, so
 //! the agent's tool list stays tiny whatever the app learns to do.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
-use rmcp::{ErrorData, ServerHandler, schemars, tool, tool_handler, tool_router};
+use rmcp::model::{
+    CallToolResult, ContentBlock, InitializeRequestParams, InitializeResult, ServerCapabilities,
+    ServerConfig,
+};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData, RoleServer, ServerHandler, schemars, tool, tool_handler, tool_router};
 use serde::Deserialize;
 
 use super::bridge::Bridge;
@@ -26,6 +31,59 @@ instructions and the full reference of `fc`. Do this before your first `exec_fc`
 /// What `exec_fc` says until the instructions have been read.
 const READ_FIRST: &str = "You have not read the instructions yet. Call read_instructions now and read the whole result: it holds the user's own instructions and the reference of every fc command. Then run this command again; nothing was done.";
 
+/// What agents have done since the app started. It is shared by all connections: a client that
+/// speaks the stateless protocol gets a fresh handler per request, so the server cannot tell its
+/// sessions apart. The first agent after the app starts is held to the read-first rule; the
+/// wording of the tools and of the server instructions has to do the rest.
+#[derive(Default)]
+pub struct Gate {
+    /// Set once `read_instructions` has been called.
+    read: AtomicBool,
+    seen: Mutex<Seen>,
+}
+
+#[derive(Default)]
+struct Seen {
+    client: Option<String>,
+    last: Option<Instant>,
+    calls: u64,
+}
+
+/// A copy of what the gate has seen, for the status shown in the window.
+pub struct Activity {
+    pub client: Option<String>,
+    /// Seconds since the last tool call or connection.
+    pub idle_secs: Option<u64>,
+    pub calls: u64,
+}
+
+impl Gate {
+    fn seen(&self) -> std::sync::MutexGuard<'_, Seen> {
+        self.seen.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn connected(&self, client: &str) {
+        let mut s = self.seen();
+        s.client = Some(client.to_string());
+        s.last = Some(Instant::now());
+    }
+
+    fn called(&self) {
+        let mut s = self.seen();
+        s.last = Some(Instant::now());
+        s.calls += 1;
+    }
+
+    pub fn activity(&self) -> Activity {
+        let s = self.seen();
+        Activity {
+            client: s.client.clone(),
+            idle_secs: s.last.map(|t| t.elapsed().as_secs()),
+            calls: s.calls,
+        }
+    }
+}
+
 type ToolResult = Result<CallToolResult, ErrorData>;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -37,19 +95,15 @@ struct ExecArgs {
 #[derive(Clone)]
 pub struct AppTools {
     cli: Cli,
-    /// Set once `read_instructions` has been called. It is shared by all connections: a client that
-    /// speaks the stateless protocol gets a fresh handler per request, so the server cannot tell
-    /// its sessions apart. The first agent after the app starts is held to the rule; the wording
-    /// of the tools and of the server instructions has to do the rest.
-    read: Arc<AtomicBool>,
+    gate: Arc<Gate>,
     tool_router: ToolRouter<Self>,
 }
 
 impl AppTools {
-    pub fn new(bridge: Arc<dyn Bridge>, read: Arc<AtomicBool>) -> Self {
+    pub fn new(bridge: Arc<dyn Bridge>, gate: Arc<Gate>) -> Self {
         Self {
             cli: Cli::new(bridge),
-            read,
+            gate,
             tool_router: Self::tool_router(),
         }
     }
@@ -62,7 +116,8 @@ impl AppTools {
     )]
     async fn read_instructions(&self) -> ToolResult {
         let text = self.cli.instructions().await;
-        self.read.store(true, Ordering::Relaxed);
+        self.gate.called();
+        self.gate.read.store(true, Ordering::Relaxed);
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 
@@ -70,7 +125,8 @@ impl AppTools {
         description = "Run fc commands, e.g. `status` or `src cat 1:40`. Only after you have read read_instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`."
     )]
     async fn exec_fc(&self, Parameters(a): Parameters<ExecArgs>) -> ToolResult {
-        if !self.read.load(Ordering::Relaxed) {
+        self.gate.called();
+        if !self.gate.read.load(Ordering::Relaxed) {
             return Ok(CallToolResult::error(vec![ContentBlock::text(READ_FIRST)]));
         }
         let run = self.cli.run(&a.args).await;
@@ -95,6 +151,18 @@ impl AppTools {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AppTools {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        let info = &request.client_info;
+        self.gate
+            .connected(info.title.as_deref().unwrap_or(&info.name));
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(INSTRUCTIONS)

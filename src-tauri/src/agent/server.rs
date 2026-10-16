@@ -2,7 +2,6 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use tokio_util::sync::CancellationToken;
 
@@ -10,14 +9,14 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use super::bridge::Bridge;
-use super::tools::AppTools;
+use super::tools::{AppTools, Gate};
 
 /// `loopback`: the server only accepts local `Host` names. Binding to another address turns that
 /// check off (clients then reach it by whatever name or address they like).
 pub fn router(
     bridge: Arc<dyn Bridge>,
     loopback: bool,
-    read: Arc<AtomicBool>,
+    gate: Arc<Gate>,
     stop: &CancellationToken,
 ) -> axum::Router {
     // No request may carry an Origin header: browsers always send one, so a web page can't drive
@@ -29,7 +28,7 @@ pub fn router(
         config = config.disable_allowed_hosts();
     }
     let service: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
-        move || Ok(AppTools::new(bridge.clone(), read.clone())),
+        move || Ok(AppTools::new(bridge.clone(), gate.clone())),
         Default::default(),
         config,
     );
@@ -49,12 +48,12 @@ pub async fn serve(
     host: &str,
     port: u16,
     loopback: bool,
-    read: Arc<AtomicBool>,
+    gate: Arc<Gate>,
 ) -> std::io::Result<Served> {
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     let addr = listener.local_addr()?;
     let stop = CancellationToken::new();
-    let app = router(bridge, loopback, read, &stop);
+    let app = router(bridge, loopback, gate, &stop);
     let signal = stop.clone();
     let task = tauri::async_runtime::spawn(async move {
         if let Err(e) = axum::serve(listener, app)
@@ -130,7 +129,7 @@ mod tests {
         router(
             bridge,
             true,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Gate::default()),
             &CancellationToken::new(),
         )
     }
@@ -303,6 +302,33 @@ mod tests {
         };
         assert!(desc("read_instructions").contains("REQUIRED FIRST STEP"));
         assert!(desc("exec_fc").contains("Only after you have read read_instructions"));
+    }
+
+    #[tokio::test]
+    async fn the_gate_records_who_connected_and_what_they_called() {
+        let gate = Arc::new(Gate::default());
+        let app = router(
+            Mock::new(|_, _| Ok(json!({}))),
+            true,
+            gate.clone(),
+            &CancellationToken::new(),
+        );
+        let before = gate.activity();
+        assert!(before.client.is_none() && before.idle_secs.is_none() && before.calls == 0);
+        let (sid, _) = session(&app).await;
+        let mid = gate.activity();
+        assert_eq!(mid.client.as_deref(), Some("test"));
+        assert_eq!(mid.calls, 0, "connecting is not a call");
+        rpc(
+            &app,
+            Some(&sid),
+            None,
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "read_instructions", "arguments": {} } }),
+        )
+        .await;
+        let after = gate.activity();
+        assert_eq!(after.calls, 1);
+        assert!(after.idle_secs.unwrap() < 5);
     }
 
     #[tokio::test]

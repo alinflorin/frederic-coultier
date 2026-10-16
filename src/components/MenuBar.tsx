@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export interface MenuItem {
   label: string;
@@ -15,7 +15,7 @@ export interface Menu {
   items?: MenuItem[];
 }
 
-export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string; dirty: boolean }) {
+export function MenuBar({ menus, title, dirty, trailing }: { menus: Menu[]; title: string; dirty: boolean; trailing?: ReactNode }) {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -85,6 +85,7 @@ export function MenuBar({ menus, title, dirty }: { menus: Menu[]; title: string;
         {title}
         {dirty && <span className="dirty" aria-label="unsaved">●</span>}
       </div>
+      {trailing}
     </div>
   );
 }

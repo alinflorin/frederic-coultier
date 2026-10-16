@@ -164,6 +164,12 @@ fieldset:disabled { opacity: 0.45; }
 .dropdown kbd { color: var(--muted); font: inherit; font-size: 12px; margin-left: 24px; }
 .dropdown .sep { height: 1px; background: var(--border); margin: 4px 2px; }
 .doc-title { flex: 1; text-align: center; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; font-size: 12px; background: none; border-color: var(--border); border-radius: 999px; color: var(--muted); flex: none; }
+.mcp-pill:hover { color: var(--text); background: var(--surface-2); }
+.mcp-pill.ready .mcp-dot, .mcp-pill.idle .mcp-dot { background: var(--ok); opacity: .55; }
+.mcp-pill.active { color: var(--text); }
+.mcp-pill.active .mcp-dot { background: var(--ok); animation: mcp-pulse 1.2s ease-in-out infinite; }
+@keyframes mcp-pulse { 50% { opacity: .3; } }
 .dirty { color: var(--accent); margin-left: 6px; font-size: 10px; vertical-align: middle; }
 
 /* --- panes --- */
@@ -289,6 +295,7 @@ fieldset:disabled { opacity: 0.45; }
 @media (max-width: 899px) {
   .menubar { padding: 0 8px; }
   .brand span, .doc-title { display: none; }
+  .mcp-pill-text { display: none; }
   .menus { flex: 1; }
   .tabbar {
     display: flex;

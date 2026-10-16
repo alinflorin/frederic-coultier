@@ -9,7 +9,6 @@ pub mod tools;
 
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -33,6 +32,12 @@ pub struct McpStatus {
     pub error: Option<String>,
     /// Only programs on this computer can connect.
     pub loopback: bool,
+    /// The agent that connected last (its own name for itself), if any has.
+    pub client: Option<String>,
+    /// Seconds since an agent last connected or used a tool; `None` if none has.
+    pub idle_secs: Option<u64>,
+    /// Tool calls since the app started.
+    pub calls: u64,
 }
 
 fn is_loopback(host: &str) -> bool {
@@ -79,8 +84,8 @@ struct Inner {
 /// The MCP server, which can be stopped and started again with another host and port.
 pub struct Mcp {
     bridge: Arc<dyn Bridge>,
-    /// Whether an agent has called `read_instructions` since the app started.
-    read: Arc<AtomicBool>,
+    /// What agents did since the app started: whether the instructions were read, and when they last called.
+    gate: Arc<tools::Gate>,
     inner: Mutex<Inner>,
 }
 
@@ -93,10 +98,13 @@ impl Mcp {
             url: None,
             error: None,
             loopback: true,
+            client: None,
+            idle_secs: None,
+            calls: 0,
         };
         Self {
             bridge,
-            read: Arc::new(AtomicBool::new(false)),
+            gate: Arc::new(tools::Gate::default()),
             inner: Mutex::new(Inner {
                 status,
                 running: None,
@@ -105,7 +113,16 @@ impl Mcp {
     }
 
     pub async fn status(&self) -> McpStatus {
-        self.inner.lock().await.status.clone()
+        let status = self.inner.lock().await.status.clone();
+        self.with_activity(status)
+    }
+
+    fn with_activity(&self, mut status: McpStatus) -> McpStatus {
+        let a = self.gate.activity();
+        status.client = a.client;
+        status.idle_secs = a.idle_secs;
+        status.calls = a.calls;
+        status
     }
 
     /// Stops the server if it runs, then listens on `host:port`. Never fails: a problem is
@@ -130,6 +147,9 @@ impl Mcp {
             url: None,
             error: None,
             loopback,
+            client: None,
+            idle_secs: None,
+            calls: 0,
         };
         match check(&host, port) {
             Err(e) => status.error = Some(e),
@@ -138,7 +158,7 @@ impl Mcp {
                 &host,
                 port,
                 loopback,
-                self.read.clone(),
+                self.gate.clone(),
             )
             .await
             {
@@ -156,7 +176,7 @@ impl Mcp {
             },
         }
         g.status = status.clone();
-        status
+        self.with_activity(status)
     }
 }
 

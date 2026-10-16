@@ -246,6 +246,16 @@
       "sprue": "Add sprue"
     }
   },
+  "mcp": {
+    "agent": "Agent",
+    "off": "MCP off",
+    "ready": "Agent: waiting",
+    "idle": "{{name}} · idle",
+    "active": "{{name}} · working",
+    "offTitle": "The MCP server is not running.",
+    "last": "{{name}}: {{calls}} calls, last {{secs}} s ago",
+    "none": "No agent has connected yet."
+  },
   "prefs": {
     "title": "Preferences",
     "hint": "Applies to the whole app, not just this project.",

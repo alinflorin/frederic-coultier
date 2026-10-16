@@ -28,6 +28,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { ExportDialog } from "./components/ExportDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { getPref, setPref } from "./prefs";
+import { McpIndicator } from "./components/McpIndicator";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
 import { Welcome } from "./components/Welcome";
@@ -521,7 +522,7 @@ function App() {
 
   return (
     <div className="app">
-      <MenuBar menus={menus} title={title} dirty={dirty} />
+      <MenuBar menus={menus} title={title} dirty={dirty} trailing={<McpIndicator onClick={() => setDialog("prefs")} />} />
 
       {!project ? (
         <Welcome recents={recents} onNew={newProject} onOpen={openDialog} onOpenRecent={openRecent} onSample={newSample} />

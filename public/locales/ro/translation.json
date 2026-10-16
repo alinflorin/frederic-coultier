@@ -246,6 +246,16 @@
       "sprue": "Adaugă canal de turnare"
     }
   },
+  "mcp": {
+    "agent": "Agent",
+    "off": "MCP oprit",
+    "ready": "Agent: în așteptare",
+    "idle": "{{name}} · inactiv",
+    "active": "{{name}} · lucrează",
+    "offTitle": "Serverul MCP nu rulează.",
+    "last": "{{name}}: {{calls}} apeluri, ultimul acum {{secs}} s",
+    "none": "Niciun agent nu s-a conectat încă."
+  },
   "prefs": {
     "title": "Preferințe",
     "hint": "Se aplică întregii aplicații, nu doar acestui proiect.",
