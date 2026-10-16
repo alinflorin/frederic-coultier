@@ -5,6 +5,7 @@
 
 mod catalog;
 mod commands;
+pub mod kb;
 pub mod parse;
 mod reference;
 
@@ -71,11 +72,22 @@ fn fail(message: String) -> Run {
 #[derive(Clone)]
 pub struct Cli {
     bridge: Arc<dyn Bridge>,
+    kb: kb::Source,
 }
 
 impl Cli {
     pub fn new(bridge: Arc<dyn Bridge>) -> Self {
-        Self { bridge }
+        Self {
+            bridge,
+            kb: kb::baked(),
+        }
+    }
+
+    /// Reads the knowledge base from somewhere else than the program (tests).
+    #[cfg(test)]
+    pub fn with_kb(mut self, kb: kb::Source) -> Self {
+        self.kb = kb;
+        self
     }
 
     /// What `read_instructions` returns: the user's notes, then the generated reference
@@ -106,6 +118,7 @@ impl Cli {
         }
         let ctx = commands::Ctx {
             bridge: self.bridge.as_ref(),
+            kb: &self.kb,
         };
         let several = commands.len() > 1;
         let (mut text, mut images) = (Vec::new(), Vec::new());

@@ -20,6 +20,7 @@ const RENDER_WAIT_MS: u64 = 20_000;
 
 pub struct Ctx<'a> {
     pub bridge: &'a dyn Bridge,
+    pub kb: &'a super::kb::Source,
 }
 
 impl Ctx<'_> {
@@ -49,7 +50,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         return Err("empty command; try: help".into());
     };
     let (name, args) = match first.as_str() {
-        g @ ("src" | "supports") => match words.get(1) {
+        g @ ("src" | "supports" | "kb") => match words.get(1) {
             Some(sub) if !sub.starts_with('-') => (format!("{g} {sub}"), &words[2..]),
             _ => return Err(format!("{g} needs a subcommand; try: help {g}")),
         },
@@ -91,6 +92,9 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "supports rm" => supports_rm(c, args).await,
         "sprue" => sprue(c, args).await,
         "export" => export(c, args).await,
+        "kb search" => kb_search(c, args).await,
+        "kb cat" => kb_cat(c, args).await,
+        "kb ls" => kb_ls(c, args).await,
         "help" => help(args),
         other => return Err(format!("unknown command {other:?}; try: help")),
     };
@@ -378,6 +382,82 @@ async fn src_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     say(text::read(&source(c).await?, offset, limit)?)
 }
 
+// ---- knowledge base ----
+
+fn count(p: &Parsed, name: &str, default: usize, max: usize) -> Result<usize, String> {
+    Ok(match p.number(name)? {
+        Some(v) if v >= 1.0 => (v as usize).min(max),
+        Some(_) => return Err(format!("--{name} must be at least 1")),
+        None => default,
+    })
+}
+
+async fn kb_search(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, KB_SEARCH_FLAGS)?;
+    if p.pos.is_empty() {
+        return Err("give the words to look for".into());
+    }
+    let query = p.pos.join(" ");
+    let (top, per_file) = (count(&p, "top", 5, 50)?, count(&p, "per-file", 2, 20)?);
+    let lines = if p.has("full") {
+        None
+    } else {
+        Some(count(&p, "lines", 14, 200)?)
+    };
+    let mut docs = (c.kb)(&super::kb::exts(p.value("ext")));
+    let dirs: Vec<String> = p
+        .values("dir")
+        .iter()
+        .map(|d| d.trim_matches('/').to_string())
+        .collect();
+    if !dirs.is_empty() {
+        if let Some(bad) = dirs.iter().find(|d| !docs.iter().any(|x| &x.sub == *d)) {
+            return Err(format!(
+                "no subfolder {bad:?} in the knowledge base; try `kb ls`"
+            ));
+        }
+        docs.retain(|d| dirs.contains(&d.sub));
+    }
+    use super::kb::{Index, Options, files, render};
+    let index = Index::new(&docs);
+    let hits = index.search(&query);
+    say(if p.has("files") {
+        files(&index, &hits, top)
+    } else {
+        render(
+            &index,
+            &hits,
+            &query,
+            &Options {
+                top,
+                per_file,
+                lines,
+            },
+        )
+    })
+}
+
+async fn kb_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let (path, range) = match p.pos.as_slice() {
+        [f] => (f, None),
+        [f, r] => (f, Some(parse::range(r)?)),
+        _ => return Err("give a path and, optionally, a line range".into()),
+    };
+    let docs = (c.kb)(&super::kb::exts(None));
+    let doc = super::kb::find(&docs, path)?;
+    let (offset, limit) = match range {
+        Some((a, b)) => (Some(a), b.map(|b| (b + 1).saturating_sub(a).max(1))),
+        None => (None, None),
+    };
+    say(text::read(&doc.lines.join("\n"), offset, limit)?)
+}
+
+async fn kb_ls(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    expect_no_args(args)?;
+    say(super::kb::list(&(c.kb)(&super::kb::exts(None))))
+}
+
 async fn src_grep(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let p = options(args, GREP_FLAGS)?;
     let [pattern] = p.pos.as_slice() else {
@@ -453,6 +533,15 @@ async fn edit_report(
 }
 
 pub(super) const NO_FLAGS: &[Flag] = &[];
+pub(super) const KB_SEARCH_FLAGS: &[Flag] = &[
+    opt("top"),
+    opt("dir"),
+    opt("per-file"),
+    opt("lines"),
+    switch("full"),
+    switch("files"),
+    opt("ext"),
+];
 pub(super) const WAIT: &[Flag] = &[switch("no-wait")];
 pub(super) const EDIT_FLAGS: &[Flag] = &[switch("no-wait"), switch("all")];
 pub(super) const NEW_FLAGS: &[Flag] = &[switch("sample"), switch("discard")];
@@ -1659,6 +1748,75 @@ mod tests {
                 .contains("does not read a here-document")
         );
         assert!(a.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn knowledge_base_commands_search_read_and_list() {
+        let dir = std::env::temp_dir().join(format!("fc-kb-cmd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("settings")).unwrap();
+        std::fs::create_dir_all(dir.join("casting")).unwrap();
+        std::fs::write(
+            dir.join("settings/prongs.md"),
+            "# Prong settings\n\nFour prongs hold a round stone.\n\nUse 0.8 mm at the base.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("casting/limits.md"),
+            "# Limits\n\nWalls of 0.6 mm in silver.\n",
+        )
+        .unwrap();
+        let source = |dir: Option<std::path::PathBuf>| -> super::super::kb::Source {
+            Arc::new(move |exts| match &dir {
+                Some(d) => super::super::kb::scan(d, exts).unwrap_or_default(),
+                None => Vec::new(),
+            })
+        };
+        let cli = |input: &'static str, dir: Option<std::path::PathBuf>| async move {
+            super::super::Cli::new(Mock::new(|_, _| Ok(json!({}))))
+                .with_kb(source(dir))
+                .run(input)
+                .await
+        };
+        let d = Some(dir.clone());
+
+        // nothing in it
+        let r = cli("kb ls", None).await;
+        assert!(r.out.text.contains("is empty"), "{}", r.out.text);
+
+        let ls = cli("kb ls", d.clone()).await.out.text;
+        assert!(ls.contains("2 files") && ls.contains("settings/"), "{ls}");
+
+        let found = cli("kb search prong stone", d.clone()).await.out.text;
+        assert!(found.contains("1. settings/prongs.md:1-"), "{found}");
+        assert!(!found.contains("casting/limits.md"), "{found}");
+        let only = cli("kb search --dir casting walls silver --lines 1", d.clone()).await;
+        assert!(
+            only.error.is_none() && only.out.text.contains("casting/limits.md"),
+            "{}",
+            only.out.text
+        );
+        assert_eq!(
+            cli("kb search --files prong", d.clone()).await.out.text,
+            "settings/prongs.md"
+        );
+        let bad_dir = cli("kb search --dir nope prong", d.clone()).await;
+        assert!(
+            bad_dir.out.text.contains("no subfolder"),
+            "{}",
+            bad_dir.out.text
+        );
+        assert!(cli("kb search", d.clone()).await.error.is_some());
+
+        let cat = cli("kb cat settings/prongs.md 3:3", d.clone())
+            .await
+            .out
+            .text;
+        assert!(cat.contains("Four prongs"), "{cat}");
+        let outside = cli("kb cat ../x.md", d.clone()).await;
+        assert!(outside.error.is_some(), "{}", outside.out.text);
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

@@ -35,6 +35,7 @@ rmcp = { version = "3.5", features = ["server", "macros", "transport-streamable-
 axum = "0.8"
 tokio = { version = "1", features = ["net", "process", "sync", "time"] }
 tokio-util = "0.7"
+include_dir = "0.7.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

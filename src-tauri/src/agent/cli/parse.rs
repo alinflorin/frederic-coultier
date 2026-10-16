@@ -246,6 +246,11 @@ impl Parsed {
             .map(String::as_str)
     }
 
+    /// Every value of a repeated option.
+    pub fn values(&self, name: &str) -> &[String] {
+        self.flags.get(name).map_or(&[], Vec::as_slice)
+    }
+
     pub fn number(&self, name: &str) -> Result<Option<f64>, String> {
         self.value(name)
             .map(|v| {

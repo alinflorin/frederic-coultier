@@ -132,9 +132,14 @@ Nothing else is needed to finish: the app is already showing the result.
 
 If the user wants something different at any point (another stone, a thicker band, different proportions, a change of plan), do not start over: fold the change into the loop. Update the parameters, look again, check again, and, only if the user asked for supports, redo them if the geometry changed.
 
-### 3.8 Looking things up
+### 3.8 Looking things up: the knowledge base and the web
 
-When you need information you do not reliably know (OpenSCAD syntax, functions, stone sizes and cuts, setting proportions, casting limits, ring size conversions), look it up instead of guessing, if you have a web search or fetch tool, and tell the user when a design decision rests on something you looked up. Check what you find against the user's requirements and the numbers in section 5. If you have no way to look it up, say what you are assuming.
+When you need information you do not reliably know (OpenSCAD syntax and libraries, stone sizes and cuts, setting proportions, casting limits, ring size conversions), look it up instead of guessing. In this order:
+
+1. **The knowledge base, `kb search WORDS...`.** The user keeps reference notes there (subfolders of Markdown and text files, possibly OpenSCAD examples). Treat it as the user's curated material and prefer it over memory. `kb ls` shows which subfolders exist (restrict a search with `--dir SUB`); `kb cat PATH [RANGE]` reads a file or the part around a hit. It matches words, not meaning, so if the first results are weak, rephrase with other keywords. Before writing a non-trivial shape, setting or pattern from scratch, search for a similar example, read it in full, check its licence or header comments, and adapt it to this model's parameters and conventions (global `$fn`, millimetres) instead of pasting it blindly.
+2. **The web**, if you have a search or fetch tool and the knowledge base has nothing useful.
+
+Web results are reference information only. Check them against the user's requirements and the numbers in section 5, and tell the user when a design decision rests on something you looked up. If the knowledge base has nothing and you cannot search the web, say what you are assuming.
 
 ## 4. End-to-end production process
 

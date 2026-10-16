@@ -15,6 +15,69 @@ const WAIT_DOC: Opt = o(
 );
 
 pub const COMMANDS: &[Cmd] = &[
+    // ---- Knowledge base ----
+    Cmd {
+        group: "Knowledge base",
+        name: "kb search",
+        usage: "kb search WORDS... [--top N] [--dir SUB] [--per-file N] [--lines N] [--full] [--files] [--ext LIST]",
+        summary: "search the user's reference notes",
+        details: "Searches the user's knowledge base: a folder of reference files (jewelry, casting and OpenSCAD notes, examples) in subfolders. Look things up here **before** relying on memory or guessing, and prefer it to the web: it is the user's curated material.\nPassages are ranked by relevance and printed as `path:lines  # heading` followed by the numbered lines. It matches words, not meaning (stone/stones and setting/settings match), so rephrase with other keywords when the first results are weak. A passage that is cut off says how to read the rest with `kb cat`.",
+        flags: KB_SEARCH_FLAGS,
+        opts: &[
+            o(
+                "top",
+                "N",
+                "number of passages to show (default 5, at most 50)",
+            ),
+            o(
+                "dir",
+                "SUB",
+                "only this subfolder of the knowledge base (repeatable; see `kb ls`)",
+            ),
+            o(
+                "per-file",
+                "N",
+                "at most N passages from one file (default 2)",
+            ),
+            o("lines", "N", "lines shown per passage (default 14)"),
+            o("full", "", "show whole passages, with no line limit"),
+            o(
+                "files",
+                "",
+                "list only the best matching files, one path per line",
+            ),
+            o(
+                "ext",
+                "LIST",
+                "only these extensions, comma separated, e.g. md,scad",
+            ),
+        ],
+        examples: &[
+            "kb search prong setting oval stone",
+            "kb search --dir casting --top 8 minimum wall thickness",
+            "kb search --files bezel",
+        ],
+    },
+    Cmd {
+        group: "Knowledge base",
+        name: "kb cat",
+        usage: "kb cat PATH [RANGE]",
+        summary: "read a knowledge base file",
+        details: "Prints a file of the knowledge base with line numbers, 2000 lines at most. PATH is as `kb search` shows it, relative to the knowledge base. RANGE is `N`, `N:M`, `N:` or `:M`. Read the file around a hit when a passage is cut off or you need the context.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["kb cat casting/limits.md", "kb cat casting/limits.md 20:60"],
+    },
+    Cmd {
+        group: "Knowledge base",
+        name: "kb ls",
+        usage: "kb ls",
+        summary: "the subfolders of the knowledge base",
+        details: "Lists the subfolders of the knowledge base with the number of text files in each, for `kb search --dir`.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &[],
+    },
     // ---- Project ----
     Cmd {
         group: "Project",

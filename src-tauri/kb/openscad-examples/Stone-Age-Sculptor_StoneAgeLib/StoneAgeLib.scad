@@ -1,0 +1,131 @@
+// StoneAgeLib.scad
+//
+// Part of the StoneAgeLib
+//
+// By: Stone Age Sculptor
+// License: CC0 (Public Domain)
+//
+// Version 1
+// February 3, 2025
+//
+// Version 2
+// February 4, 2025
+// Changes:
+//   The function pillow() is removed from extrude.scad
+//   The file DemonstrationPillow.scad is removed.
+//   It was made by Reddit user oldesole1, but he is working on it himself to improve it.
+//
+// Version 3
+// March 2, 2025
+// Changes:
+//   Perspective function added.
+//   Demonstration for 3D tubes added.
+//   Example for cylinder_fillet now also shows a fillet hole.
+//   Added "center" parameter to cylinder_fillet().
+//   Added file: DemonstrationTurtleRecursive.scad.
+//   Added file: DemonstrationTurtleLogo.scad.
+//
+// Version 4
+// March 2, 2025
+// Changes:
+//   Added 7-segment display.
+//   File interpolate.scad is now called subdivision.scad
+//   Module outward_bevel_extrude() added.
+//   Updates to font.
+//   Name "linear_extrude_chamfer()" is
+//   changed to "chamfer_extrude()".
+//
+// Version 5
+// June 4, 2025
+// Changes:
+//   Added MirrorList(v,list).
+//   Removed most global variables.
+//   vector_add_2D() is renamed to vector_add() and is now for 2D and 3D.
+//
+// Version 6
+// September 9, 2025
+// Changes:
+//   MakeFrame() added to extrude.scad.
+//   The roof() function is no longer needed for the crease texture.
+//   Function SteelPlate() added to texture.scad.
+//   Function substr() added to string.scad.
+//   Bug fix: replaced "\'" with "'" in font.scad.
+//
+// Version 7
+// Date: October 25, 2025
+// Changes:
+//   Added the file "matrix.scad".
+//   Added the file "polyhedron.scad".
+//   Added the function MethodSplitName() to subdivision.scad.
+//
+// Version 8
+// Date: November 1, 2025
+// Changes:
+//   The MatrixVolume() function now also accepts a tube.
+//
+// Version 9
+// Date: December 18, 2025
+// Changes:
+//   - The function MatrixAddMirror() in matrix.scad
+//     now accepts a vector and can also mirror the y-values.
+//   - MatrixVolume() is now trying to fix unreliable edge points.
+//   - MatrixAddNoise() and MatrixForce() added. 
+//   - Experimental MatrixDisc functions added to matrix.scad.
+//   - Changed the headers of all files, the text with
+//     "By: Stone Age Sculptor" and "License: CC0 (Public Domain)"
+//     is now mentioned once at the top and no longer at each version.
+//   - Function TranslateList() in list.scad updated for 2D and 3D.
+//   - The examples have now only the common file included,
+//     no longer the individual files that were used.
+//   - The method "weighted" in subdivision.scad is
+//     now called "cubic".
+//
+// Version 10
+// Date: September 20, 2026
+// Changes:
+//   New subdivision method "fit", where the control points
+//   fit on the smooth curve. Only for 2D at the moment.
+//   The functions in the files have no longer their own version.
+//   Function ExtrudeRoundedEdge() and ExtrudeFilletEdge() added in extrude.scad.
+//   File "color.scad" renamed to "colors.scad", to avoid the
+//   same name as a file of the BOSL2 library.
+//     At this moment the "Subdivision Font" can not be used
+//     together with the BOSL2 library. More changes are needed.
+//   Added RoundedCube() in shapes.scad.
+//   The function _MatrixOffsetPoints() is renamed to MatrixNormalOffset().
+//
+//
+//
+//
+// This version number is the overall version for the whole library.
+// Each file has its own version.
+//
+//
+// To use this library, either include this file (StoneAgeLib.scad) or 
+// include the file or files that are used.
+// If you make a project with this library, then please add a copy 
+// of this library to your project or copy the used functions into your
+// own script. The modules and functions of this library may change.
+
+// This library uses a OpenSCAD version of at least 2026.
+
+// The overall version of the library.
+VERSION_STONEAGELIB = 10;
+
+include <colors.scad>
+include <extrude.scad>
+include <font.scad>
+include <inverseminkowski.scad>
+include <list.scad>
+include <matrix.scad>
+include <perspective.scad>
+include <polyhedron.scad>
+include <seven_segment.scad>
+include <shadow.scad>
+include <shapes.scad>
+include <string.scad>
+include <subdivision.scad>
+include <tangentlines.scad>
+include <texture.scad>
+include <turtle.scad>
+
