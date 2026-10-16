@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, as in package.json (e.g. 0.1.2); the tag v<version> is created if missing"
+        required: true
+        type: string
 
 jobs:
   release:
@@ -48,6 +53,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          key: ${{ matrix.args }}-arch
 
       - run: pnpm install --frozen-lockfile
 
@@ -56,9 +62,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # manifold-csg-sys runs cmake itself and cmake would build for the runner (arm64)
+          CMAKE_OSX_ARCHITECTURES: ${{ contains(matrix.args, 'x86_64') && 'x86_64' || '' }}
+          CFLAGS: ${{ contains(matrix.args, 'x86_64') && '-arch x86_64' || '' }}
+          CXXFLAGS: ${{ contains(matrix.args, 'x86_64') && '-arch x86_64' || '' }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Frederic Coultier ${{ github.ref_name }}"
+          tagName: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          releaseName: "Frederic Coultier ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}"
           releaseBody: "See the assets below to download and install."
           releaseDraft: false
           prerelease: false
