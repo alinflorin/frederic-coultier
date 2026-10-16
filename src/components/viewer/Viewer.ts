@@ -43,6 +43,39 @@ const VIEW_DIR: Record<ViewName, THREE.Vector3> = {
   iso: new THREE.Vector3(1, -1.15, 0.85),
 };
 
+/** Everything is optional: what is left out stays as it currently is on screen. */
+export interface CaptureOptions {
+  view?: ViewName;
+  /** Degrees around the piece: 0 = front, 90 = right. */
+  azimuth?: number;
+  /** Degrees above the horizon: 90 = straight down. */
+  elevation?: number;
+  /** 1 = the whole piece fills the picture. */
+  zoom?: number;
+  target?: [number, number, number];
+  orthographic?: boolean;
+  shading?: ShadingMode;
+  grid?: boolean;
+  axes?: boolean;
+  dimensions?: boolean;
+  /** `null` removes the section for the picture. */
+  section?: Section | null;
+  metalColor?: string;
+  /** "transparent", or any CSS colour. */
+  background?: string;
+  width?: number;
+  height?: number;
+}
+
+/** A text label drawn on top of a captured picture (the on-screen ones are HTML). */
+interface Mark {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  px: number;
+}
+
 const FOV = 30;
 const ORTHO_HALF = 20; // visible half-height (mm) at zoom 1
 const TAN_HALF = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -97,6 +130,9 @@ export class Viewer {
   private style: ViewerStyle | null = null;
   private lastQ = new THREE.Quaternion();
   private orientCbs = new Set<(q: THREE.Quaternion) => void>();
+  /** While capturing: the picture size, and where label text lands in it. */
+  private capSize: [number, number] | null = null;
+  private marks: Mark[] | null = null;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -332,6 +368,121 @@ export class Viewer {
     this.goTo(this.currentDir(), this.center, animate);
   }
 
+  /**
+   * A PNG (base64) of the scene with the given overrides, at any size. It changes the viewer for
+   * the length of this synchronous call and puts everything back before the browser paints, so
+   * the user sees no flicker.
+   */
+  capture(o: CaptureOptions): { png: string; width: number; height: number } {
+    if (!this.model) throw new Error("There is nothing to show: the model is empty.");
+    if (this.tween) {
+      this.applyTween(this.tween, 1);
+      this.tween = null;
+    }
+    const style = this.style;
+    const section = this.section;
+    const wasOrtho = this.camera === this.ortho;
+    const saved = {
+      persp: { p: this.persp.position.clone(), q: this.persp.quaternion.clone() },
+      ortho: { p: this.ortho.position.clone(), q: this.ortho.quaternion.clone(), zoom: this.ortho.zoom },
+      target: this.controls.target.clone(),
+      bg: this.renderer.getClearColor(new THREE.Color()).clone(),
+      alpha: this.renderer.getClearAlpha(),
+      ratio: this.renderer.getPixelRatio(),
+    };
+    const w = Math.round(THREE.MathUtils.clamp(o.width ?? this.host.clientWidth, 16, 2048));
+    const h = Math.round(THREE.MathUtils.clamp(o.height ?? this.host.clientHeight, 16, 2048));
+    try {
+      if (style) {
+        this.setStyle({
+          ...style,
+          turntable: false,
+          metalColor: o.metalColor ?? style.metalColor,
+          display: o.shading ?? style.display,
+          ortho: o.orthographic ?? style.ortho,
+          grid: o.grid ?? style.grid,
+          axes: o.axes ?? style.axes,
+          dimensions: o.dimensions ?? style.dimensions,
+        });
+      }
+      if (o.section !== undefined) this.setSection(o.section);
+
+      // size first: the fit distance depends on the aspect ratio
+      this.capSize = [w, h];
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(w, h, false);
+      this.setViewport(w, h);
+
+      if (o.view || o.azimuth !== undefined || o.elevation !== undefined || o.zoom !== undefined || o.target) {
+        const cur = this.currentDir();
+        let az = Math.atan2(cur.x, -cur.y);
+        let el = Math.asin(THREE.MathUtils.clamp(cur.z, -1, 1));
+        if (o.view) {
+          const d = VIEW_DIR[o.view].clone().normalize();
+          az = Math.atan2(d.x, -d.y);
+          el = Math.asin(d.z);
+        }
+        if (o.azimuth !== undefined) az = THREE.MathUtils.degToRad(o.azimuth);
+        if (o.elevation !== undefined) el = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(o.elevation, -89.9, 89.9));
+        const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), -Math.cos(az) * Math.cos(el), Math.sin(el));
+        const zoom = o.zoom ?? this.fitDistance() / this.distance();
+        const dist = this.fitDistance() / Math.max(zoom, 0.01);
+        const target = o.target ? new THREE.Vector3(...o.target) : this.controls.target.clone();
+        this.controls.target.copy(target);
+        this.camera.position.copy(target).addScaledVector(dir, dist);
+        this.ortho.zoom = ORTHO_HALF / (dist * TAN_HALF);
+        this.ortho.updateProjectionMatrix();
+        this.camera.lookAt(target);
+      }
+      this.camera.updateMatrixWorld();
+
+      const bg = (o.background ?? "transparent").toLowerCase();
+      if (bg === "transparent") this.renderer.setClearColor(0x000000, 0);
+      else this.renderer.setClearColor(new THREE.Color(bg), 1);
+
+      this.marks = [];
+      this.updateAxes();
+      this.renderer.render(this.scene, this.camera);
+      this.updateLabels();
+
+      const out = document.createElement("canvas");
+      out.width = w;
+      out.height = h;
+      const ctx = out.getContext("2d")!;
+      ctx.drawImage(this.renderer.domElement, 0, 0, w, h);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineJoin = "round";
+      const halo = bg === "transparent" || bg === "white" ? "#ffffffcc" : "#000000aa";
+      for (const m of this.marks) {
+        ctx.font = `${m.px}px sans-serif`;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = halo;
+        ctx.strokeText(m.text, m.x, m.y);
+        ctx.fillStyle = m.color;
+        ctx.fillText(m.text, m.x, m.y);
+      }
+      return { png: out.toDataURL("image/png").split(",")[1], width: w, height: h };
+    } finally {
+      this.marks = null;
+      this.capSize = null;
+      if (style) this.setStyle(style);
+      this.setSection(section);
+      this.persp.position.copy(saved.persp.p);
+      this.persp.quaternion.copy(saved.persp.q);
+      this.ortho.position.copy(saved.ortho.p);
+      this.ortho.quaternion.copy(saved.ortho.q);
+      this.ortho.zoom = saved.ortho.zoom;
+      this.controls.target.copy(saved.target);
+      if ((this.camera === this.ortho) !== wasOrtho) this.setOrtho(wasOrtho);
+      this.renderer.setPixelRatio(saved.ratio);
+      this.renderer.setClearColor(saved.bg, saved.alpha);
+      this.resize(); // canvas size and projections back to the host's
+      this.camera.updateMatrixWorld();
+      this.dirty = true;
+    }
+  }
+
   dispose() {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
@@ -426,10 +577,20 @@ export class Viewer {
     this.resize();
   }
 
+  private viewSize(): [number, number] {
+    return this.capSize ?? [this.host.clientWidth, this.host.clientHeight];
+  }
+
   private resize() {
     const w = Math.max(1, this.host.clientWidth);
     const h = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(w, h);
+    this.setViewport(w, h);
+    this.dirty = true;
+  }
+
+  /** Aspect ratio and frustum for a `w` × `h` picture, without touching the canvas. */
+  private setViewport(w: number, h: number) {
     const a = w / h;
     this.persp.aspect = a;
     this.persp.updateProjectionMatrix();
@@ -438,7 +599,6 @@ export class Viewer {
     this.ortho.top = ORTHO_HALF;
     this.ortho.bottom = -ORTHO_HALF;
     this.ortho.updateProjectionMatrix();
-    this.dirty = true;
   }
 
   private hideAxes() {
@@ -517,8 +677,7 @@ export class Viewer {
     for (const v of ys) items.push({ p: new THREE.Vector3(-off, v, floor), text: v.toFixed(decimals), axis: "y" });
     for (const v of zs) if (v > 0) items.push({ p: new THREE.Vector3(-off, 0, floor + v), text: v.toFixed(decimals), axis: "z" });
 
-    const w = this.host.clientWidth;
-    const h = this.host.clientHeight;
+    const [w, h] = this.viewSize();
     const dTarget = this.distance();
     while (this.ticks.length < items.length) {
       const l = document.createElement("span");
@@ -537,6 +696,10 @@ export class Viewer {
       const px = THREE.MathUtils.clamp(13 * (dTarget / depth), 7, 22);
       l.style.fontSize = `${px.toFixed(1)}px`;
       l.style.transform = `translate(-50%, -50%) translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px)`;
+      if (this.marks && v.z <= 1) {
+        const color = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" }[it.axis];
+        this.marks.push({ x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, text: it.text, color, px });
+      }
     });
   }
 
@@ -549,14 +712,17 @@ export class Viewer {
       [new THREE.Vector3(max.x, (min.y + max.y) / 2, min.z), s.y],
       [new THREE.Vector3(min.x, min.y, (min.z + max.z) / 2), s.z],
     ];
-    const w = this.host.clientWidth;
-    const h = this.host.clientHeight;
+    const [w, h] = this.viewSize();
     anchors.forEach(([p, len], i) => {
       const v = p.project(this.camera);
       const l = this.labels[i];
       l.textContent = `${len.toFixed(1)} mm`;
       l.style.transform = `translate(-50%, -50%) translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px)`;
       l.style.visibility = v.z > 1 ? "hidden" : "visible";
+      if (this.marks && v.z <= 1) {
+        const color = getComputedStyle(this.host).getPropertyValue("--text").trim() || "#333333";
+        this.marks.push({ x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, text: l.textContent ?? "", color, px: 13 });
+      }
     });
   }
 

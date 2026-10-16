@@ -1,3 +1,4 @@
+mod agent;
 mod project;
 mod bvh;
 mod checks;
@@ -245,7 +246,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .manage(RenderCache::default());
+        .manage(RenderCache::default())
+        .setup(|app| {
+            agent::start(app.handle());
+            Ok(())
+        });
 
     #[cfg(desktop)]
     let builder = builder
@@ -253,7 +258,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
 
     builder
-        .invoke_handler(tauri::generate_handler![open_project, save_project, render_scad, export_model, suggest_tilt, auto_supports, print_layout, mesh_report])
+        .invoke_handler(tauri::generate_handler![agent::bridge::agent_reply, agent::mcp_status, agent::mcp_configure, open_project, save_project, render_scad, export_model, suggest_tilt, auto_supports, print_layout, mesh_report])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

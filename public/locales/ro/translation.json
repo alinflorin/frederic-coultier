@@ -254,6 +254,24 @@
       "auto": "Automat (ca sistemul)",
       "light": "Luminos",
       "dark": "Întunecat"
+    },
+    "mcp": {
+      "title": "Conexiune agent (MCP)",
+      "intro": "Un agent AI, precum Claude Code, se poate conecta la aplicație și poate lucra pe proiectul deschis. Se conectează la această adresă:",
+      "host": "Gazdă",
+      "port": "Port",
+      "badHost": "Gazda trebuie să fie un nume sau o adresă, de exemplu 127.0.0.1.",
+      "badPort": "Portul trebuie să fie un număr între 1 și 65535.",
+      "exposed": "Oricine poate ajunge la această adresă poate controla aplicația: nu există parolă. Folosește 127.0.0.1 dacă nu ești sigur că ai nevoie de altceva.",
+      "apply": "Aplică",
+      "applying": "Se aplică…",
+      "defaults": "Implicit",
+      "running": "Pornit",
+      "stopped": "Oprit.",
+      "copy": "Copiază",
+      "connect": "Ca să-l adaugi în Claude Code, rulează:",
+      "local": "Nu există parolă: se pot conecta doar programele de pe acest calculator.",
+      "desktopOnly": "Conexiunea agentului este disponibilă doar în aplicația desktop."
     }
   },
   "findings": {

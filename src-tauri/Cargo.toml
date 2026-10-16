@@ -30,6 +30,11 @@ tauri-plugin-dialog = "2.8.3"
 thiserror = "2.0.21"
 meshopt-rs = { version = "0.1.2", features = ["experimental"] }
 tauri-plugin-store = "2.5.0"
+regex = "1"
+rmcp = { version = "3.5", features = ["server", "macros", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["net", "sync", "time"] }
+tokio-util = "0.7"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -45,4 +50,5 @@ tauri-plugin-process = "2.4.0"
 tauri-plugin-updater = "2.14.0"
 
 [dev-dependencies]
+tower = "0.5"
 tempfile = "3.27.0"

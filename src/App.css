@@ -351,3 +351,13 @@ fieldset:disabled { opacity: 0.45; }
 .vp-section button { padding: 2px 8px; }
 .vp-section button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .vp-section input[type="range"] { width: 160px; accent-color: var(--accent); }
+
+/* preferences: agent connection */
+.mcp-actions { display: flex; gap: 8px; margin: 8px 0 4px; }
+.mcp-status { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; font-size: 13px; }
+.mcp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.mcp-dot.on { background: var(--ok); }
+.mcp-bad { color: var(--bad); }
+.mcp-warn { color: var(--accent); }
+.mcp-copy { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.mcp-copy code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--code-bg); font-size: 12px; }

@@ -31,6 +31,9 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
 import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
+import type { Viewer } from "./components/viewer/Viewer";
+import { useAgentBridge } from "./agent/useAgentBridge";
+import type { AgentApi } from "./agent/ops";
 import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
@@ -84,13 +87,28 @@ function App() {
     setTimeout(() => setToast(null), 3200);
   }, []);
 
-  const edit = useCallback((fn: (p: FcProject) => FcProject) => {
-    setProject((p) => (p ? fn(p) : p));
-    setDirty(true);
+  // The latest project, readable at any moment (state only updates on the next render). Every
+  // change goes through `commit`, which also counts source revisions for the agent's conflict check.
+  const projectRef = useRef<FcProject | null>(null);
+  const revRef = useRef(0);
+  const commit = useCallback((next: FcProject | null) => {
+    const prev = projectRef.current;
+    if (!next || !prev || prev.source !== next.source) revRef.current++;
+    projectRef.current = next;
+    setProject(next);
   }, []);
 
+  const edit = useCallback(
+    (fn: (p: FcProject) => FcProject) => {
+      const p = projectRef.current;
+      if (p) commit(fn(p));
+      setDirty(true);
+    },
+    [commit],
+  );
+
   const load = (p: FcProject, filePath: string | null) => {
-    setProject(p);
+    commit(p);
     setPath(filePath);
     setDirty(false);
     setRender(IDLE);
@@ -109,7 +127,7 @@ function App() {
       try {
         const res = await renderScad(source);
         if (id !== request.current) return;
-        setRender({ status: "ok", mesh: res.stl, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes });
+        setRender({ status: "ok", mesh: res.stl, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
       } catch (e) {
         if (id !== request.current) return;
         // keep showing the last good model while the source is broken
@@ -117,6 +135,7 @@ function App() {
           ...r,
           status: "error",
           error: e instanceof RenderError ? e : new RenderError(errorText(e)),
+          source,
         }));
       }
     }, RENDER_DELAY_MS);
@@ -131,18 +150,26 @@ function App() {
   const sprueD = project?.settings.printing.sprueDiameter ?? 2;
   const sprueL = project?.settings.printing.sprueLength ?? 5;
   const sprueAt = project?.settings.printing.sprueAt ?? null;
+  const layoutPending = useRef(false);
   useEffect(() => {
     if (!supOpts || !(supOpts.enabled || sprueOn) || !source || render.status !== "ok" || !render.mesh) {
       setLayout(null);
+      layoutPending.current = false;
       return;
     }
+    layoutPending.current = true;
     let live = true;
     // without supports the piece stays as modelled; the layout then only adds the sprue
     const params = supOpts.enabled ? printParams(tilt, supOpts) : { ...printParams(0, supOpts), lift: 0, raft: 0 };
     printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL, at: sprueAt } : undefined)
-      .then((l) => live && setLayout(l))
+      .then((l) => {
+        if (!live) return;
+        setLayout(l);
+        layoutPending.current = false;
+      })
       .catch((e) => {
         if (!live) return;
+        layoutPending.current = false;
         setLayout(null);
         console.error("print layout failed", e);
         notify(t("preview.layoutFailed", { error: errorText(e) }));
@@ -219,7 +246,7 @@ function App() {
   const closeProject = () =>
     guard(() => {
       request.current++;
-      setProject(null);
+      commit(null);
       setPath(null);
       setDirty(false);
       setDialog(null);
@@ -298,6 +325,57 @@ function App() {
       .then((u) => (off = u));
     return () => off?.();
   }, []);
+
+  // --- agent: the MCP tools read and change the live project through this ---
+  const viewerRef = useRef<Viewer | null>(null);
+  const live = useRef({ path, dirty, docName, render, layout, printView });
+  live.current = { path, dirty, docName, render, layout, printView };
+  const saveRef = useRef(doSave);
+  saveRef.current = doSave;
+  const actions = useRef({} as Pick<AgentApi, "newProject" | "openFile" | "saveTo">);
+  actions.current = {
+    newProject: (sample) => {
+      load(sample ? sampleProject() : emptyProject(t("file.untitled")), null);
+      if (sample) setDirty(true); // never saved yet
+    },
+    openFile: async (p) => {
+      load(fromWire(await openProject(p)), p);
+      addRecent(p);
+      setRecents(getRecents());
+    },
+    saveTo: async (p) => {
+      const current = projectRef.current;
+      if (!current) throw new Error("No project is open.");
+      const written = await saveProject(p, toWire(current));
+      setPath(written);
+      setDirty(false);
+      addRecent(written);
+      setRecents(getRecents());
+      return written;
+    },
+  };
+  const agentApi = useMemo<AgentApi>(
+    () => ({
+      project: () => projectRef.current,
+      path: () => live.current.path,
+      docName: () => live.current.docName,
+      dirty: () => live.current.dirty,
+      rev: () => revRef.current,
+      render: () => live.current.render,
+      layout: () => live.current.layout,
+      layoutPending: () => layoutPending.current,
+      printView: () => live.current.printView,
+      setPrintView,
+      viewer: () => viewerRef.current,
+      edit,
+      save: () => saveRef.current(),
+      newProject: (sample) => actions.current.newProject(sample),
+      openFile: (p) => actions.current.openFile(p),
+      saveTo: (p) => actions.current.saveTo(p),
+    }),
+    [edit],
+  );
+  useAgentBridge(agentApi);
 
   const open = !!project;
   const menus: Menu[] = useMemo(
@@ -427,6 +505,7 @@ function App() {
         onPickSupport={pickSupport}
         onPickSprue={pickSprue}
         onStats={(s) => setTriangles(s ? s.tris : null)}
+        onViewer={(v) => (viewerRef.current = v)}
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
     ),

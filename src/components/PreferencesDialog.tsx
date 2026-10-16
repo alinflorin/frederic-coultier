@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
 import { Dialog } from "./Dialog";
+import { McpPrefs } from "./McpPrefs";
 
 const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română" };
 
@@ -12,6 +13,7 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const [theme, setThemeState] = useState<Theme>(getTheme);
   return (
     <Dialog
+      wide
       title={t("prefs.title")}
       onClose={onClose}
       footer={
@@ -48,6 +50,9 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
           </select>
         </span>
       </label>
+
+      <h3>{t("prefs.mcp.title")}</h3>
+      <McpPrefs />
     </Dialog>
   );
 }

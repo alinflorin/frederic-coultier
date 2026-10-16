@@ -16,6 +16,8 @@ export interface RenderState {
   error?: RenderError;
   diagnostics: Diagnostic[];
   echoes: string[];
+  /** The source this result belongs to, so a caller can tell a fresh result from a stale one. */
+  source?: string;
 }
 
 export function PreviewPane({
@@ -28,6 +30,7 @@ export function PreviewPane({
   onPickSprue,
   onPatchRender,
   onStats,
+  onViewer,
 }: {
   project: FcProject;
   render: RenderState;
@@ -41,6 +44,8 @@ export function PreviewPane({
   onPickSprue: (point: [number, number, number]) => void;
   onPatchRender: (p: Partial<FcProject["settings"]["render"]>) => void;
   onStats: (s: ViewerStats | null) => void;
+  /** The 3D viewer, once it exists (null again when it goes away). */
+  onViewer?: (v: Viewer | null) => void;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -80,6 +85,11 @@ export function PreviewPane({
       setViewer(null);
     };
   }, []);
+
+  useEffect(() => {
+    onViewer?.(viewer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer]);
 
   useEffect(() => {
     viewer?.setStyle({

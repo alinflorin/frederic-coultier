@@ -254,6 +254,24 @@
       "auto": "Auto (follow system)",
       "light": "Light",
       "dark": "Dark"
+    },
+    "mcp": {
+      "title": "Agent connection (MCP)",
+      "intro": "An AI agent such as Claude Code can connect to this app and work on the open project. It connects to this address:",
+      "host": "Host",
+      "port": "Port",
+      "badHost": "The host must be a name or an address, such as 127.0.0.1.",
+      "badPort": "The port must be a number between 1 and 65535.",
+      "exposed": "Anyone who can reach this address can control the app: there is no password. Use 127.0.0.1 unless you know you need something else.",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "defaults": "Defaults",
+      "running": "Running",
+      "stopped": "Not running.",
+      "copy": "Copy",
+      "connect": "To add it to Claude Code, run:",
+      "local": "There is no password: only programs on this computer can connect.",
+      "desktopOnly": "The agent connection is only available in the desktop app."
     }
   },
   "findings": {
