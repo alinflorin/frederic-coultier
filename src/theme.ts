@@ -1,16 +1,13 @@
 export type Theme = "auto" | "light" | "dark";
 export const THEMES: Theme[] = ["auto", "light", "dark"];
 
+import { getPref, setPref } from "./prefs";
+
 const KEY = "theme";
 
 export function getTheme(): Theme {
-  try {
-    const saved = localStorage.getItem(KEY);
-    if (saved && (THEMES as string[]).includes(saved)) return saved as Theme;
-  } catch {
-    // storage unavailable: fall back to the default
-  }
-  return "auto";
+  const saved = getPref<string>(KEY);
+  return saved && (THEMES as string[]).includes(saved) ? (saved as Theme) : "auto";
 }
 
 /** "auto" leaves the attribute off so the CSS follows the OS setting. */
@@ -21,10 +18,6 @@ export function applyTheme(theme: Theme) {
 }
 
 export function setTheme(theme: Theme) {
-  try {
-    localStorage.setItem(KEY, theme);
-  } catch {
-    // ignore
-  }
+  setPref(KEY, theme);
   applyTheme(theme);
 }

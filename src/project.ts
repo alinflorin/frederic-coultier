@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from "./defaults";
+import { getPref, setPref } from "./prefs";
 import type { ChatMessage, FcProject, Support, SupportsData } from "./types";
 
 /** What the Rust side reads from and writes to a .fc file. */
@@ -54,7 +55,7 @@ export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** A file name that is safe on every OS. */
 export const safeName = (name: string) => name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "Untitled";
 
-// --- recent files (per-device convenience, so localStorage is fine) ---
+// --- recent files (per-device convenience, kept in the app preferences) ---
 
 export interface Recent {
   path: string;
@@ -63,20 +64,12 @@ export interface Recent {
 const RECENT_KEY = "recentProjects";
 
 export function getRecents(): Recent[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    return Array.isArray(raw) ? raw.filter((r) => typeof r?.path === "string") : [];
-  } catch {
-    return [];
-  }
+  const raw = getPref<unknown>(RECENT_KEY);
+  return Array.isArray(raw) ? raw.filter((r) => typeof r?.path === "string") : [];
 }
 
 function setRecents(list: Recent[]) {
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 8)));
-  } catch {
-    // storage unavailable: recents just won't persist
-  }
+  setPref(RECENT_KEY, list.slice(0, 8));
 }
 
 export function addRecent(path: string) {
