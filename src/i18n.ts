@@ -6,6 +6,8 @@ import { getPref, setPref } from "./prefs";
 export const SUPPORTED_LANGUAGES = ["en", "ro"] as const;
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
 
+export const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ro: "Română" };
+
 const STORAGE_KEY = "language";
 
 function detectLanguage(): Language {

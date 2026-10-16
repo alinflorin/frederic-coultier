@@ -70,6 +70,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
     }
     let result = match name.as_str() {
         "status" => status(c, args).await,
+        "get-project-notes" => get_project_notes(c, args).await,
         "new-project" => new_project(c, args).await,
         "open-project" => open_project(c, args).await,
         "save-project" | "save" => save_project(c, args).await,
@@ -275,6 +276,18 @@ async fn status(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         l.push(format!("notes: {}", notes.trim()));
     }
     say(l.join("\n"))
+}
+
+async fn get_project_notes(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    expect_no_args(args)?;
+    let v = c.op("project.info", json!({})).await?;
+    if v["open"] != true {
+        return say("no project is open; start one with new-project or open-project");
+    }
+    match v["notes"].as_str().filter(|s| !s.trim().is_empty()) {
+        Some(notes) => say(notes.trim().to_string()),
+        None => say("the project has no notes"),
+    }
 }
 
 /// The path `save-project` will really write: the app adds `.fc` when the extension is missing.
@@ -1487,6 +1500,12 @@ mod tests {
         ] {
             assert!(out.contains(want), "{want:?} missing from\n{out}");
         }
+    }
+
+    #[tokio::test]
+    async fn project_notes_are_printed_alone() {
+        let a = app("");
+        assert_eq!(a.ok("get-project-notes").await.trim(), "EU 54");
     }
 
     #[tokio::test]

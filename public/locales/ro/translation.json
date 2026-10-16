@@ -376,5 +376,28 @@
     "fillOk": "Umplere la turnare: fiecare secțiune subțire e aproape de o masă groasă.",
     "fill": "Umplere la turnare: secțiuni subțiri la până la {{worst}} mm de orice masă groasă (limita {{reach}} mm). Metalul poate îngheța înainte să le umple.",
     "deepSkipped": "Verificările de grosime, goluri și intersecții sărite: rezolvă întâi problemele de mai sus."
+  },
+  "onboarding": {
+    "title": "Bine ai venit în Frederic Coultier",
+    "about1": "Un atelier de design de bijuterii condus de un agent AI. Descrie un inel, un pandantiv sau niște cercei; agentul scrie modelul, iar tu îl vezi apărând în 3D.",
+    "about2": "Verifică piesa pentru turnare și printare, adaugă suporturi și canal de turnare și exportă fișiere gata de producție. Proiectele se salvează ca fișiere .fc.",
+    "next": "Înainte",
+    "back": "Înapoi",
+    "start": "Începe",
+    "modeTitle": "Cum vrei să lucrezi cu agentul?",
+    "modeHint": "Ambele folosesc aceleași unelte. Diferența este locul unde vorbești cu agentul.",
+    "recommended": "Recomandat",
+    "later": "Poți schimba oricând din Preferințe.",
+    "chat": {
+      "name": "Chat cu agentul",
+      "what": "Scrii prompturile direct în aplicație. Un panou de chat se deschide lângă editor și previzualizare.",
+      "how": "Folosește Claude Code sau Codex, cu contul în care ești deja autentificat pe acest calculator. Agentul vede și editează proiectul deschis, iar tu vezi fiecare schimbare pe loc."
+    },
+    "mcp": {
+      "name": "Doar MCP",
+      "what": "Fără panou de chat. Aplicația oferă doar uneltele ei, iar tu vorbești cu propriul agent în altă parte.",
+      "how": "Cât rulează, aplicația expune un endpoint MCP local. Conectează Claude Code, Codex sau orice client MCP la el (Preferințe → Conexiune agent) și lucrează din terminalul sau editorul lui. Schimbările apar live în aplicație."
+    },
+    "lookTitle": "Aspect și limbă"
   }
 }

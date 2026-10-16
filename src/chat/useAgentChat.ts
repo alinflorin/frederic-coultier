@@ -187,7 +187,7 @@ export function useAgentChat({
     if (!p || !engine || busy.current) return;
     const c = logRef.current;
     const known = c.session?.engine === engine;
-    const prompt = known ? text : opening(text, c.summary, c.messages);
+    const prompt = known ? text : opening(text, c.summary, c.messages, p.settings.general.notes);
     add({ role: "user", text, files: files.length ? files : undefined });
     const before = p.source;
     try {

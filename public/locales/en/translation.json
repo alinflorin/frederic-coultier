@@ -376,5 +376,28 @@
     "fillOk": "Casting fill: every thin section is close to a thick mass.",
     "fill": "Casting fill: thin sections up to {{worst}} mm from any thick mass (limit {{reach}} mm). The metal may freeze before filling them.",
     "deepSkipped": "Thickness, gap and intersection checks skipped: fix the problems above first."
+  },
+  "onboarding": {
+    "title": "Welcome to Frederic Coultier",
+    "about1": "A jewelry design studio driven by an AI agent. Describe a ring, a pendant or earrings; the agent writes the model, you watch it appear in 3D.",
+    "about2": "It checks the piece for casting and printing, adds supports and a sprue, and exports files ready to produce. Projects are saved as .fc files.",
+    "next": "Next",
+    "back": "Back",
+    "start": "Get started",
+    "modeTitle": "How do you want to work with the agent?",
+    "modeHint": "Both use the same tools. The difference is where you talk to the agent.",
+    "recommended": "Recommended",
+    "later": "You can change this any time in Preferences.",
+    "chat": {
+      "name": "Agent chat",
+      "what": "Type your prompts directly in the app. A chat panel opens next to the editor and the preview.",
+      "how": "Uses Claude Code or Codex, with the account you are already signed in with on this computer. The agent sees and edits the open project, and you see every change as it happens."
+    },
+    "mcp": {
+      "name": "MCP only",
+      "what": "No chat panel. The app only offers its tools, and you talk to your own agent somewhere else.",
+      "how": "While the app runs it serves a local MCP endpoint. Connect Claude Code, Codex or any MCP client to it (Preferences → Agent connection) and work from its terminal or editor. Changes show up live in the app."
+    },
+    "lookTitle": "Look and language"
   }
 }

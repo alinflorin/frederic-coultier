@@ -9,10 +9,14 @@ const KEEP = 20;
 const CLIP = 600;
 
 /** What to send as the first message of a conversation the agent does not know yet. */
-export function opening(text: string, summary: string | undefined, earlier: ChatMessage[]): string {
+export function opening(text: string, summary: string | undefined, earlier: ChatMessage[], notes = ""): string {
   let context = "";
+  const written = notes.trim();
+  if (written) {
+    context += `The user's notes on this project (from its settings; they may change, \`get-project-notes\` reads the current ones):\n${written}\n\n`;
+  }
   if (summary) {
-    context = `Summary of the conversation so far:\n${summary}\n\n`;
+    context += `Summary of the conversation so far:\n${summary}\n\n`;
   } else if (earlier.length) {
     const lines = earlier
       .filter((m) => m.role !== "note")
@@ -21,7 +25,7 @@ export function opening(text: string, summary: string | undefined, earlier: Chat
         const files = m.files?.length ? ` [attached: ${m.files.map((f) => f.name).join(", ")}]` : "";
         return `${m.role === "user" ? "User" : "You"}: ${m.text.slice(0, CLIP)}${files}`;
       });
-    context = `The conversation so far (another assistant may have said some of it):\n${lines.join("\n")}\n\n`;
+    context += `The conversation so far (another assistant may have said some of it):\n${lines.join("\n")}\n\n`;
   }
   return `${PREFACE}\n\n${context}${text}`;
 }

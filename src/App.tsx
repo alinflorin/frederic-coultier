@@ -32,6 +32,7 @@ import { KbDialog } from "./components/KbDialog";
 import { McpIndicator } from "./components/McpIndicator";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
+import { Onboarding } from "./components/Onboarding";
 import { Welcome } from "./components/Welcome";
 import { Icon } from "./components/Icon";
 import type { Viewer } from "./components/viewer/Viewer";
@@ -74,8 +75,10 @@ function App() {
   const [dialog, setDialog] = useState<DialogId>(null);
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  // The chat pane is opt-in (Preferences > Agent Chat).
-  const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") === true);
+  // The chat pane is on unless turned off (Preferences > Agent Chat, or the first-run choice).
+  const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") !== false);
+  // Shown once per install, also to people upgrading from a version without it.
+  const [onboarding, setOnboarding] = useState(() => getPref<boolean>("onboarded") !== true);
   const setChatEnabled = (on: boolean) => {
     setPref("chatEnabled", on);
     setChatEnabledState(on);
@@ -595,6 +598,16 @@ function App() {
 
   return (
     <div className="app">
+      {onboarding && (
+        <Onboarding
+          chatAvailable={engines === null ? null : !!engine}
+          onDone={(mode) => {
+            setChatEnabled(mode === "chat");
+            setPref("onboarded", true);
+            setOnboarding(false);
+          }}
+        />
+      )}
       <MenuBar menus={menus} title={title} dirty={dirty} trailing={<McpIndicator onClick={() => setDialog("prefs")} />} />
 
       {!project ? (
