@@ -8,7 +8,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Engine, Event, Invocation, Part, Paths, ToolCall, Turn, input_text, subdir};
+use super::{
+    Engine, Event, Invocation, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+};
 
 pub struct Codex;
 
@@ -84,6 +86,43 @@ impl Engine for Codex {
             .to_string())
     }
 
+    fn models_args(&self) -> Option<Vec<String>> {
+        Some(vec!["debug".into(), "models".into()])
+    }
+
+    fn parse_models(&self, output: &str) -> Vec<ModelInfo> {
+        let Ok(v) = serde_json::from_str::<Value>(output) else {
+            return Vec::new();
+        };
+        let mut listed: Vec<(i64, ModelInfo)> = v["models"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|m| m["visibility"] == "list")
+            .filter_map(|m| {
+                Some((
+                    m["priority"].as_i64().unwrap_or(i64::MAX),
+                    ModelInfo {
+                        id: m["slug"].as_str()?.into(),
+                        label: m["display_name"].as_str().or(m["slug"].as_str())?.into(),
+                        efforts: m["supported_reasoning_levels"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|l| l["effort"].as_str().map(String::from))
+                            .collect(),
+                    },
+                ))
+            })
+            .collect();
+        listed.sort_by_key(|(p, _)| *p);
+        listed.into_iter().map(|(_, m)| m).collect()
+    }
+
+    fn default_efforts(&self) -> Vec<String> {
+        ["low", "medium", "high"].map(String::from).into()
+    }
+
     fn prepare(&self, turn: &Turn, paths: &Paths) -> Result<Invocation, String> {
         let home = subdir(paths, "codex-home")?;
         let work = subdir(paths, "codex-work")?;
@@ -95,6 +134,15 @@ impl Engine for Codex {
         if let Some(id) = turn.session {
             args.push("resume".into());
             args.push(id.into());
+        }
+        if let Some(m) = turn.model {
+            args.extend(["-m".into(), m.into()]);
+        }
+        if let Some(e) = turn.effort {
+            args.extend([
+                "-c".into(),
+                format!("model_reasoning_effort={}", Value::String(e.into())),
+            ]);
         }
         args.extend(["--json", "--skip-git-repo-check", "-"].map(String::from));
         Ok(Invocation {
@@ -257,6 +305,21 @@ mod tests {
     }
 
     #[test]
+    fn models_come_from_the_catalog_best_first() {
+        let out = r#"{"models":[
+          {"slug":"b","display_name":"B","visibility":"list","priority":2,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},
+          {"slug":"hidden","visibility":"hide","priority":0,"supported_reasoning_levels":[]},
+          {"slug":"a","display_name":"A","visibility":"list","priority":1,"supported_reasoning_levels":[]}]}"#;
+        let m = Codex.parse_models(out);
+        assert_eq!(
+            m.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(m[1].efforts, ["low", "high"]);
+        assert!(Codex.parse_models("garbage").is_empty());
+    }
+
+    #[test]
     fn the_config_has_our_server_alone_and_no_shell() {
         let cfg = config("http://127.0.0.1:45555/mcp");
         let v: toml_edit_free::Doc = toml_edit_free::parse(&cfg);
@@ -284,6 +347,8 @@ mod tests {
     fn a_run_is_set_up_in_a_home_of_ours() {
         let p = paths("setup");
         let t = Turn {
+            model: Some("gpt-6-sol"),
+            effort: Some("high"),
             prompt: "hello",
             session: Some("t9"),
             mcp_url: "http://127.0.0.1:1/mcp",
@@ -291,6 +356,11 @@ mod tests {
         let inv = Codex.prepare(&t, &p).unwrap();
         assert_eq!(inv.args[..3], ["exec", "resume", "t9"]);
         assert_eq!(inv.args.last().unwrap(), "-");
+        let a = inv.args.join(" ");
+        assert!(
+            a.contains("-m gpt-6-sol") && a.contains("model_reasoning_effort=\"high\""),
+            "{a}"
+        );
         assert_eq!(inv.stdin, "hello");
         let home = &inv.env.iter().find(|(k, _)| k == "CODEX_HOME").unwrap().1;
         assert!(Path::new(home).join("config.toml").is_file());

@@ -69,7 +69,11 @@
     "stop": "Stop",
     "noAgent": "No agent is available. Sign in to Claude Code or Codex, then open Preferences.",
     "checking": "Checking for agents…",
-    "picture": "Picture from the tool"
+    "picture": "Picture from the tool",
+    "model": "Model",
+    "default": "Default model",
+    "effort": "Thinking level",
+    "effortDefault": "Default thinking"
   },
   "preview": {
     "title": "Preview",

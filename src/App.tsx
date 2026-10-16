@@ -93,6 +93,10 @@ function App() {
     setEngineChoice(id);
   };
   const engine = engines?.find((e) => e.available && e.id === engineChoice) ?? engines?.find((e) => e.available) ?? null;
+  // Model and thinking level, remembered for each agent. Empty means the agent's own choice.
+  const [picks, setPicks] = useState<Record<string, { model?: string; effort?: string }>>(
+    () => getPref("chatPicks") ?? {},
+  );
   const [mobilePane, setMobilePane] = useState<PaneId>("source");
   const [cols, setCols] = useState(() => {
     // chat (middle) stays narrow by default; source and preview share the rest
@@ -130,7 +134,25 @@ function App() {
     [commit],
   );
 
-  const chat = useAgentChat({ projectRef, engine: engine?.id ?? null, path, projectId });
+  const pick = (engine && picks[engine.id]) || {};
+  const models = engine?.models ?? [];
+  const chosen = models.find((m) => m.id === pick.model);
+  const efforts = chosen ? chosen.efforts : (engine?.efforts ?? []);
+  const effort = pick.effort && efforts.includes(pick.effort) ? pick.effort : "";
+  const setPick = (change: { model?: string; effort?: string }) => {
+    if (!engine) return;
+    const next = { ...picks, [engine.id]: { ...pick, ...change } };
+    setPicks(next);
+    setPref("chatPicks", next);
+  };
+  const chat = useAgentChat({
+    projectRef,
+    engine: engine?.id ?? null,
+    model: chosen?.id ?? "",
+    effort,
+    path,
+    projectId,
+  });
   const noAgent = engines === null ? t("chat.checking") : engine ? null : t("chat.noAgent");
 
   const load = (p: FcProject, filePath: string | null) => {
@@ -518,6 +540,12 @@ function App() {
         error={chat.error}
         agent={engine?.label ?? null}
         unavailable={noAgent}
+        models={models}
+        model={chosen?.id ?? ""}
+        efforts={efforts}
+        effort={effort}
+        onModel={(model) => setPick({ model })}
+        onEffort={(effort) => setPick({ effort })}
         canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
         onSend={chat.send}
         onStop={chat.stop}

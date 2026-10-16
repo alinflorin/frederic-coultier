@@ -102,7 +102,21 @@ pub struct Paths {
     pub codex_home: PathBuf,
 }
 
+/// A model the user can pick, and how hard it can be made to think.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub id: String,
+    pub label: String,
+    /// The thinking levels it takes, lowest first; empty if it has no such setting.
+    pub efforts: Vec<String>,
+}
+
 pub struct Turn<'a> {
+    /// The model to use; the CLI's own choice if `None`.
+    pub model: Option<&'a str>,
+    /// How hard it should think; the CLI's own choice if `None`.
+    pub effort: Option<&'a str>,
     pub prompt: &'a str,
     /// Continue this conversation, if the engine knows it.
     pub session: Option<&'a str>,
@@ -127,6 +141,21 @@ pub trait Engine: Send + Sync {
     fn probe_args(&self) -> Vec<String>;
     /// Reads that command's result: who is signed in, or why nobody is.
     fn judge(&self, ok: bool, output: &str, paths: &Paths) -> Result<String, String>;
+    /// The models offered when the engine has no list of its own to ask for.
+    fn models(&self) -> Vec<ModelInfo> {
+        Vec::new()
+    }
+    /// A command that prints the models, if the CLI can say.
+    fn models_args(&self) -> Option<Vec<String>> {
+        None
+    }
+    fn parse_models(&self, _output: &str) -> Vec<ModelInfo> {
+        Vec::new()
+    }
+    /// The thinking levels when no model is picked.
+    fn default_efforts(&self) -> Vec<String> {
+        Vec::new()
+    }
     fn prepare(&self, turn: &Turn, paths: &Paths) -> Result<Invocation, String>;
     /// Reads one line of output.
     fn parse(&self, line: &str) -> Vec<Event>;
@@ -176,36 +205,50 @@ pub struct EngineInfo {
     pub available: bool,
     /// Who is signed in, or what is missing.
     pub detail: String,
+    pub models: Vec<ModelInfo>,
+    /// The thinking levels of the engine's own default model.
+    pub efforts: Vec<String>,
 }
 
-async fn probe(e: &dyn Engine, paths: &Paths) -> EngineInfo {
-    let mut c = command(e.program());
-    c.args(e.probe_args())
+/// Runs a quick command and returns whether it succeeded and what it printed.
+async fn capture(program: &str, args: Vec<String>) -> Result<(bool, String), String> {
+    let mut c = command(program);
+    c.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let verdict = match c.spawn() {
-        Err(err) => Err(not_found(e.program(), &err)),
-        Ok(child) => {
-            match tokio::time::timeout(Duration::from_secs(15), child.wait_with_output()).await {
-                Err(_) => Err(format!("`{}` did not answer in 15 seconds", e.program())),
-                Ok(Err(err)) => Err(err.to_string()),
-                Ok(Ok(out)) => {
-                    let text = format!(
-                        "{}{}",
-                        String::from_utf8_lossy(&out.stdout),
-                        String::from_utf8_lossy(&out.stderr)
-                    );
-                    e.judge(out.status.success(), text.trim(), paths)
-                }
-            }
-        }
+    let child = c.spawn().map_err(|err| not_found(program, &err))?;
+    let out = tokio::time::timeout(Duration::from_secs(15), child.wait_with_output())
+        .await
+        .map_err(|_| format!("`{program}` did not answer in 15 seconds"))?
+        .map_err(|e| e.to_string())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Ok((out.status.success(), text.trim().to_string()))
+}
+
+async fn probe(e: &dyn Engine, paths: &Paths) -> EngineInfo {
+    let verdict = match capture(e.program(), e.probe_args()).await {
+        Err(why) => Err(why),
+        Ok((ok, text)) => e.judge(ok, &text, paths),
     };
+    let mut models = e.models();
+    if verdict.is_ok()
+        && let Some(args) = e.models_args()
+        && let Ok((true, text)) = capture(e.program(), args).await
+    {
+        models = e.parse_models(&text);
+    }
     EngineInfo {
         id: e.id(),
         label: e.label(),
         available: verdict.is_ok(),
         detail: verdict.unwrap_or_else(|why| why),
+        models,
+        efforts: e.default_efforts(),
     }
 }
 
@@ -394,6 +437,8 @@ pub async fn chat_send(
     engine_id: String,
     prompt: String,
     session: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
     app: AppHandle,
     mcp: State<'_, Arc<Mcp>>,
     running: State<'_, Running>,
@@ -427,6 +472,8 @@ pub async fn chat_send(
         let _ = app.emit("chat-event", wire);
     };
     let turn = Turn {
+        model: model.as_deref().filter(|m| !m.is_empty()),
+        effort: effort.as_deref().filter(|m| !m.is_empty()),
         prompt: &prompt,
         session: session.as_deref(),
         mcp_url: &url,
@@ -538,6 +585,8 @@ mod tests {
             let cancel = CancellationToken::new();
             let say = |ev: &Event| eprintln!("  {} {ev:?}", e.id());
             let first = Turn {
+                model: None,
+                effort: None,
                 prompt: "Remember the word PINEAPPLE. Call exec_fc with args \"help\" once, then reply with just OK.",
                 session: None,
                 mcp_url: &url,
@@ -552,6 +601,8 @@ mod tests {
                     && r1.tools.iter().all(|t| t.done && !t.output.is_empty())
             );
             let second = Turn {
+                model: None,
+                effort: None,
                 prompt: "Which word did I ask you to remember? One word.",
                 session: r1.session.as_deref(),
                 mcp_url: &url,

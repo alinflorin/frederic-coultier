@@ -11,6 +11,16 @@ export interface EngineInfo {
   available: boolean;
   /** Who is signed in, or what is missing. */
   detail: string;
+  models: ModelInfo[];
+  /** The thinking levels of the agent's own default model. */
+  efforts: string[];
+}
+
+export interface ModelInfo {
+  id: string;
+  label: string;
+  /** Lowest first; empty if the model has no such setting. */
+  efforts: string[];
 }
 
 export interface Reply {
@@ -34,8 +44,13 @@ export async function listEngines(): Promise<EngineInfo[]> {
   }
 }
 
-export const sendToEngine = (engineId: string, prompt: string, session: string | null) =>
-  invoke<Reply>("chat_send", { engineId, prompt, session });
+export const sendToEngine = (
+  engineId: string,
+  prompt: string,
+  session: string | null,
+  model: string,
+  effort: string,
+) => invoke<Reply>("chat_send", { engineId, prompt, session, model, effort });
 
 export const stopEngine = () => invoke("chat_cancel");
 

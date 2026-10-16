@@ -2,9 +2,13 @@
 
 use serde_json::{Value, json};
 
-use super::{Engine, Event, Invocation, Part, Paths, ToolCall, Turn, input_text, subdir};
+use super::{
+    Engine, Event, Invocation, ModelInfo, Part, Paths, ToolCall, Turn, input_text, subdir,
+};
 
 pub struct Claude;
+
+const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 impl Engine for Claude {
     fn id(&self) -> &'static str {
@@ -36,6 +40,24 @@ impl Engine for Claude {
         })
     }
 
+    fn models(&self) -> Vec<ModelInfo> {
+        let m = |id: &str, label: &str, efforts: &[&str]| ModelInfo {
+            id: id.into(),
+            label: label.into(),
+            efforts: efforts.iter().map(|e| e.to_string()).collect(),
+        };
+        vec![
+            m("fable", "Fable", &EFFORTS),
+            m("opus", "Opus", &EFFORTS),
+            m("sonnet", "Sonnet", &EFFORTS),
+            m("haiku", "Haiku", &[]),
+        ]
+    }
+
+    fn default_efforts(&self) -> Vec<String> {
+        EFFORTS.map(String::from).into()
+    }
+
     fn prepare(&self, turn: &Turn, paths: &Paths) -> Result<Invocation, String> {
         let dir = subdir(paths, "claude")?;
         // a file rather than a command-line argument: no quoting to get wrong, on any OS
@@ -62,6 +84,12 @@ impl Engine for Claude {
         .map(String::from)
         .into();
         args.push(config.to_string_lossy().into_owned());
+        for (flag, value) in [("--model", turn.model), ("--effort", turn.effort)] {
+            if let Some(v) = value {
+                args.push(flag.into());
+                args.push(v.into());
+            }
+        }
         if let Some(id) = turn.session {
             args.push("--resume".into());
             args.push(id.into());
@@ -235,6 +263,8 @@ mod tests {
     fn only_our_server_and_no_tools_of_its_own() {
         let p = paths();
         let t = Turn {
+            model: Some("opus"),
+            effort: Some("high"),
             prompt: "hi \"there\"",
             session: Some("s1"),
             mcp_url: "http://127.0.0.1:1/mcp",
@@ -245,7 +275,10 @@ mod tests {
             a.contains("--strict-mcp-config") && a.contains("--tools  --"),
             "{a}"
         );
-        assert!(a.contains("--resume s1"));
+        assert!(
+            a.contains("--resume s1") && a.contains("--model opus --effort high"),
+            "{a}"
+        );
         assert_eq!(inv.stdin, "hi \"there\"");
         let cfg = std::fs::read_to_string(inv.dir.join("mcp.json")).unwrap();
         let cfg: Value = serde_json::from_str(&cfg).unwrap();

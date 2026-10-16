@@ -26,11 +26,16 @@ const isLog = (v: unknown): v is ChatLog =>
 export function useAgentChat({
   projectRef,
   engine,
+  model,
+  effort,
   path,
   projectId,
 }: {
   projectRef: MutableRefObject<FcProject | null>;
   engine: string | null;
+  /** Empty: the agent's own choice. */
+  model: string;
+  effort: string;
   /** Where the project lives on disk; null while it has never been saved. */
   path: string | null;
   /** Changes whenever a different project is loaded. */
@@ -125,7 +130,7 @@ export function useAgentChat({
     setWorking(kind);
     setLive({ text: "", tools: [] });
     try {
-      const r = await sendToEngine(engine!, prompt, session);
+      const r = await sendToEngine(engine!, prompt, session, model, effort);
       if (r.session) patch((c) => ({ ...c, session: { engine: engine!, id: r.session! } }));
       return r;
     } finally {

@@ -69,7 +69,11 @@
     "stop": "Oprește",
     "noAgent": "Niciun agent nu este disponibil. Autentifică-te în Claude Code sau Codex, apoi deschide Preferințele.",
     "checking": "Se caută agenți…",
-    "picture": "Imagine de la unealtă"
+    "picture": "Imagine de la unealtă",
+    "model": "Model",
+    "default": "Model implicit",
+    "effort": "Nivel de gândire",
+    "effortDefault": "Gândire implicită"
   },
   "preview": {
     "title": "Previzualizare",
