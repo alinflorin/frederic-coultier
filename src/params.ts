@@ -19,6 +19,8 @@ export interface Param {
   end: number;
   /** Digits kept after the decimal point when the value is written back. */
   decimals: number;
+  /** The range comes from a `[min:step:max]` comment; otherwise it is a guess from the value. */
+  hinted: boolean;
 }
 
 const ASSIGN = /^(\s*)([A-Za-z_]\w*)(\s*=\s*)(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|true|false)(\s*;)(.*)$/;
@@ -63,7 +65,7 @@ function fromLine(m: RegExpExecArray, offset: number): Param | null {
   const range = RANGE.exec(comment);
   const note = comment.replace(RANGE, "").trim();
   if (literal === "true" || literal === "false") {
-    return { name, kind: "bool", value: literal === "true", min: 0, max: 1, step: 1, note, start, end, decimals: 0 };
+    return { name, kind: "bool", value: literal === "true", min: 0, max: 1, step: 1, note, start, end, decimals: 0, hinted: true };
   }
   const value = Number(literal);
   const own = decimalsOf(literal);
@@ -82,7 +84,7 @@ function fromLine(m: RegExpExecArray, offset: number): Param | null {
   if (!(step > 0) || !Number.isFinite(min) || !Number.isFinite(max) || min >= max) return null;
   const decimals = Math.max(decimalsOf(String(step)), own);
   const tidy = (n: number) => Number(n.toFixed(decimals));
-  return { name, kind: "number", value, min: tidy(Math.min(min, value)), max: tidy(Math.ceil(Math.max(max, value) / step) * step), step, note, start, end, decimals };
+  return { name, kind: "number", value, min: tidy(Math.min(min, value)), max: tidy(Math.ceil(Math.max(max, value) / step) * step), step, note, start, end, decimals, hinted: !!range };
 }
 
 export function parseParams(source: string): Param[] {

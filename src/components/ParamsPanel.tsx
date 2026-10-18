@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { humanize, parseParams, setParam } from "../params";
 import { getPref, setPref } from "../prefs";
@@ -7,7 +7,21 @@ import { Icon } from "./Icon";
 /** Sliders for the numeric parameters at the top of the source. Dragging rewrites the number in place. */
 export function ParamsPanel({ source, onChange }: { source: string; onChange: (source: string) => void }) {
   const { t } = useTranslation();
-  const params = useMemo(() => parseParams(source), [source]);
+  // A guessed range (no hint in the source) is worked out from the value, so it would grow with the
+  // value on every drag. Fix it the first time it is seen and only widen it to hold the value.
+  const guessed = useRef(new Map<string, { min: number; max: number }>());
+  const params = useMemo(
+    () =>
+      parseParams(source).map((p) => {
+        if (p.kind !== "number" || p.hinted) return p;
+        const v = p.value as number;
+        const kept = guessed.current.get(p.name) ?? { min: p.min, max: p.max };
+        const range = { min: Math.min(kept.min, v), max: Math.max(kept.max, v) };
+        guessed.current.set(p.name, range);
+        return { ...p, ...range };
+      }),
+    [source],
+  );
   const [open, setOpen] = useState(() => getPref<boolean>("paramsOpen") !== false);
   if (params.length === 0) return null;
   const toggle = () => {
