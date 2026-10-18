@@ -18,6 +18,11 @@ enum Tok {
     Sep,
 }
 
+/// Characters that follow a backslash in a Windows path rather than being escaped by it.
+fn is_path_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '~' | '.' | '-' | '$')
+}
+
 /// Splits one command line into words and separators. Single quotes are literal; double quotes
 /// understand `\n \t \" \\`; outside quotes a backslash escapes the next character.
 fn tokenize(line: &str) -> Result<Vec<Tok>, String> {
@@ -66,6 +71,11 @@ fn tokenize(line: &str) -> Result<Vec<Tok>, String> {
             '\\' => {
                 started = true;
                 match chars.next() {
+                    // a Windows path (`C:\Users\anna\ring.fc`): the backslash is part of the name
+                    Some(ch) if cfg!(windows) && is_path_char(ch) => {
+                        cur.push('\\');
+                        cur.push(ch);
+                    }
                     Some(ch) => cur.push(ch),
                     None => cur.push('\\'),
                 }

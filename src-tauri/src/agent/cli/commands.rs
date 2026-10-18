@@ -1580,7 +1580,7 @@ mod tests {
             "`save` still works"
         );
         let dir = std::env::temp_dir();
-        let path = format!("{}/fc-test-{}.fc", dir.display(), std::process::id());
+        let path = dir.join(format!("fc-test-{}.fc", std::process::id())).display().to_string();
         a.ok(&format!("save-project {path}")).await;
         assert_eq!(a.last("project.save"), json!({ "path": path }));
 
@@ -1768,8 +1768,8 @@ mod tests {
         let dir = std::env::temp_dir();
         let out = a
             .ok(&format!(
-                "export {}/fc-test-model.stl --ascii --no-supports --hollow",
-                dir.display()
+                "export {} --ascii --no-supports --hollow",
+                dir.join("fc-test-model.stl").display()
             ))
             .await;
         assert!(out.contains("(stl-ascii), with supports"), "{out}");
