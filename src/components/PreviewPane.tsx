@@ -13,6 +13,10 @@ const MODES: ShadingMode[] = ["shaded", "edges", "wireframe", "xray"];
 export interface RenderState {
   status: "idle" | "rendering" | "ok" | "error";
   mesh: ArrayBuffer | null;
+  /** Triangles at the end of `mesh` that are gems. */
+  gems?: number;
+  /** Volume of the metal alone when there are gems (mm³). */
+  metalVolume?: number | null;
   ms?: number;
   error?: RenderError;
   diagnostics: Diagnostic[];
@@ -99,6 +103,7 @@ export function PreviewPane({
   useEffect(() => {
     viewer?.setStyle({
       metalColor: r.metalColor,
+      gemColor: r.gemColor,
       roughness: ROUGHNESS[r.finish],
       display: r.shading,
       ortho: r.orthographic,
@@ -115,7 +120,7 @@ export function PreviewPane({
 
   useEffect(() => {
     if (!viewer) return;
-    const st = showLayout ? viewer.setMesh(layout.model, layout.supports, layout.sprue) : viewer.setMesh(render.mesh);
+    const st = showLayout ? viewer.setMesh(layout.model, layout.supports, layout.sprue) : viewer.setMesh(render.mesh, null, null, render.gems ?? 0);
     setStats(st);
     onStats(st);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,7 +144,7 @@ export function PreviewPane({
   };
 
   const dims = stats?.size.map((n) => n.toFixed(1)).join(" × ");
-  const grams = stats ? (stats.metalVolumeMm3 / 1000) * DENSITY[material.metal] : 0;
+  const grams = stats ? (((showLayout ? null : render.metalVolume) ?? stats.metalVolumeMm3) / 1000) * DENSITY[material.metal] : 0;
 
   return (
     <section className="pane preview-pane" aria-label={t("preview.title")}>

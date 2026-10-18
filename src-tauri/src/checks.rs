@@ -14,6 +14,9 @@ pub struct CheckOptions {
     pub min_wall: f64,
     /// Narrower gaps are reported, mm.
     pub min_gap: f64,
+    /// The piece is a casting master: adds the casting-only checks (trapped cavities, heavy sections).
+    #[serde(default)]
+    pub casting: bool,
 }
 
 const SAMPLES: usize = 600;
@@ -22,6 +25,12 @@ const FILL_THIN: f64 = 0.7;
 const FILL_FEED: f64 = 2.0;
 const FILL_REACH: f64 = 8.0;
 const MAX_LOCATIONS: usize = 8;
+/// Solid sections thicker than this (mm) shrink as they cool and leave porosity.
+const HEAVY_SECTION: f64 = 3.5;
+/// Cavities smaller than this (mm³) are numerical noise.
+const MIN_CAVITY: f64 = 0.05;
+/// Share of sampled surface that has to be heavy before it is reported.
+const HEAVY_SHARE: f64 = 0.08;
 
 fn sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -234,7 +243,82 @@ pub fn deep_checks(mesh: &Mesh, o: &CheckOptions) -> Vec<Finding> {
             ));
         }
     }
+    if o.casting {
+        casting_checks(&m, &bvh, &s, &mut out);
+    }
     out
+}
+
+/// Checks that only matter when the piece is cast: closed cavities trap air and investment, and
+/// thick solid sections freeze last and pull porosity into the metal.
+fn casting_checks(m: &Mesh, bvh: &Bvh, s: &[Sample], out: &mut Vec<Finding>) {
+    // closed cavities: connected shells whose volume is negative (they face inwards)
+    let mut parent: Vec<usize> = (0..m.verts.len()).collect();
+    fn find(p: &mut [usize], mut i: usize) -> usize {
+        while p[i] != i {
+            p[i] = p[p[i]];
+            i = p[i];
+        }
+        i
+    }
+    for t in &m.tris {
+        let (a, b, c) = (t[0] as usize, t[1] as usize, t[2] as usize);
+        let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+        parent[ra] = rb;
+        let (rb, rc) = (find(&mut parent, b), find(&mut parent, c));
+        parent[rb] = rc;
+    }
+    let mut vol: std::collections::HashMap<usize, (f64, V3, usize)> = Default::default();
+    for t in &m.tris {
+        let [a, b, c] = t.map(|i| m.verts[i as usize]);
+        let v = (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+            + a[2] * (b[0] * c[1] - b[1] * c[0]))
+            / 6.0;
+        let root = find(&mut parent, t[0] as usize);
+        let e = vol.entry(root).or_insert((0.0, [0.0; 3], 0));
+        e.0 += v;
+        for k in 0..3 {
+            e.1[k] += (a[k] + b[k] + c[k]) / 3.0;
+        }
+        e.2 += 1;
+    }
+    let mut cavities: Vec<(f64, V3)> = vol
+        .values()
+        .filter(|(v, _, _)| *v < -MIN_CAVITY)
+        .map(|(v, sum, n)| (*v, sum.map(|x| x / *n as f64)))
+        .collect();
+    if cavities.is_empty() {
+        out.push(finding("pass", "noCavity", String::new(), &[]));
+    } else {
+        cavities.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let total: f64 = cavities.iter().map(|c| -c.0).sum();
+        out.push(finding(
+            "warn",
+            "cavity",
+            format!("{}|{total:.2}", cavities.len()),
+            &cavities,
+        ));
+    }
+
+    // heavy sections: surface whose inward ray travels a long way without leaving the metal
+    let heavy: Vec<(f64, V3, f64)> = s
+        .iter()
+        .filter(|sm| {
+            bvh.ray(sm.centre, sm.normal.map(|x| -x), Some(sm.tri), false, HEAVY_SECTION).is_none()
+        })
+        .map(|sm| (0.0, sm.centre, sm.area))
+        .collect();
+    if (heavy.len() as f64) < HEAVY_SHARE * s.len() as f64 {
+        out.push(finding("pass", "noHeavy", format!("{HEAVY_SECTION:.1}"), &[]));
+    } else {
+        let (n, seeds, area) = cluster(heavy);
+        out.push(finding(
+            "warn",
+            "heavy",
+            format!("{n}|{area:.0}|{HEAVY_SECTION:.1}"),
+            &seeds,
+        ));
+    }
 }
 
 /// Do triangles `i` and `j` pierce each other (an edge of one passes through the other)?
@@ -290,6 +374,11 @@ mod tests {
     const OPT: CheckOptions = CheckOptions {
         min_wall: 0.5,
         min_gap: 0.3,
+        casting: false,
+    };
+    const CAST: CheckOptions = CheckOptions {
+        casting: true,
+        ..OPT
     };
 
     #[test]
@@ -329,5 +418,25 @@ mod tests {
             .extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
         let f = deep_checks(&a, &OPT);
         assert!(f.iter().any(|f| f.code == "selfInt"), "{f:?}");
+    }
+
+    #[test]
+    fn closed_cavity_is_flagged_for_casting() {
+        let mut a = boxm([0.; 3], [10.; 3]);
+        let mut b = boxm([3.; 3], [7.; 3]);
+        b.flip_winding();
+        let off = a.verts.len() as u32;
+        a.verts.extend(b.verts);
+        a.tris
+            .extend(b.tris.into_iter().map(|t| t.map(|i| i + off)));
+        let f = deep_checks(&a, &CAST);
+        assert!(f.iter().any(|f| f.code == "cavity" && !f.at.is_empty()), "{f:?}");
+        assert!(deep_checks(&a, &OPT).iter().all(|f| f.code != "cavity"));
+    }
+
+    #[test]
+    fn heavy_block_is_flagged_for_casting() {
+        let f = deep_checks(&boxm([0.; 3], [10.; 3]), &CAST);
+        assert!(f.iter().any(|f| f.code == "heavy"), "{f:?}");
     }
 }

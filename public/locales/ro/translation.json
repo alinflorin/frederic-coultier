@@ -24,6 +24,7 @@
     "save": "Salvează",
     "saveAs": "Salvează ca…",
     "export": "Exportă…",
+    "history": "Istoric versiuni…",
     "close": "Închide proiectul",
     "settings": "Setările proiectului…",
     "settingsShort": "Setări",
@@ -248,8 +249,68 @@
     "satin": "Satinat",
     "matte": "Mat"
   },
+  "params": {
+    "title": "Parametri"
+  },
+  "history": {
+    "title": "Istoric versiuni",
+    "empty": "Încă nu există instantanee. Se face unul automat la salvare și înainte ca agentul să schimbe designul; poți face și tu unul.",
+    "namePlaceholder": "Numește această versiune (opțional)",
+    "take": "Fă un instantaneu",
+    "restore": "Restaurează această versiune",
+    "renameAction": "Redenumește",
+    "rename": "Nume",
+    "delete": "Șterge",
+    "same": "Identică cu designul curent.",
+    "changes": "Față de acum: +{{added}} / −{{removed}} linii de cod",
+    "settingsOnly": "Codul e identic; diferă setările sau suporturile.",
+    "diff": "Modificări în cod",
+    "restored": "Restaurat „{{name}}”. Starea anterioară e în istoric.",
+    "taken": "Instantaneu făcut.",
+    "kind": {
+      "manual": "Instantaneu",
+      "save": "Salvat",
+      "agent": "Înainte de schimbarea agentului",
+      "restore": "Înainte de restaurare"
+    }
+  },
   "export": {
     "title": "Exportă",
+    "presetTitle": "Presetare",
+    "preflight": "Înainte să imprimi",
+    "preset": {
+      "mars5": {
+        "name": "Elegoo Mars 5",
+        "about": "STL binar, suporturi și canal de turnare ca în proiect, fără simplificare",
+        "check": {
+          "fits": {
+            "ok": "Încape pe platforma de {{bed}} mm.",
+            "warn": "Nu încape pe platforma de {{bed}} mm: micșorează piesa sau schimbă înclinarea.",
+            "unknown": "Încadrarea pe platforma de {{bed}} mm nu e verificată: activează suporturile sau canalul de turnare în Setările proiectului."
+          },
+          "supports": {
+            "ok": "{{n}} suporturi vor fi exportate cu piesa.",
+            "warn": "Nu există suporturi de exportat. Imprimarea în rășină are nevoie de ele: activează-le și generează-le în Setări → Imprimare."
+          },
+          "tilt": {
+            "ok": "Se imprimă înclinat cu {{tilt}}° pentru mai puțină succiune și linii de strat pe fețele vizibile."
+          },
+          "sprue": {
+            "ok": "Canal de turnare inclus.",
+            "warn": "Model de turnare fără canal: activează-l sau adaugă o gură de turnare în slicer."
+          }
+        },
+        "hint": {
+          "layer": "Înălțimea stratului 0,05 mm (0,025 mm pentru detalii fine, ca ghearele mici).",
+          "orientation": "Înclinare 30–45° cu fețele vizibile departe de suporturi; ține piesa ridicată de platformă cu un raft.",
+          "slicer": "Deschide STL-ul în ElegooSlicer sau Chitubox, alege Mars 5 și un profil de rășină pentru turnare; verifică previzualizarea insulelor înainte de feliere."
+        }
+      },
+      "custom": {
+        "name": "Personalizat",
+        "about": "Alegi singur formatul și pașii"
+      }
+    },
     "format": "Format",
     "options": "Opțiuni",
     "action": "Exportă",
@@ -398,6 +459,10 @@
     "fillNoFeed": "Verificarea umplerii sărită: nu există masă mai groasă de {{detail}} mm de la care să curgă metalul.",
     "fillOk": "Umplere la turnare: fiecare secțiune subțire e aproape de o masă groasă.",
     "fill": "Umplere la turnare: secțiuni subțiri la până la {{worst}} mm de orice masă groasă (limita {{reach}} mm). Metalul poate îngheța înainte să le umple.",
+    "noCavity": "Nu există cavități închise (aer sau investment prins).",
+    "cavity": "Cavități închise: {{n}} gol(uri), ~{{vol}} mm³ sigilate în piesă. Aerul și investment-ul rămân prinse: deschide-le sau adaugă un canal de scurgere.",
+    "noHeavy": "Nu există secțiuni masive (toate sub {{detail}} mm).",
+    "heavy": "Secțiuni masive: {{n}} zonă(e), ~{{massArea}} mm² de suprafață peste metal plin mai gros de {{massLimit}} mm. Risc de porozitate din contracție: golește-le sau subțiaz-le.",
     "deepSkipped": "Verificările de grosime, goluri și intersecții sărite: rezolvă întâi problemele de mai sus."
   },
   "onboarding": {

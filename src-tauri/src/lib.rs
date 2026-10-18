@@ -1,6 +1,7 @@
 mod agent;
 mod bvh;
 mod checks;
+mod gems;
 mod hollow;
 mod meshtools;
 mod project;
@@ -45,6 +46,10 @@ struct RenderInfo {
     diagnostics: Vec<render::Diagnostic>,
     ms: u64,
     empty: bool,
+    /// Triangles at the end of the STL that belong to gems (see `gems.rs`).
+    gems: usize,
+    /// Volume of the metal alone when there are gems (mm³).
+    metal_volume: Option<f64>,
 }
 
 /// Renders OpenSCAD source. The reply is binary, to avoid pushing megabytes of
@@ -55,21 +60,27 @@ async fn render_scad(
     cache: State<'_, RenderCache>,
 ) -> Result<Response, RenderFailure> {
     let cache = cache.inner().clone();
-    let rendered =
-        tauri::async_runtime::spawn_blocking(move || render::render_on_big_stack(source, &cache))
-            .await
-            .map_err(|e| RenderFailure {
-                message: e.to_string(),
-                line: None,
-                column: None,
-            })??;
+    let (rendered, split) = tauri::async_runtime::spawn_blocking(move || {
+        let rendered = render::render_on_big_stack(source.clone(), &cache)?;
+        let split = gems::split(&source, &rendered.mesh);
+        Ok::<_, RenderFailure>((rendered, split))
+    })
+    .await
+    .map_err(|e| RenderFailure {
+        message: e.to_string(),
+        line: None,
+        column: None,
+    })??;
 
     let empty = rendered.mesh.is_empty();
+    let gems = split.as_ref().map_or(0, |s| s.gem_tris);
     let info = serde_json::to_vec(&RenderInfo {
         echoes: rendered.echoes,
         diagnostics: rendered.diagnostics,
         ms: rendered.ms,
         empty,
+        gems,
+        metal_volume: split.as_ref().map(|s| s.metal.volume()),
     })
     .map_err(|e| RenderFailure {
         message: e.to_string(),
@@ -80,7 +91,7 @@ async fn render_scad(
     let stl = if empty {
         Vec::new()
     } else {
-        rendered.mesh.to_binary_stl()
+        split.map_or_else(|| rendered.mesh.to_binary_stl(), |s| s.full.to_binary_stl())
     };
     let mut out = Vec::with_capacity(4 + info.len() + stl.len());
     out.extend_from_slice(&(info.len() as u32).to_le_bytes());
@@ -103,6 +114,8 @@ struct MeshReport {
     stats: MeshStats,
     findings: Vec<Finding>,
     simplify: Option<SimplifyReport>,
+    /// Volume of the metal alone when the design has `gem()` stones (mm³).
+    metal_volume: Option<f64>,
 }
 
 /// Measurements, print checks and (optionally) a dry run of the simplification.
@@ -135,10 +148,14 @@ async fn mesh_report(
         } else {
             simplify.map(|s| meshtools::simplify(&mesh, &s).1)
         };
+        let metal_volume = gems::metal_source(&source)
+            .and_then(|m| render::render_plain(m).ok())
+            .map(|r| r.mesh.volume());
         Ok(MeshReport {
             stats,
             findings,
             simplify,
+            metal_volume,
         })
     })
     .await

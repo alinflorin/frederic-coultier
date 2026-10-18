@@ -37,6 +37,10 @@ export interface RenderResult {
   echoes: string[];
   diagnostics: Diagnostic[];
   ms: number;
+  /** Triangles at the end of the STL that are gems (see `gem()` in the model). */
+  gems: number;
+  /** Volume of the metal alone, when the model has gems (mm³). */
+  metalVolume: number | null;
 }
 
 export class RenderError extends Error {
@@ -71,8 +75,12 @@ export async function renderScad(source: string): Promise<RenderResult> {
     diagnostics: Diagnostic[];
     ms: number;
     empty: boolean;
+    gems?: number;
+    metalVolume?: number | null;
   };
   return {
+    gems: info.gems ?? 0,
+    metalVolume: info.metalVolume ?? null,
     stl: info.empty ? null : buf.slice(4 + jsonLength),
     echoes: info.echoes,
     diagnostics: info.diagnostics,
@@ -156,12 +164,14 @@ export interface MeshReport {
   stats: MeshStats;
   findings: Finding[];
   simplify: SimplifyReport | null;
+  /** Volume of the metal alone when the model has `gem()` stones (mm³). */
+  metalVolume: number | null;
 }
 
 export const meshReport = (
   source: string,
   simplify?: { keepPercent: number; maxVolumeChange: number },
-  checks?: { minWall: number; minGap: number },
+  checks?: { minWall: number; minGap: number; casting?: boolean },
 ) => invoke<MeshReport>("mesh_report", { source, simplify: simplify ?? null, checks: checks ?? null });
 
 // --- supports ---

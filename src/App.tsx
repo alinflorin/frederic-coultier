@@ -20,8 +20,10 @@ import {
   saveProject,
 } from "./api";
 import { emptyProject, sampleProject } from "./defaults";
+import { removeSnapshot, renameSnapshot, restoreSnapshot, withSnapshot } from "./history";
+import { HistoryDialog } from "./components/HistoryDialog";
 import { addRecent, baseName, fromWire, getRecents, removeRecent, toWire } from "./project";
-import type { Attached, ExportFormat, FcProject, ProjectSettings, SupportsData } from "./types";
+import type { Attached, ExportFormat, FcProject, ProjectSettings, SnapshotKind, SupportsData } from "./types";
 import { MenuBar, type Menu } from "./components/MenuBar";
 import { SourcePane } from "./components/SourcePane";
 import { ChatPane } from "./components/ChatPane";
@@ -48,7 +50,7 @@ import "./App.css";
 type PaneId = "source" | "chat" | "preview";
 const RELEASES_URL = "https://github.com/alinflorin/frederic-coultier/releases/latest";
 
-type DialogId = "settings" | "export" | "prefs" | "kb" | "about" | null;
+type DialogId = "settings" | "export" | "history" | "prefs" | "kb" | "about" | null;
 
 const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
 const RENDER_DELAY_MS = 200;
@@ -157,6 +159,18 @@ function App() {
     [commit],
   );
 
+  /** Adds a snapshot of the current design to the history (not a change the user needs to save). */
+  const snapshot = useCallback(
+    (kind: SnapshotKind, label = "") => {
+      const p = projectRef.current;
+      if (!p) return null;
+      const next = withSnapshot(p, kind, label);
+      if (next !== p) commit(next);
+      return next;
+    },
+    [commit],
+  );
+
   // Defaults come from Preferences; the chat panel can override them until the app closes.
   const defaults = (engine && picks[engine.id]) || {};
   const override = (engine && overrides[engine.id]) || {};
@@ -208,7 +222,7 @@ function App() {
       try {
         const res = await renderScad(source);
         if (id !== request.current) return;
-        setRender({ status: "ok", mesh: res.stl, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
+        setRender({ status: "ok", mesh: res.stl, gems: res.gems, metalVolume: res.metalVolume, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
       } catch (e) {
         if (id !== request.current) return;
         // keep showing the last good model while the source is broken
@@ -278,7 +292,7 @@ function App() {
     try {
       const target = await pickProjectToSave(docName);
       if (!target) return false;
-      const written = await saveProject(target, toWire(project));
+      const written = await saveProject(target, toWire(snapshot("save") ?? project));
       setPath(written);
       setDirty(false);
       addRecent(written);
@@ -295,7 +309,7 @@ function App() {
     if (!project) return false;
     if (!path) return doSaveAs();
     try {
-      await saveProject(path, toWire(project));
+      await saveProject(path, toWire(snapshot("save") ?? project));
       setDirty(false);
       notify(t("file.saved", { name: baseName(path) }));
       return true;
@@ -429,7 +443,7 @@ function App() {
       setRecents(getRecents());
     },
     saveTo: async (p) => {
-      const current = projectRef.current;
+      const current = snapshot("save");
       if (!current) throw new Error("No project is open.");
       const written = await saveProject(p, toWire(current));
       setPath(written);
@@ -452,13 +466,21 @@ function App() {
       printView: () => live.current.printView,
       setPrintView,
       viewer: () => viewerRef.current,
-      edit,
+      replace: (next) => {
+        commit(next);
+        setDirty(true);
+      },
+      edit: (fn) => {
+        // the state before the agent's change goes into the history (once per burst of changes)
+        snapshot("agent");
+        edit(fn);
+      },
       save: () => saveRef.current(),
       newProject: (sample) => actions.current.newProject(sample),
       openFile: (p) => actions.current.openFile(p),
       saveTo: (p) => actions.current.saveTo(p),
     }),
-    [edit],
+    [edit, snapshot, commit],
   );
   useAgentBridge(agentApi);
 
@@ -475,6 +497,7 @@ function App() {
           { label: t("menu.save"), shortcut: "Ctrl+S", onSelect: doSave, disabled: !open },
           { label: t("menu.saveAs"), shortcut: "Ctrl+Shift+S", onSelect: doSaveAs, disabled: !open },
           { separator: true, label: "" },
+          { label: t("menu.history"), shortcut: "Ctrl+H", onSelect: () => setDialog("history"), disabled: !open },
           { label: t("menu.export"), shortcut: "Ctrl+E", onSelect: () => setDialog("export"), disabled: !open },
           { separator: true, label: "" },
           { label: t("menu.close"), shortcut: "Ctrl+W", onSelect: closeProject, disabled: !open },
@@ -517,6 +540,7 @@ function App() {
       else if (k === "o") run(openDialog);
       else if (k === "s" && open) run(() => void (e.shiftKey ? doSaveAs() : doSave()));
       else if (k === "e" && open) run(() => setDialog("export"));
+      else if (k === "h" && open) run(() => setDialog("history"));
       else if (k === "w" && open) run(closeProject);
       else if (k === ",") run(() => setDialog("prefs"));
     };
@@ -706,7 +730,28 @@ function App() {
         <SettingsDialog project={project} layout={layout} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && project && (
-        <ExportDialog project={project} name={docName} triangles={triangles} onClose={() => setDialog(null)} onExport={doExport} />
+        <ExportDialog project={project} name={docName} triangles={triangles} layout={layout} onClose={() => setDialog(null)} onExport={doExport} />
+      )}
+      {dialog === "history" && project && (
+        <HistoryDialog
+          project={project}
+          onClose={() => setDialog(null)}
+          onSnapshot={(label) => {
+            snapshot("manual", label);
+            setDirty(true);
+            notify(t("history.taken"));
+          }}
+          onRestore={(id) => {
+            const p = projectRef.current;
+            const next = p && restoreSnapshot(p, id);
+            if (!next) return;
+            commit(next);
+            setDirty(true);
+            notify(t("history.restored", { name: p.history.find((x) => x.id === id)?.label || t("history.title") }));
+          }}
+          onDelete={(id) => edit((p) => removeSnapshot(p, id))}
+          onRename={(id, label) => edit((p) => renameSnapshot(p, id, label))}
+        />
       )}
       {dialog === "kb" && (
         <KbDialog

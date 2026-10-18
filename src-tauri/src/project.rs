@@ -9,8 +9,9 @@
 //! | `settings.json` | project settings (material, render, printing, ...)   |
 //! | `chat.json`     | the design conversation                              |
 //! | `supports.json` | print supports                                       |
+//! | `history.json`  | version history: snapshots of source, settings, supports |
 //!
-//! `settings`, `chat` and `supports` are opaque JSON here: the frontend owns
+//! `settings`, `chat`, `supports` and `history` are opaque JSON here: the frontend owns
 //! their schema and fills in defaults for anything missing, so older files
 //! keep opening as the schema grows.
 
@@ -62,6 +63,8 @@ pub struct Project {
     pub settings: Value,
     pub chat: Value,
     pub supports: Value,
+    #[serde(default)]
+    pub history: Value,
 }
 
 fn read_entry<R: Read + std::io::Seek>(
@@ -112,6 +115,7 @@ pub fn read_project(path: &Path) -> Result<Project, ProjectError> {
         settings: read_json(&mut zip, "settings.json", json!({}))?,
         chat: read_json(&mut zip, "chat.json", json!([]))?,
         supports: read_json(&mut zip, "supports.json", json!({}))?,
+        history: read_json(&mut zip, "history.json", json!([]))?,
     })
 }
 
@@ -139,7 +143,7 @@ pub fn write_project(path: &Path, project: &Project) -> Result<PathBuf, ProjectE
             version: VERSION,
             app: env!("CARGO_PKG_VERSION").into(),
         };
-        let entries: [(&str, Vec<u8>); 5] = [
+        let entries: [(&str, Vec<u8>); 6] = [
             ("manifest.json", serde_json::to_vec_pretty(&manifest)?),
             ("model.scad", project.source.clone().into_bytes()),
             (
@@ -151,6 +155,7 @@ pub fn write_project(path: &Path, project: &Project) -> Result<PathBuf, ProjectE
                 "supports.json",
                 serde_json::to_vec_pretty(&project.supports)?,
             ),
+            ("history.json", serde_json::to_vec(&project.history)?),
         ];
         for (name, bytes) in entries {
             zip.start_file(name, opts)?;
@@ -177,6 +182,7 @@ mod tests {
             settings: json!({ "general": { "name": "Ring" } }),
             chat: json!([{ "id": "1", "role": "user", "text": "hi" }]),
             supports: json!({ "auto": 3 }),
+            history: json!([{ "id": "s1", "label": "first" }]),
         }
     }
 
@@ -248,5 +254,6 @@ mod tests {
         assert_eq!(p.source, "cube(1);");
         assert_eq!(p.chat, json!([]));
         assert_eq!(p.settings, json!({}));
+        assert_eq!(p.history, json!([]));
     }
 }

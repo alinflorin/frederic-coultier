@@ -74,6 +74,9 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "new-project" => new_project(c, args).await,
         "open-project" => open_project(c, args).await,
         "save-project" | "save" => save_project(c, args).await,
+        "history" => history(c, args).await,
+        "snapshot" => snapshot(c, args).await,
+        "restore" => restore(c, args).await,
         "src cat" => src_cat(c, args).await,
         "src grep" => src_grep(c, args).await,
         "src edit" => src_edit(c, args, stdin).await,
@@ -370,6 +373,49 @@ async fn save_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     }
     let v = c.slow("project.save", Value::Object(a)).await?;
     say(format!("saved {}", v["path"].as_str().unwrap_or("")))
+}
+
+// ---- version history ----
+
+async fn history(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    expect_no_args(args)?;
+    let v = c.op("history.list", json!({})).await?;
+    let list = v["list"].as_array().cloned().unwrap_or_default();
+    if list.is_empty() {
+        return say("no snapshots yet (one is taken on save and before your first change; `snapshot LABEL` takes one now)");
+    }
+    let mut l = vec!["id  time  kind  label (newest first)".to_string()];
+    for s in &list {
+        l.push(format!(
+            "{}  {}  {}  {}",
+            s["id"].as_str().unwrap_or("?"),
+            s["time"].as_str().unwrap_or("?"),
+            s["kind"].as_str().unwrap_or("?"),
+            s["label"].as_str().unwrap_or("")
+        ));
+    }
+    say(l.join("\n"))
+}
+
+async fn snapshot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let v = c
+        .op("history.snapshot", json!({ "label": p.pos.join(" ") }))
+        .await?;
+    say(format!("ok: snapshot {}", v["id"].as_str().unwrap_or("?")))
+}
+
+async fn restore(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let [id] = p.pos.as_slice() else {
+        return Err("give the id of one snapshot (see `history`)".into());
+    };
+    let v = c.op("history.restore", json!({ "id": id })).await?;
+    say(format!(
+        "ok: restored {}; the earlier state is in the history as {}",
+        v["restored"].as_str().unwrap_or(id),
+        v["undo"].as_str().unwrap_or("a snapshot")
+    ))
 }
 
 // ---- source ----

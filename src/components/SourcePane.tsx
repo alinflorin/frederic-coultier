@@ -6,6 +6,7 @@ import { indentWithTab } from "@codemirror/commands";
 import { basicSetup } from "codemirror";
 import { openscadLanguage } from "./openscad";
 import { Icon } from "./Icon";
+import { ParamsPanel } from "./ParamsPanel";
 
 const setErrorLine = StateEffect.define<number | null>();
 
@@ -115,6 +116,7 @@ export function SourcePane({
           <Icon name={copied ? "check" : "copy"} />
         </button>
       </header>
+      <ParamsPanel source={source} onChange={onChange} />
       <div className="editor" ref={host} />
     </section>
   );

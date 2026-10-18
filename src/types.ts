@@ -141,6 +141,21 @@ export interface SupportsData {
   nextId: number;
 }
 
+export type SnapshotKind = "manual" | "save" | "agent" | "restore";
+
+/** One saved state of the design: what is needed to put it back. */
+export interface Snapshot {
+  id: string;
+  kind: SnapshotKind;
+  /** Name given by the user, or what the app was about to do ("Before agent change"). */
+  label: string;
+  /** Milliseconds since 1970. */
+  time: number;
+  source: string;
+  settings: ProjectSettings;
+  supports: SupportsData;
+}
+
 export interface FcProject {
   formatVersion: 1;
   settings: ProjectSettings;
@@ -148,4 +163,6 @@ export interface FcProject {
   supports: SupportsData;
   /** Saved whole in the file, attachments and tool results included. */
   chats: ChatBook;
+  /** Version history, oldest first. Saved in the file. */
+  history: Snapshot[];
 }

@@ -24,6 +24,7 @@
     "save": "Save",
     "saveAs": "Save as…",
     "export": "Export…",
+    "history": "Version history…",
     "close": "Close project",
     "settings": "Project settings…",
     "settingsShort": "Settings",
@@ -248,8 +249,68 @@
     "satin": "Satin",
     "matte": "Matte"
   },
+  "params": {
+    "title": "Parameters"
+  },
+  "history": {
+    "title": "Version history",
+    "empty": "No snapshots yet. One is taken automatically when you save and before the agent changes the design; you can also take one yourself.",
+    "namePlaceholder": "Name this version (optional)",
+    "take": "Take snapshot",
+    "restore": "Restore this version",
+    "renameAction": "Rename",
+    "rename": "Name",
+    "delete": "Delete",
+    "same": "Identical to the current design.",
+    "changes": "Compared with now: +{{added}} / −{{removed}} source lines",
+    "settingsOnly": "The source is the same; settings or supports differ.",
+    "diff": "Source changes",
+    "restored": "Restored “{{name}}”. The previous state is in the history.",
+    "taken": "Snapshot taken.",
+    "kind": {
+      "manual": "Snapshot",
+      "save": "Saved",
+      "agent": "Before agent change",
+      "restore": "Before restore"
+    }
+  },
   "export": {
     "title": "Export",
+    "presetTitle": "Preset",
+    "preflight": "Before you print",
+    "preset": {
+      "mars5": {
+        "name": "Elegoo Mars 5",
+        "about": "Binary STL, supports and sprue as set up, no simplifying",
+        "check": {
+          "fits": {
+            "ok": "Fits the {{bed}} mm build plate.",
+            "warn": "Does not fit the {{bed}} mm build plate: reduce the size or change the tilt.",
+            "unknown": "Fit on the {{bed}} mm plate not checked: enable supports or a sprue in Project settings to get the print layout."
+          },
+          "supports": {
+            "ok": "{{n}} supports will be exported with the piece.",
+            "warn": "No supports to export. Resin prints need them: enable and generate them in Project settings → Printing."
+          },
+          "tilt": {
+            "ok": "Printed tilted {{tilt}}° to cut suction and layer lines on the visible faces."
+          },
+          "sprue": {
+            "ok": "Sprue included for casting.",
+            "warn": "Casting master without a sprue: turn it on or add a gate in your slicer."
+          }
+        },
+        "hint": {
+          "layer": "Layer height 0.05 mm (0.025 mm for fine detail such as small prongs).",
+          "orientation": "Tilt 30–45° with the visible faces away from the supports; keep the piece off the plate with a raft.",
+          "slicer": "Open the STL in ElegooSlicer or Chitubox, choose Mars 5 and a castable resin profile; check the island preview before slicing."
+        }
+      },
+      "custom": {
+        "name": "Custom",
+        "about": "Choose the format and steps yourself"
+      }
+    },
     "format": "Format",
     "options": "Options",
     "action": "Export",
@@ -398,6 +459,10 @@
     "fillNoFeed": "Casting fill check skipped: no mass thicker than {{detail}} mm to feed from.",
     "fillOk": "Casting fill: every thin section is close to a thick mass.",
     "fill": "Casting fill: thin sections up to {{worst}} mm from any thick mass (limit {{reach}} mm). The metal may freeze before filling them.",
+    "noCavity": "No closed cavities (trapped air or investment).",
+    "cavity": "Closed cavities: {{n}} void(s), ~{{vol}} mm³ sealed inside the piece. Air and investment get trapped: open them or add a drain.",
+    "noHeavy": "No heavy solid sections (all thinner than {{detail}} mm).",
+    "heavy": "Heavy sections: {{n}} region(s), ~{{massArea}} mm² of surface over solid metal thicker than {{massLimit}} mm. Shrinkage porosity risk: hollow or thin them.",
     "deepSkipped": "Thickness, gap and intersection checks skipped: fix the problems above first."
   },
   "onboarding": {

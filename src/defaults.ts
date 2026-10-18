@@ -43,6 +43,7 @@ export function emptyProject(name: string): FcProject {
     source: "// New project\n$fn = 128;\n",
     supports: { list: [], nextId: 1 },
     chats: freshBook(),
+    history: [],
   };
 }
 

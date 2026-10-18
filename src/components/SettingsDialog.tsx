@@ -14,7 +14,7 @@ const FINISHES: Finish[] = ["polished", "satin", "matte"];
 /** Findings carry either one value or "a|b|c|d"; the translations use whichever they need. */
 function findingParams(detail: string) {
   const [a, b, c, d] = detail.split("|");
-  return { detail, n: a, min: b, area: c, limit: d, worst: a, reach: b };
+  return { detail, n: a, min: b, area: c, limit: d, worst: a, reach: b, vol: b, massArea: b, massLimit: c };
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -97,7 +97,7 @@ export function SettingsDialog({
     try {
       setReport(
         await meshReport(project.source, s.optimization.simplify ? { keepPercent: s.optimization.keepPercent, maxVolumeChange: s.optimization.maxVolumeChange } : undefined,
-          tab === "checks" ? { minWall: s.printing.minWall, minGap: 0.3 } : undefined,
+          tab === "checks" ? { minWall: s.printing.minWall, minGap: 0.3, casting: s.material.process === "casting" } : undefined,
         ),
       );
     } catch (e) {

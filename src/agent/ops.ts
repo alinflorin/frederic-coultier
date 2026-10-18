@@ -12,6 +12,7 @@ import type { CaptureOptions, Viewer } from "../components/viewer/Viewer";
 import { DENSITY } from "../materials";
 import type { ExportFormat, FcProject, Support } from "../types";
 import { DEFAULT_SETTINGS } from "../defaults";
+import { restoreSnapshot, withSnapshot } from "../history";
 import { applyPatch, describeSettings } from "./settingsPatch";
 
 /** What the agent's operations need from the running app. Every getter returns the latest value. */
@@ -30,6 +31,8 @@ export interface AgentApi {
   setPrintView(v: boolean): void;
   viewer(): Viewer | null;
   edit(fn: (p: FcProject) => FcProject): void;
+  /** Replaces the open project as a whole (not an edit of the source, so no "before agent" snapshot). */
+  replace(next: FcProject): void;
   save(): Promise<boolean>;
   /** Replaces the open project with a new empty one (or the sample ring). */
   newProject(sample: boolean): void;
@@ -190,6 +193,28 @@ const OPS: Record<string, Handler> = {
     return { path };
   },
 
+  "history.list": (api) => ({
+    list: [...open(api).history].reverse().map((s) => ({ id: s.id, time: new Date(s.time).toLocaleString(), kind: s.kind, label: s.label })),
+  }),
+
+  "history.snapshot": (api, a) => {
+    const p = open(api);
+    const next = withSnapshot(p, "manual", typeof a.label === "string" ? a.label.trim() : "");
+    api.replace(next);
+    return { id: next.history[next.history.length - 1].id };
+  },
+
+  "history.restore": async (api, a) => {
+    const p = open(api);
+    const snap = p.history.find((s) => s.id === a.id);
+    if (!snap) throw new Error(`no snapshot ${String(a.id)}; see history`);
+    const next = restoreSnapshot(p, snap.id);
+    if (!next) throw new Error("could not restore");
+    api.replace(next);
+    await settle(api);
+    return { restored: snap.label || snap.id, undo: next.history[next.history.length - 1].id };
+  },
+
   "source.get": (api) => ({ source: open(api).source, rev: api.rev() }),
 
   "source.set": (api, a) => {
@@ -223,12 +248,12 @@ const OPS: Record<string, Handler> = {
     const report = await meshReport(
       p.source,
       a.simplifyPreview ? { keepPercent: s.optimization.keepPercent, maxVolumeChange: s.optimization.maxVolumeChange } : undefined,
-      a.deepChecks ? { minWall: s.printing.minWall, minGap: 0.3 } : undefined,
+      a.deepChecks ? { minWall: s.printing.minWall, minGap: 0.3, casting: s.material.process === "casting" } : undefined,
     );
     return {
       units: "mm, mm², mm³",
       ...report,
-      metalGrams: +((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(3),
+      metalGrams: +(((report.metalVolume ?? report.stats.volume) / 1000) * DENSITY[s.material.metal]).toFixed(3),
       metal: s.material.metal,
     };
   },

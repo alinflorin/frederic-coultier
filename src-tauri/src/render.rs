@@ -142,9 +142,8 @@ fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
 }
 
 /// Runs the render on a thread with a large stack; a panic in the engine
-/// becomes an error instead of taking the app down.
-pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Rendered, RenderFailure> {
-    let key = hash(&source);
+/// becomes an error instead of taking the app down. Nothing is cached.
+pub fn render_plain(source: String) -> Result<Rendered, RenderFailure> {
     let handle = std::thread::Builder::new()
         .stack_size(STACK_BYTES)
         .spawn(move || render_now(&source))
@@ -153,13 +152,19 @@ pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Render
             line: None,
             column: None,
         })?;
-    let rendered = handle.join().unwrap_or_else(|_| {
+    handle.join().unwrap_or_else(|_| {
         Err(RenderFailure {
             message: "the renderer crashed on this model".into(),
             line: None,
             column: None,
         })
-    })?;
+    })
+}
+
+/// [`render_plain`], remembering the mesh so an export right after doesn't evaluate twice.
+pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Rendered, RenderFailure> {
+    let key = hash(&source);
+    let rendered = render_plain(source)?;
     *cache.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, rendered.mesh.clone()));
     Ok(rendered)
 }
