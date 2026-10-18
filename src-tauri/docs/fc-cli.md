@@ -80,7 +80,7 @@ Write the agreed parameters as named variables at the top of the source, with co
 
 Draft the model, look at it, correct it, repeat.
 
-1. **Draft** the model in the source (`src ...`). Keep parameters at the top, use modules, and set `$fn` high enough for smooth curves. Set `$fn` **once, globally, at the top** (e.g. `$fn = 128;`) and do not hardcode `$fn=` in individual `circle`/`cylinder`/`sphere` calls.
+1. **Draft** the model in the source (`src ...`). Keep parameters at the top, each with a `[min:step:max]` range in its comment (see 3.4a; they become the user's sliders), use modules, and set `$fn` high enough for smooth curves. Set `$fn` **once, globally, at the top** (e.g. `$fn = 128;`) and do not hardcode `$fn=` in individual `circle`/`cylinder`/`sphere` calls.
    - Prefer small `src edit` changes over rewriting the whole source with `src write`. Read the part you are about to change with `src cat` first, since line numbers shift.
 2. **Read the render result** that every edit prints. A `render: FAILED` means fix the source before anything else.
 3. **Look** with `shot`. Choose the views and options that fit the question you are asking; do not just rely on the defaults. For example:
@@ -100,7 +100,15 @@ Draft the model, look at it, correct it, repeat.
 
 - **Reusable parts.** The knowledge base has ready-made, tested modules in `jewelry-components` (`kb ls --dir jewelry-components`; start with its `README.md`): stones (`round_brilliant`, `oval_brilliant`, `princess`, `cabochon`), `ring_band`, `prong_head`, `bezel`, and findings (`jump_ring`, `bail`, `earring_post`, `hoop`, `toggle_bar`). There is no `include`: read the file with `kb cat` and copy only the modules you need into the source, above the geometry. They follow the conventions below, so a stone and its setting line up when given the same diameter and position.
 - **Mark stones with `gem()`.** Define `module gem() { children(); }` once (exactly this line) and wrap every stone in `gem() { ... }`. The preview then draws it as glass, and `check` reports the weight of the metal without the stone. Never wrap metal in `gem()`. Colours in the source (`color()`) are ignored by the renderer.
-- **Parameters at the top, one per line, with a range.** The app turns `name = number;` lines at the top level of the source into sliders the user can drag. Write each as `ring_size_mm = 17.3; // inner diameter [14:0.1:24]` (`[min:step:max]`, or `[min:max]`). Use plain literals there (derived values such as `r = d / 2;` get no slider); `true`/`false` become tick boxes. Keep the names meaningful: the label is made from them.
+- **Parameters at the top, one per line, always with a range.** The app turns every `name = number;` line at the top level of the source into a slider the user drags. **Always write the range in a trailing comment, as `[min:step:max]`** (or `[min:max]` when the step does not matter), on every numeric parameter you create or touch, for example:
+  ```
+  ring_size_mm = 17.3;  // inner diameter [14:0.1:24]
+  band_width   = 2.4;   // [1.2:0.1:6]
+  prongs       = 4;     // [3:8]
+  roundness    = 0.5;   // [0:0.05:1]
+  pave         = true;
+  ```
+  Choose the range from what is sensible for the piece and for casting (e.g. a prong never below 0.8 mm, a band thickness never below 1.2 mm), with a step that matches the precision that matters (0.1 mm for sizes, 0.05 for ratios, 1 for counts). Without a range the app can only guess one from the current value, which is a poor slider: too narrow, or too wide to be useful. Use plain literals on these lines (derived values such as `r = d / 2;` get no slider); `true`/`false` become tick boxes. Keep the names meaningful: the label is made from them. When you change a parameter's value yourself, keep its range, and widen the range if the new value falls outside it.
 - **Versions.** The app snapshots the design when the project is saved and before your first change in a burst, so the user can go back (File → Version history). You can add to this: `snapshot LABEL` before a sweeping change and when the user approves a version; `history` lists them. Use `restore ID` only when the user asks to go back.
 - **Casting checks.** With `material.process=casting`, `check --deep` also reports closed cavities (trapped air or investment: open them, or leave a drain) and heavy solid sections over 3.5 mm (shrinkage porosity: hollow or thin them).
 - **Export.** The Export dialog has an *Elegoo Mars 5* preset that sets the format (binary STL), keeps the geometry exact, bakes in the supports and adds the sprue for casting masters, and lists what to check before printing. Prepare the project for it (tilt, `supports auto`, `sprue`), then tell the user to pick the preset, or run `export` yourself.
