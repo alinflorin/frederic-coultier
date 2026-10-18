@@ -3,7 +3,10 @@ import type { ChatMessage } from "../types";
 /** Said once, when an agent starts a conversation; the user never sees it. */
 const PREFACE =
   "You are talking to the user through the chat panel of the jewellery CAD app that your tools control. " +
-  "They see only your replies there. Answer in the language they write in, and keep it short.";
+  "They see only your replies there. Answer in the language they write in, and keep it short. " +
+  "Whenever a value in the design is something the user might want to tune (a size, a count, a proportion, an on/off choice), " +
+  "make it a top-level parameter with a `[min:step:max]` range in its comment, such as `band_width = 2.4; // [1.2:0.1:6]`: " +
+  "the app shows each one as a slider, so decide this yourself and do not wait to be asked.";
 
 const KEEP = 20;
 const CLIP = 600;
