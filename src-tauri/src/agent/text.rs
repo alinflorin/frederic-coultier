@@ -389,13 +389,13 @@ pub fn search(source: &str, pattern: &str, o: SearchOptions) -> Result<String, S
         if from > next_free && next_free > 0 {
             out.push("--".to_string());
         }
-        for j in from..=to {
+        for (j, line) in lines.iter().enumerate().take(to + 1).skip(from) {
             let mark = if j == i || hit.binary_search(&j).is_ok() {
                 ':'
             } else {
                 '-'
             };
-            out.push(format!("{:>width$}{mark}{}", j + 1, cut(lines[j])));
+            out.push(format!("{:>width$}{mark}{}", j + 1, cut(line)));
         }
         next_free = to + 1;
     }

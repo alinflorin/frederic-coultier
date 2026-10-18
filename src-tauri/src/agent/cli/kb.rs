@@ -133,7 +133,7 @@ fn wanted(parts: &[String], size: u64, exts: &[String]) -> bool {
         && !parts
             .iter()
             .any(|p| p.starts_with('.') || p == "node_modules")
-        && exts.iter().any(|e| *e == ext)
+        && exts.contains(&ext)
 }
 
 fn doc(parts: &[String], bytes: &[u8]) -> Doc {
@@ -179,9 +179,7 @@ fn stem(w: &str) -> String {
         format!("{}y", cut(3))
     } else if n > 5 && w.ends_with("ing") {
         cut(3)
-    } else if n > 4 && w.ends_with("ed") {
-        cut(2)
-    } else if n > 4 && w.ends_with("es") {
+    } else if n > 4 && (w.ends_with("ed") || w.ends_with("es")) {
         cut(2)
     } else if n > 3 && w.ends_with('s') && !w.ends_with("ss") {
         cut(1)
@@ -510,7 +508,7 @@ pub fn has_ext(d: &Doc, exts: &[String]) -> bool {
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    exts.iter().any(|x| *x == e)
+    exts.contains(&e)
 }
 
 /// The file at `rel`, as `kb search` shows it.

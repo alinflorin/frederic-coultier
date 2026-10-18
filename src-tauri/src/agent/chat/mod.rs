@@ -419,11 +419,10 @@ pub async fn run(
     let inv = e.prepare(turn, paths)?;
     let mut result = drive(e, inv, cancel, emit).await;
     e.finish(paths);
-    if let Ok(r) = &mut result {
-        if let Some(u) = r.session.as_deref().and_then(|s| e.usage(paths, s)) {
+    if let Ok(r) = &mut result
+        && let Some(u) = r.session.as_deref().and_then(|s| e.usage(paths, s)) {
             r.usage.merge(u);
         }
-    }
     result
 }
 
@@ -557,6 +556,7 @@ enum Wire<'a> {
 /// Sends one message to the agent and waits for its whole answer. What it says is also sent as
 /// `chat-event`s while it is still working.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command: one parameter per frontend argument
 pub async fn chat_send(
     engine_id: String,
     prompt: String,
@@ -581,7 +581,7 @@ pub async fn chat_send(
     let paths = paths(&app)?;
     let cancel = CancellationToken::new();
     {
-        let mut slot = running.0.lock().unwrap();
+        let mut slot = running.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if slot.is_some() {
             return Err("The agent is still answering.".into());
         }
@@ -612,14 +612,14 @@ pub async fn chat_send(
         all_tools: all_tools.unwrap_or(false),
     };
     let result = run(e.as_ref(), &turn, &paths, &cancel, &emit).await;
-    *running.0.lock().unwrap() = None;
+    *running.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     result
 }
 
 /// Stops the turn in progress; `chat_send` then returns what was said so far.
 #[tauri::command]
 pub fn chat_cancel(running: State<'_, Running>) {
-    if let Some(c) = running.0.lock().unwrap().as_ref() {
+    if let Some(c) = running.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref() {
         c.cancel();
     }
 }

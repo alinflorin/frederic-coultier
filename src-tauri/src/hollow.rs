@@ -128,7 +128,7 @@ fn voxelize(m: &Mesh, g: &Grid) -> Vec<bool> {
         for j in 0..ny {
             let zs = &mut cols[i * ny + j];
             zs.sort_by(f64::total_cmp);
-            for pair in zs.chunks_exact(2) {
+            for pair in zs.as_chunks::<2>().0 {
                 let k0 = ((pair[0] - g.lo[2]) / g.h - 0.5).ceil().max(0.0) as usize;
                 let k1 = ((pair[1] - g.lo[2]) / g.h - 0.5).floor();
                 if k1 < 0.0 {
@@ -167,12 +167,12 @@ fn edt_line(f: &[f32], d: &mut [f32], v: &mut [usize], z: &mut [f32]) {
         z[k + 1] = f32::INFINITY;
     }
     let mut k = 0usize;
-    for q in 0..n {
+    for (q, dq) in d.iter_mut().enumerate().take(n) {
         while z[k + 1] < q as f32 {
             k += 1;
         }
         let p = v[k];
-        d[q] = (q as f32 - p as f32).powi(2) + f[p];
+        *dq = (q as f32 - p as f32).powi(2) + f[p];
     }
 }
 
@@ -294,9 +294,9 @@ fn surface_nets(field: &[f32], g: &Grid) -> Mesh {
             for k in 0..nz - 1 {
                 let mut vals = [0f64; 8];
                 let mut pos = 0;
-                for c in 0..8 {
-                    vals[c] = at(i + (c & 1), j + ((c >> 1) & 1), k + ((c >> 2) & 1));
-                    pos += (vals[c] > 0.0) as u8;
+                for (c, val) in vals.iter_mut().enumerate() {
+                    *val = at(i + (c & 1), j + ((c >> 1) & 1), k + ((c >> 2) & 1));
+                    pos += (*val > 0.0) as u8;
                 }
                 if pos == 0 || pos == 8 {
                     continue;
@@ -307,9 +307,9 @@ fn surface_nets(field: &[f32], g: &Grid) -> Mesh {
                     let (va, vb) = (vals[a], vals[b]);
                     if (va > 0.0) != (vb > 0.0) {
                         let t = va / (va - vb);
-                        for ax in 0..3 {
+                        for (ax, s) in sum.iter_mut().enumerate() {
                             let (pa, pb) = (((a >> ax) & 1) as f64, ((b >> ax) & 1) as f64);
-                            sum[ax] += pa + t * (pb - pa);
+                            *s += pa + t * (pb - pa);
                         }
                         cnt += 1.0;
                     }

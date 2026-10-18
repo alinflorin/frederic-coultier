@@ -35,12 +35,12 @@ pub struct Pending(Mutex<HashMap<u64, oneshot::Sender<Reply>>>);
 impl Pending {
     fn add(&self, id: u64) -> oneshot::Receiver<Reply> {
         let (tx, rx) = oneshot::channel();
-        self.0.lock().unwrap().insert(id, tx);
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id, tx);
         rx
     }
 
     fn take(&self, id: u64) -> Option<oneshot::Sender<Reply>> {
-        self.0.lock().unwrap().remove(&id)
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id)
     }
 }
 

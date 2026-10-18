@@ -211,7 +211,7 @@ async fn print_layout(
 ) -> Result<Response, String> {
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         // show the casting sprue too: stub added as a separate shell, enough for a preview
         let planned = sprue.and_then(|s| meshtools::plan_sprue_at(&mesh, &s));
         let sprue_at = planned.as_ref().map(|p| p.2);
@@ -241,6 +241,7 @@ async fn print_layout(
 /// Exports the model to `path` in `format`: stl-bin, stl-ascii, obj or 3mf.
 /// With `print`, the piece is tilted and the supports and raft are baked in.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command: one parameter per frontend argument
 async fn export_model(
     source: String,
     path: PathBuf,
@@ -259,11 +260,10 @@ async fn export_model(
         }
         // order: hollow, sprue, simplify, then tilt + supports
         let solid = mesh.clone();
-        if let Some(spec) = hollow {
-            if let Some((h, _)) = hollow::hollow(&mesh, &spec)? {
+        if let Some(spec) = hollow
+            && let Some((h, _)) = hollow::hollow(&mesh, &spec)? {
                 mesh = std::sync::Arc::new(h);
             }
-        }
         if let Some(spec) = sprue {
             // placed on the solid piece, where the metal is thickest
             let (stub, _) = meshtools::plan_sprue(&solid, &spec)

@@ -767,11 +767,10 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             a.insert(key.into(), json!(v));
         }
     }
-    if let Some(v) = p.number("zoom")? {
-        if v <= 0.0 {
+    if let Some(v) = p.number("zoom")?
+        && v <= 0.0 {
             return Err("--zoom must be above 0".into());
         }
-    }
     if let Some(v) = p.value("at") {
         a.insert("target".into(), json!(parse::point(v)?));
     }

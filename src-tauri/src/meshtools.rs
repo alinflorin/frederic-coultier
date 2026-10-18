@@ -278,7 +278,7 @@ fn decimate(welded: &Mesh, target_tris: usize) -> Mesh {
     let mut remap: HashMap<u32, u32> = HashMap::new();
     let mut nv: Vec<V3> = Vec::new();
     let tris: Vec<[u32; 3]> = out
-        .chunks_exact(3)
+        .as_chunks::<3>().0.iter()
         .map(|t| {
             let mut r = [0u32; 3];
             for k in 0..3 {

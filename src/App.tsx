@@ -130,9 +130,11 @@ function App() {
   const [triangles, setTriangles] = useState<number | null>(null);
   const [recents, setRecents] = useState(getRecents);
 
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const notify = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3200);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
   // The latest project, readable at any moment (state only updates on the next render). Every

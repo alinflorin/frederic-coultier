@@ -90,12 +90,11 @@ impl<'a> Bvh<'a> {
                         continue;
                     }
                     let [a, b, c] = self.tri(t);
-                    if let Some(h) = moller(p, d, a, b, c) {
-                        if h > 1e-4 && h <= best {
+                    if let Some(h) = moller(p, d, a, b, c)
+                        && h > 1e-4 && h <= best {
                             best = h;
                             found = true;
                         }
-                    }
                 }
             } else {
                 stack.push(n.a);

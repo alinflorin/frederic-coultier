@@ -45,7 +45,10 @@ pub struct Rendered {
 
 /// Last rendered mesh, so exporting right after previewing doesn't evaluate twice.
 #[derive(Default, Clone)]
-pub struct RenderCache(Arc<Mutex<Option<(u64, Arc<Mesh>)>>>);
+pub struct RenderCache(Arc<Mutex<CachedMesh>>);
+
+/// The source hash and the mesh it produced.
+type CachedMesh = Option<(u64, Arc<Mesh>)>;
 
 fn hash(source: &str) -> u64 {
     let mut h = DefaultHasher::new();
@@ -157,17 +160,16 @@ pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Render
             column: None,
         })
     })?;
-    *cache.0.lock().unwrap() = Some((key, rendered.mesh.clone()));
+    *cache.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, rendered.mesh.clone()));
     Ok(rendered)
 }
 
 /// The mesh for `source`, from the cache if it is the model last rendered.
 pub fn mesh_for(source: &str, cache: &RenderCache) -> Result<Arc<Mesh>, RenderFailure> {
-    if let Some((key, mesh)) = cache.0.lock().unwrap().as_ref() {
-        if *key == hash(source) {
+    if let Some((key, mesh)) = cache.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref()
+        && *key == hash(source) {
             return Ok(mesh.clone());
         }
-    }
     render_on_big_stack(source.to_owned(), cache).map(|r| r.mesh)
 }
 
