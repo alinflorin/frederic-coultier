@@ -328,8 +328,9 @@ export class Viewer {
       gemGeo = part(cut, total * 3);
       raw.dispose();
     }
-    const geo = toCreasedNormals(metalRaw, THREE.MathUtils.degToRad(35));
-    metalRaw.dispose();
+    // a design made only of stones has no metal to smooth
+    const geo = metalRaw.attributes.position.count > 0 ? toCreasedNormals(metalRaw, THREE.MathUtils.degToRad(35)) : metalRaw;
+    if (geo !== metalRaw) metalRaw.dispose();
     const mesh = new THREE.Mesh(geo, this.metalMat);
     mesh.castShadow = true;
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), this.edgeMat);

@@ -24,6 +24,8 @@ export function HistoryDialog({
   const list = useMemo(() => [...project.history].reverse(), [project.history]);
   const [selected, setSelected] = useState<string | null>(list[0]?.id ?? null);
   const [label, setLabel] = useState("");
+  // window.prompt is not available in the desktop webview, so renaming happens inline
+  const [renaming, setRenaming] = useState<string | null>(null);
   const snap = list.find((s) => s.id === selected) ?? null;
   const diff = useMemo(() => (snap ? lineDiff(snap.source, project.source) : []), [snap, project.source]);
   const stats = diffStats(diff);
@@ -91,16 +93,27 @@ export function HistoryDialog({
                 >
                   {t("history.restore")}
                 </button>
-                <button
-                  onClick={() => {
-                    const next = window.prompt(t("history.rename"), snap.label);
-                    if (next !== null) onRename(snap.id, next.trim());
-                  }}
-                >
-                  {t("history.renameAction")}
-                </button>
+                <button onClick={() => setRenaming(snap.label)}>{t("history.renameAction")}</button>
                 <button onClick={() => onDelete(snap.id)}>{t("history.delete")}</button>
               </div>
+              {renaming !== null && (
+                <input
+                  autoFocus
+                  value={renaming}
+                  aria-label={t("history.rename")}
+                  onChange={(e) => setRenaming(e.currentTarget.value)}
+                  onBlur={() => setRenaming(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      onRename(snap.id, renaming.trim());
+                      setRenaming(null);
+                    } else if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setRenaming(null);
+                    }
+                  }}
+                />
+              )}
               <p className="muted">
                 {same ? t("history.same") : t("history.changes", { added: stats.added, removed: stats.removed })}
               </p>
