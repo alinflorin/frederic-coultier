@@ -251,6 +251,8 @@ function App() {
   const sprueL = project?.settings.printing.sprueLength ?? 5;
   const sprueAt = project?.settings.printing.sprueAt ?? null;
   const layoutPending = useRef(false);
+  const layoutRef = useRef<PrintLayout | null>(null);
+  layoutRef.current = layout;
   useEffect(() => {
     if (!supOpts || !(supOpts.enabled || sprueOn) || !source || render.status !== "ok" || !render.mesh) {
       setLayout(null);
@@ -261,7 +263,7 @@ function App() {
     let live = true;
     // without supports the piece stays as modelled; the layout then only adds the sprue
     const params = supOpts.enabled ? printParams(tilt, supOpts) : { ...printParams(0, supOpts), lift: 0, raft: 0 };
-    printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL, at: sprueAt } : undefined)
+    printLayout(source, params, supOpts.enabled ? (supList ?? []) : [], sprueOn ? { diameter: sprueD, length: sprueL, at: sprueAt } : undefined, layoutRef.current)
       .then((l) => {
         if (!live) return;
         setLayout(l);

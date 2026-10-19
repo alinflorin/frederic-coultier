@@ -220,6 +220,8 @@ export const autoSupports = (
   });
 
 export interface PrintLayout {
+  /** Identifies the model and sprue, so the backend can skip them when unchanged. */
+  key: string;
   model: MeshBuf;
   /** Supports and raft, null when there are none. */
   supports: MeshBuf | null;
@@ -233,34 +235,47 @@ export interface PrintLayout {
   zoff: number;
 }
 
-/** Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | model mesh | supports mesh | sprue mesh. */
+/**
+ * Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | model mesh | supports mesh | sprue mesh.
+ * Given the previous layout, the backend skips the model and sprue when nothing they depend on changed
+ * (only supports did); the previous `model` and `sprue` objects are then reused as they are, which also
+ * lets the viewer keep the model it already built.
+ */
 export async function printLayout(
   source: string,
   print: PrintParams,
   supports: Support[],
   sprue?: SprueOpts,
+  prev?: PrintLayout | null,
 ): Promise<PrintLayout> {
-  const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports, sprue: sprue ?? null });
+  const have = prev ? { key: prev.key, zoff: prev.zoff } : null;
+  const buf = await invoke<ArrayBuffer>("print_layout", { source, print, supports, sprue: sprue ?? null, have });
   const n = new DataView(buf).getUint32(0, true);
   const info = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as {
-    size: [number, number, number];
-    fits: boolean;
-    modelLen: number;
+    key: string;
     supportsLen: number;
-    zoff: number;
-    sprueAt: [number, number, number] | null;
+    // absent when the previous model and sprue are still valid
+    size?: [number, number, number];
+    fits?: boolean;
+    modelLen?: number;
+    zoff?: number;
+    sprueAt?: [number, number, number] | null;
   };
   const start = 4 + n;
-  const supStart = start + info.modelLen;
+  const modelLen = info.modelLen ?? 0;
+  const supStart = start + modelLen;
   const sprueStart = supStart + info.supportsLen;
+  const supports_ = info.supportsLen > MESH_HEADER ? { buf, offset: supStart, length: info.supportsLen } : null;
+  if (prev && info.modelLen === undefined) return { ...prev, supports: supports_ };
   return {
-    model: { buf, offset: start, length: info.modelLen },
-    supports: info.supportsLen > MESH_HEADER ? { buf, offset: supStart, length: info.supportsLen } : null,
+    key: info.key,
+    model: { buf, offset: start, length: modelLen },
+    supports: supports_,
     sprue: buf.byteLength - sprueStart > MESH_HEADER ? { buf, offset: sprueStart, length: buf.byteLength - sprueStart } : null,
-    size: info.size,
-    fits: info.fits,
-    zoff: info.zoff,
-    sprueAt: info.sprueAt,
+    size: info.size as [number, number, number],
+    fits: info.fits as boolean,
+    zoff: info.zoff as number,
+    sprueAt: info.sprueAt ?? null,
   };
 }
 

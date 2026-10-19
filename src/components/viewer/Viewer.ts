@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { acceleratedRaycast } from "three-mesh-bvh";
 import type { ShadingMode } from "../../types";
+import { BvhBuilder } from "./bvh";
 import { type MeshBuf, shadedMesh } from "./geometry";
 
 const AXIS_COLOR = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" };
@@ -114,6 +116,10 @@ export class Viewer {
   private sprueMat = new THREE.MeshStandardMaterial({ color: 0xf0a030, metalness: 0.3, roughness: 0.4 });
   private supportMat = new THREE.MeshStandardMaterial({ color: 0xd9534f, metalness: 0.1, roughness: 0.6 });
   private model: THREE.Group | null = null;
+  private bvh = new BvhBuilder();
+  /** What `setMesh` last built from, to tell when only the supports changed. */
+  private shown: { mesh: MeshBuf; sprue: MeshBuf | null; stats: ViewerStats } | null = null;
+  private supportMesh: THREE.Mesh | null = null;
   private edges: THREE.LineSegments[] = [];
   private sun = new THREE.DirectionalLight(0xffffff, 1.2);
   private edgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
@@ -285,7 +291,13 @@ export class Viewer {
     supports: MeshBuf | null = null,
     sprue: MeshBuf | null = null,
   ): ViewerStats | null {
+    if (this.model && this.shown && mesh === this.shown.mesh && sprue === this.shown.sprue) {
+      this.setSupports(supports);
+      return this.shown.stats;
+    }
     const first = !this.model;
+    this.shown = null;
+    this.supportMesh = null;
     if (this.model) {
       this.scene.remove(this.model);
       this.model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
@@ -301,19 +313,21 @@ export class Viewer {
 
     const body = new THREE.Mesh(body3.geometry, this.metalMat);
     body.castShadow = true;
+    this.accelerate(body);
     if (body3.edges) {
       const edges = new THREE.LineSegments(body3.edges, this.edgeMat);
       body.add(edges);
       this.edges = [edges];
     }
     this.model = new THREE.Group().add(body);
-    for (const [buf, mat] of [[supports, this.supportMat], [sprue, this.sprueMat]] as const) {
-      const shaded = buf && shadedMesh(buf);
-      if (!shaded) continue;
-      const m = new THREE.Mesh(shaded.geometry, mat);
+    const sprue3 = sprue && shadedMesh(sprue);
+    if (sprue3) {
+      const m = new THREE.Mesh(sprue3.geometry, this.sprueMat);
       m.castShadow = true;
+      this.accelerate(m);
       this.model.add(m);
     }
+    this.setSupports(supports);
     this.scene.add(this.model);
 
     this.box.setFromObject(this.model);
@@ -327,11 +341,44 @@ export class Viewer {
     if (first) this.fit(false);
 
     const size = this.box.getSize(new THREE.Vector3());
-    return {
-      size: [size.x, size.y, size.z],
+    const stats = {
+      size: [size.x, size.y, size.z] as [number, number, number],
       tris: body3.triangles,
       metalVolumeMm3: body3.volume,
     };
+    this.shown = { mesh: mesh as MeshBuf, sprue, stats };
+    return stats;
+  }
+
+  /** Swaps the supports alone, leaving the model (and its BVH) as built. */
+  private setSupports(buf: MeshBuf | null) {
+    if (!this.model) return;
+    if (this.supportMesh) {
+      this.model.remove(this.supportMesh);
+      this.supportMesh.geometry.dispose();
+      this.supportMesh = null;
+    }
+    const shaded = buf && shadedMesh(buf);
+    if (shaded) {
+      const m = new THREE.Mesh(shaded.geometry, this.supportMat);
+      m.castShadow = true;
+      this.accelerate(m);
+      this.model.add(m);
+      this.supportMesh = m;
+    }
+    this.dirty = true;
+  }
+
+  /**
+   * Raycasts walk a BVH built in a worker: until it arrives (a moment after the mesh appears) a pick
+   * falls back to testing every triangle.
+   */
+  private accelerate(mesh: THREE.Mesh) {
+    mesh.raycast = acceleratedRaycast;
+    const geometry = mesh.geometry as THREE.BufferGeometry & { boundsTree?: unknown };
+    void this.bvh.build(geometry).then((tree) => {
+      if (tree && mesh.parent === this.model) geometry.boundsTree = tree;
+    });
   }
 
   /** What is under a screen position: the model or a support, and the point in scene (print) coordinates. */
@@ -340,6 +387,7 @@ export class Viewer {
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     const rc = new THREE.Raycaster();
+    (rc as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
     rc.setFromCamera(ndc, this.camera);
     const hit = rc.intersectObjects(this.model.children, false)[0];
     if (!hit) return null;
@@ -505,6 +553,7 @@ export class Viewer {
     this.themeObserver.disconnect();
     this.scheme.removeEventListener("change", this.onRetheme);
     this.controls.dispose();
+    this.bvh.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();

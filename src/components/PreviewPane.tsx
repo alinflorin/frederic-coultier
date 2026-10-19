@@ -138,7 +138,7 @@ export function PreviewPane({
   const grams = stats ? (stats.metalVolumeMm3 / 1000) * DENSITY[material.metal] : 0;
 
   const tool = (on: boolean) => ({
-    variant: on ? "light" : "subtle",
+    variant: on ? "filled" : "subtle",
     color: on ? "gold" : "gray",
     size: compact ? 40 : 34,
     "aria-pressed": on,
@@ -243,12 +243,12 @@ export function PreviewPane({
       {cut && (
         <Group data-vp-ui gap={6} px={8} py={6} wrap="nowrap" pos="absolute" left={12} bottom={44} {...floating} style={{ ...floating.style, zIndex: 5 }} onPointerDown={(e) => e.stopPropagation()}>
           {(["x", "y", "z"] as const).map((a) => (
-            <Button key={a} size="compact-xs" variant={section.axis === a ? "light" : "default"} onClick={() => setSection({ ...section, axis: a })}>
+            <Button key={a} size="compact-xs" variant={section.axis === a ? "filled" : "default"} onClick={() => setSection({ ...section, axis: a })}>
               {a.toUpperCase()}
             </Button>
           ))}
           <Slider w={160} size="sm" label={null} min={0} max={1} step={0.005} value={section.t} aria-label={t("preview.section")} onChange={(v) => setSection({ ...section, t: v })} />
-          <Button size="compact-xs" variant={section.flip ? "light" : "default"} aria-pressed={section.flip} onClick={() => setSection({ ...section, flip: !section.flip })}>
+          <Button size="compact-xs" variant={section.flip ? "filled" : "default"} aria-pressed={section.flip} onClick={() => setSection({ ...section, flip: !section.flip })}>
             {t("preview.sectionFlip")}
           </Button>
         </Group>

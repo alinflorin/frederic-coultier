@@ -207,34 +207,68 @@ async fn auto_supports(
     .map_err(|e| e.to_string())?
 }
 
-/// The piece as it will be printed. Reply: `u32 LE JSON length | JSON {size, fits, modelLen, ...}
-/// (padded to 4 bytes) | indexed mesh of the tilted model | indexed mesh of the supports and raft |
-/// indexed mesh of the sprue` (empty sections are zero bytes).
+/// What the frontend already holds of the last layout: when `key` still matches, the tilted model and
+/// sprue are not recomputed or sent again, only the supports (placing one must not redo a 500k-triangle model).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HaveLayout {
+    key: String,
+    zoff: f64,
+}
+
+/// Identifies everything the tilted model and sprue depend on (not the supports).
+fn layout_key(source: &str, print: &PrintParams, sprue: &Option<SprueSpec>) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut h);
+    format!("{print:?}{sprue:?}").hash(&mut h);
+    format!("{:x}", h.finish())
+}
+
+/// The piece as it will be printed. Reply: `u32 LE JSON length | JSON {size, fits, key, modelLen, ...}
+/// (padded to 4 bytes) | shaded mesh of the tilted model | shaded mesh of the supports and raft |
+/// shaded mesh of the sprue` (empty sections are zero bytes). When `have` matches, the JSON only has
+/// `{key, supportsLen}` and the model and sprue sections are left out.
 #[tauri::command]
 async fn print_layout(
     source: String,
     print: PrintParams,
     supports: Vec<Support>,
     sprue: Option<SprueSpec>,
+    have: Option<HaveLayout>,
     cache: State<'_, RenderCache>,
 ) -> Result<Response, String> {
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
-        // show the casting sprue too: stub added as a separate shell, enough for a preview
-        let planned = sprue.and_then(|s| meshtools::plan_sprue_at(&mesh, &s));
-        let sprue_at = planned.as_ref().map(|p| p.2);
-        let stub = planned.map(|(m, _, _)| m);
-        let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
-        let model = render::encode_model(&supports::tilted_model(&mesh, &print, zoff));
-        let sprue_mesh = stub
-            .map(|m| render::encode_flat(&supports::tilted_model(&m, &print, zoff)))
-            .unwrap_or_default();
-        let sup = if supports.is_empty() { Vec::new() } else { render::encode_flat(&supports::support_mesh(&supports, &print, zoff)) };
-        let mut info = serde_json::to_vec(&serde_json::json!({
-            "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff, "sprueAt": sprue_at,
-        }))
-        .map_err(|e| e.to_string())?;
+        let key = layout_key(&source, &print, &sprue);
+        let encode_supports = |zoff: f64| {
+            if supports.is_empty() { Vec::new() } else { render::encode_flat(&supports::support_mesh(&supports, &print, zoff)) }
+        };
+        let (info, model, sup, sprue_mesh) = match have.filter(|h| h.key == key) {
+            Some(h) => {
+                let sup = encode_supports(h.zoff);
+                (serde_json::json!({ "key": key, "supportsLen": sup.len() }), Vec::new(), sup, Vec::new())
+            }
+            None => {
+                let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+                // show the casting sprue too: stub added as a separate shell, enough for a preview
+                let planned = sprue.and_then(|s| meshtools::plan_sprue_at(&mesh, &s));
+                let sprue_at = planned.as_ref().map(|p| p.2);
+                let stub = planned.map(|(m, _, _)| m);
+                let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
+                let model = render::encode_model(&supports::tilted_model(&mesh, &print, zoff));
+                let sprue_mesh = stub
+                    .map(|m| render::encode_flat(&supports::tilted_model(&m, &print, zoff)))
+                    .unwrap_or_default();
+                let sup = encode_supports(zoff);
+                let info = serde_json::json!({
+                    "size": frame.size, "fits": frame.fits, "key": key, "modelLen": model.len(), "supportsLen": sup.len(),
+                    "zoff": zoff, "sprueAt": sprue_at,
+                });
+                (info, model, sup, sprue_mesh)
+            }
+        };
+        let mut info = serde_json::to_vec(&info).map_err(|e| e.to_string())?;
         pad4(&mut info);
         let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len() + sprue_mesh.len());
         out.extend_from_slice(&(info.len() as u32).to_le_bytes());
