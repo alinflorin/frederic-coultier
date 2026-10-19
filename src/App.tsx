@@ -634,6 +634,8 @@ function App() {
         onModel={(model) => setOverride({ model: model || undefined, effort: undefined })}
         onEffort={(effort) => setOverride({ effort: effort || undefined })}
         canCompact={!!chat.log.session && chat.log.session.engine === engine?.id}
+        autoCompact={chat.log.autoCompact === true}
+        onAutoCompact={chat.setAutoCompact}
         pdf={engine?.id === "claude"}
         files={draftFiles}
         setFiles={setDraftFiles}

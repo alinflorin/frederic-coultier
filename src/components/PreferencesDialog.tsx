@@ -4,6 +4,7 @@ import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from 
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
 import { getPref, setPref } from "../prefs";
+import { playChime, setChimeOn, setChimeSecs, useChime } from "../chime";
 import { Dialog } from "./Dialog";
 import { McpPrefs } from "./McpPrefs";
 
@@ -53,6 +54,7 @@ export function PreferencesDialog({
   useEffect(() => {
     onRefreshEngines();
   }, [onRefreshEngines]);
+  const chime = useChime();
   const usable = engines?.some((e) => e.available) ?? false;
   return (
     <Dialog
@@ -128,6 +130,27 @@ export function PreferencesDialog({
         </span>
       </label>
       <p className="muted">{t("prefs.chat.allToolsHint")}</p>
+      <label className="field">
+        <span className="field-label">{t("prefs.chat.chime")}</span>
+        <span className="field-input">
+          <input type="checkbox" checked={chime.on} onChange={(e) => setChimeOn(e.currentTarget.checked)} />
+          <button type="button" onClick={playChime}>{t("prefs.chat.chimePlay")}</button>
+        </span>
+      </label>
+      <label className="field">
+        <span className="field-label">{t("prefs.chat.chimeAfter")}</span>
+        <span className="field-input">
+          <input
+            type="number"
+            min={0}
+            step={5}
+            value={chime.secs}
+            disabled={!chime.on}
+            onChange={(e) => Number.isFinite(e.currentTarget.valueAsNumber) && setChimeSecs(e.currentTarget.valueAsNumber)}
+          />
+        </span>
+      </label>
+      <p className="muted">{t("prefs.chat.chimeHint")}</p>
       <label className="field">
         <span className="field-label">{t("prefs.chat.agent")}</span>
         <span className="field-input">

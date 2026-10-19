@@ -26,13 +26,17 @@ OpenSCAD model, look at it, check it for printing, manage supports and the casti
 
 IMPORTANT, BEFORE ANYTHING ELSE: call `read_instructions` and read the whole result. It holds the user's own \
 instructions and the full reference of `fc`. Do this before your first `exec_fc` call, even for a simple question; \
-`exec_fc` refuses to run until you have.";
+`exec_fc` refuses to run until you have.
+
+When you finish a long piece of work, or need the user's answer and they may be looking elsewhere, run `chime` \
+(an `fc` command) once to play a short sound for them.";
 
 /// For the agent of the chat panel, whose context already holds the manual (there is no `read_instructions` for it).
 const EMBEDDED_INSTRUCTIONS: &str = "\
 A desktop CAD app for jewellery. The user has a project open: through the `fc` command line (the `exec_fc` tool) you \
 read and edit its OpenSCAD model, look at it, check it for printing, manage supports and the casting sprue, and \
-export it. The complete manual is in your instructions; follow it.";
+export it. The complete manual is in your instructions; follow it. The app chimes by itself when a long reply ends; \
+run `chime` only to get the user's attention earlier, for instance when you need an answer.";
 
 const EMBEDDED_EXEC: &str = "Run fc commands, e.g. `status` or `src cat 1:40`, as described in your instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`.";
 

@@ -9,7 +9,7 @@
 const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const FILE = "settings.json";
-const KEYS = ["theme", "language", "recentProjects", "mcpHost", "mcpPort", "chatEnabled", "autoUpdate", "onboarded", "chatEngine", "chatPicks", "chatLimits", "chatAllTools", "paramsOpen", "exportPreset"];
+const KEYS = ["theme", "language", "recentProjects", "mcpHost", "mcpPort", "chatEnabled", "autoUpdate", "onboarded", "chatEngine", "chatPicks", "chatLimits", "chatAllTools", "paramsOpen", "exportPreset", "chimeOn", "chimeSecs"];
 
 type Store = { get<T>(k: string): Promise<T | undefined>; set(k: string, v: unknown): Promise<void> };
 

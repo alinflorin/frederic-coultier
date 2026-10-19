@@ -502,6 +502,17 @@ pub const COMMANDS: &[Cmd] = &[
             "export /home/anna/out/ring.3mf --no-supports --overwrite",
         ],
     },
+    // ---- Notify ----
+    Cmd {
+        group: "Notify",
+        name: "chime",
+        usage: "chime",
+        summary: "play a short sound so the user hears that you need them or are done",
+        details: "Plays a short chime in the app, for a user who may be looking at something else. Use it when you finish a long piece of work (minutes: a large design, many edits, a long check) or when you need an answer before you can go on. Do not use it for short replies, and call it at most once per round.\nIn the app's own chat panel the chime already plays by itself when a reply that took a while ends, so there it is only for getting the user's attention earlier; if you call it yourself near the end, it does not play twice. Over MCP nothing plays by itself, so call it when you are done.\nIt does nothing if the user turned the sound off, and says so; do not ask them to turn it on.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &[],
+    },
     // ---- Help ----
     Cmd {
         group: "Help",

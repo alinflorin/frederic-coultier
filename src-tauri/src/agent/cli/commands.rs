@@ -99,6 +99,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "kb search" => kb_search(c, args).await,
         "kb cat" => kb_cat(c, args).await,
         "kb ls" => kb_ls(c, args).await,
+        "chime" => chime(c, args).await,
         "help" => help(args),
         other => return Err(format!("unknown command {other:?}; try: help")),
     };
@@ -279,6 +280,16 @@ async fn status(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         l.push(format!("notes: {}", notes.trim()));
     }
     say(l.join("\n"))
+}
+
+async fn chime(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    expect_no_args(args)?;
+    let v = c.op("app.chime", json!({})).await?;
+    if v["played"] == true {
+        say("played the chime")
+    } else {
+        say("the user has turned the sound off; nothing was played")
+    }
 }
 
 async fn get_project_notes(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -1362,6 +1373,7 @@ mod tests {
             "settings.patch" => Ok(
                 json!({ "changed": ["printing.tilt"], "settings": { "printing": { "tilt": 25 } } }),
             ),
+            "app.chime" => Ok(json!({ "played": true })),
             "project.info" => Ok(json!({
                 "open": true, "name": "ring", "path": "/tmp/ring.fc", "unsavedChanges": true, "sourceLines": 3, "preview": "ok",
                 "material": { "metal": "silver925", "process": "casting" },
@@ -1545,6 +1557,14 @@ mod tests {
         ] {
             assert!(out.contains(want), "{want:?} missing from\n{out}");
         }
+    }
+
+    #[tokio::test]
+    async fn chime_asks_the_app_to_play_and_takes_no_arguments() {
+        let a = app("");
+        assert!(a.ok("chime").await.contains("played"));
+        assert_eq!(a.last("app.chime"), json!({}));
+        assert!(a.err("chime now").await.contains("unexpected argument"));
     }
 
     #[tokio::test]

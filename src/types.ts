@@ -117,6 +117,8 @@ export interface ChatLog {
   context?: { engine: string; used: number; window: number };
   /** What was kept when the conversation was compacted. */
   summary?: string;
+  /** Compact this conversation by itself when its memory fills up; off unless set. */
+  autoCompact?: boolean;
 }
 
 /** All the conversations of a project. Saved in the .fc file, and also kept by the app. */

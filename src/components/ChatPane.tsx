@@ -6,6 +6,8 @@ import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
 import type { Attached, ChatLog, Limit, ChatMessage, ToolCall } from "../types";
 import { Icon } from "./Icon";
+import { setChimeOn, useChime } from "../chime";
+import { AUTO_COMPACT_AT } from "../chat/useAgentChat";
 
 /** The agent's words, with their Markdown shown; links open outside the app. */
 function Say({ text }: { text: string }) {
@@ -123,6 +125,8 @@ export function ChatPane({
   limits,
   unavailable,
   canCompact,
+  autoCompact,
+  onAutoCompact,
   models,
   model,
   modelDefault,
@@ -161,6 +165,9 @@ export function ChatPane({
   /** Why nobody can answer, if so. */
   unavailable: string | null;
   canCompact: boolean;
+  /** Whether this conversation compacts itself when its memory fills up. */
+  autoCompact: boolean;
+  onAutoCompact: (on: boolean) => void;
   models: ModelInfo[];
   /** The picked model, "" for the agent's own choice. */
   model: string;
@@ -191,7 +198,9 @@ export function ChatPane({
   const [over, setOver] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const chime = useChime();
   const busy = working !== null;
+  const state = unavailable ? "unavailable" : working === "compact" ? "compacting" : working ? "working" : error ? "error" : "idle";
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages, live, error]);
@@ -249,6 +258,10 @@ export function ChatPane({
             agent ?? t("chat.title")
           )}
         </span>
+          <span className={`chat-state ${state}`} role="status" title={error ?? unavailable ?? undefined}>
+            <span className="chat-dot" aria-hidden />
+            {t(`chat.state.${state}`)}
+          </span>
           <span className="grow" />
         {models.length > 0 && (
           <select className="chat-pick" aria-label={t("chat.model")} title={t("chat.model")} value={model} disabled={busy} onChange={(e) => onModel(e.currentTarget.value)}>
@@ -286,6 +299,10 @@ export function ChatPane({
         <button className="chat-tool" disabled={busy || !canCompact} onClick={onCompact} title={t("chat.compactHint")}>
           {t("chat.compact")}
         </button>
+        <label className="chat-auto" title={t("chat.autoCompactHint", { percent: Math.round(AUTO_COMPACT_AT * 100) })}>
+          <input type="checkbox" checked={autoCompact} onChange={(e) => onAutoCompact(e.currentTarget.checked)} />
+          {t("chat.autoCompact")}
+        </label>
         <button
           className={`chat-tool${sure ? " danger" : ""}`}
           disabled={busy || (messages.length === 0 && conversations.length === 1)}
@@ -402,6 +419,10 @@ export function ChatPane({
       >
         {files.length > 0 && <Files files={files} onRemove={(i) => setFiles((cur) => cur.filter((_, j) => j !== i))} />}
         {problem && <div className="chat-error">{problem}</div>}
+        <label className="composer-opt" title={t("chat.chimeHint", { secs: chime.secs })}>
+          <input type="checkbox" checked={chime.on} onChange={(e) => setChimeOn(e.currentTarget.checked)} />
+          {t("chat.chime")}
+        </label>
         <textarea
           value={draft}
           rows={2}

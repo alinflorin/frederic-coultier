@@ -3,8 +3,12 @@ import type { Limit as ChatLimit, Attached, ChatBook, ChatLog, ChatMessage, FcPr
 import { inTauri } from "../api";
 import { getPref, setPref } from "../prefs";
 import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
-import { freshBook, freshLog, portableBook, mergeBooks, readBook, titleOf } from "./book";
+import { freshBook, freshLog, needsAutoCompact, portableBook, mergeBooks, readBook, titleOf } from "./book";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
+import { chimeOn, chimeSecs, chimedSince, playChime } from "../chime";
+
+/** A conversation with auto-compact on is compacted once its memory is this full (0 to 1). */
+export const AUTO_COMPACT_AT = 0.8;
 
 /** The answer being written right now. */
 export interface Live {
@@ -192,14 +196,19 @@ export function useAgentChat({
     const prompt = known ? text : opening(text, c.summary, c.messages, p.settings.general.notes);
     add({ role: "user", text, files: files.length ? files : undefined });
     const before = p.source;
+    const started = Date.now();
+    const convo = bookRef.current.active;
     try {
       const r = await turn(prompt, "answer", files);
+      if (!r.cancelled && chimeOn() && Date.now() - started >= chimeSecs() * 1000 && !chimedSince(started)) playChime();
       const change = lineChange(before, projectRef.current!.source);
       const changed = change.added + change.removed > 0;
       const said = r.cancelled ? `${r.text}${r.text ? "\n\n" : ""}…` : r.text;
       if (said || r.tools.length) {
         add({ role: "assistant", text: said, thinking: r.thinking || undefined, tools: r.tools.length ? r.tools : undefined, change: changed ? change : undefined });
       }
+      const log = bookRef.current.list.find((l) => l.id === convo);
+      if (!r.cancelled && bookRef.current.active === convo && needsAutoCompact(log, engine, AUTO_COMPACT_AT)) await compact();
     } catch (e) {
       setError(errorText(e));
     }
@@ -223,6 +232,9 @@ export function useAgentChat({
       setError(errorText(e));
     }
   };
+
+  /** Turns auto-compact on or off for the conversation on show only. */
+  const setAutoCompact = (on: boolean) => patch((c) => ({ ...c, autoCompact: on || undefined }));
 
   const select = (id: string) => {
     if (busy.current || id === bookRef.current.active) return;
@@ -252,5 +264,5 @@ export function useAgentChat({
     stopEngine().catch(() => {});
   };
 
-  return { limits, book, log, live, error, working, send, compact, select, create, remove, stop };
+  return { limits, book, log, live, error, working, send, compact, setAutoCompact, select, create, remove, stop };
 }

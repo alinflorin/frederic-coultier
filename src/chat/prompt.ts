@@ -6,7 +6,9 @@ const PREFACE =
   "They see only your replies there. Answer in the language they write in, and keep it short. " +
   "Whenever a value in the design is something the user might want to tune (a size, a count, a proportion, an on/off choice), " +
   "make it a top-level parameter with a `[min:step:max]` range in its comment, such as `band_width = 2.4; // [1.2:0.1:6]`: " +
-  "the app shows each one as a slider, so decide this yourself and do not wait to be asked.";
+  "the app shows each one as a slider, so decide this yourself and do not wait to be asked. " +
+  "The app plays a chime by itself when a long reply ends; run the `chime` command only to get the user's attention earlier, " +
+  "for instance when you need an answer before you can go on.";
 
 const KEEP = 20;
 const CLIP = 600;

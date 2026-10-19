@@ -45,9 +45,10 @@ export function McpIndicator({ onClick }: { onClick: () => void }) {
     idle: t("mcp.idle", { name }),
     active: t("mcp.active", { name }),
   }[state];
-  const title = !s.running
+  const detail = !s.running
     ? [t("mcp.offTitle"), s.error].filter(Boolean).join(" ")
     : [s.url, seen ? t("mcp.last", { name, calls: s.calls, secs: s.idleSecs }) : t("mcp.none")].join("\n");
+  const title = `${t("mcp.about")}\n\n${detail}`;
 
   return (
     <button type="button" className={`mcp-pill ${state}`} title={title} onClick={onClick}>

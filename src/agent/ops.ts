@@ -14,6 +14,7 @@ import type { ExportFormat, FcProject, Support } from "../types";
 import { DEFAULT_SETTINGS } from "../defaults";
 import { restoreSnapshot, withSnapshot } from "../history";
 import { applyPatch, describeSettings } from "./settingsPatch";
+import { chimeOn, playChime } from "../chime";
 
 /** What the agent's operations need from the running app. Every getter returns the latest value. */
 export interface AgentApi {
@@ -151,6 +152,8 @@ function supportSummary(p: FcProject) {
 type Handler = (api: AgentApi, a: Args) => Promise<unknown> | unknown;
 
 const OPS: Record<string, Handler> = {
+  "app.chime": () => ({ played: chimeOn() && (playChime(), true) }),
+
   "project.info": (api) => {
     const p = api.project();
     if (!p) return { open: false };

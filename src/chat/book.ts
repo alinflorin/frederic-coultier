@@ -31,6 +31,7 @@ function readLog(v: unknown): ChatLog | null {
     messages,
     session: isObject(v.session) && typeof v.session.engine === "string" && typeof v.session.id === "string" ? (v.session as ChatLog["session"]) : undefined,
     summary: typeof v.summary === "string" ? v.summary : undefined,
+    autoCompact: v.autoCompact === true ? true : undefined,
   };
 }
 
@@ -40,6 +41,12 @@ export function readBook(raw: unknown): ChatBook {
   const list = raw.list.map(readLog).filter((l): l is ChatLog => l !== null);
   if (list.length === 0) return freshBook();
   return { active: list.some((l) => l.id === raw.active) ? (raw.active as string) : list[0].id, list };
+}
+
+/** Whether a conversation with auto-compact on has used up `at` (0 to 1) of the memory of the agent `engine`. */
+export function needsAutoCompact(log: ChatLog | undefined, engine: string | null, at: number): boolean {
+  const ctx = log?.context;
+  return !!log?.autoCompact && !!ctx && ctx.engine === engine && ctx.window > 0 && ctx.used / ctx.window >= at;
 }
 
 /** A conversation as the .fc file keeps it: all of it, but for the agent's own session id, which means nothing on another computer. */

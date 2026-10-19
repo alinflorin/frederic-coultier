@@ -245,8 +245,16 @@ fieldset:disabled { opacity: 0.45; }
 .chat-agent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .chat-pick { font-size: 12px; padding: 2px 4px; max-width: 210px; text-transform: capitalize; }
 .chat-pick option { text-transform: none; }
+.chat-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.chat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); opacity: .7; }
+.chat-state.working, .chat-state.compacting { color: var(--text); }
+.chat-state.working .chat-dot, .chat-state.compacting .chat-dot { background: var(--accent); opacity: 1; animation: mcp-pulse 1.2s ease-in-out infinite; }
+.chat-state.error, .chat-state.unavailable { color: var(--bad); }
+.chat-state.error .chat-dot, .chat-state.unavailable .chat-dot { background: var(--bad); opacity: 1; }
 .chat-tool { font-size: 12px; padding: 3px 9px; background: none; border-color: var(--border); color: var(--muted); }
 .chat-tool:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.chat-auto { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.chat-auto input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
 .chat-tool.danger { color: var(--danger, #c0392b); border-color: currentColor; }
 .chat-note { align-self: center; font-size: 12px; color: var(--muted); padding: 2px 10px; border-radius: 999px; background: var(--surface-2); }
 .chat-error { margin: 6px 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--danger, #c0392b); background: var(--surface-2); overflow-wrap: anywhere; }
@@ -264,6 +272,8 @@ fieldset:disabled { opacity: 0.45; }
 .composer textarea { resize: none; width: 100%; max-height: 160px; }
 .composer-bar { display: flex; align-items: center; gap: 8px; }
 .hint { flex: 1; font-size: 12px; }
+.composer-opt { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-size: 12px; color: var(--muted); cursor: pointer; }
+.composer-opt input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
 
 /* preview */
 .viewport { position: relative; flex: 1; min-height: 160px; background: var(--vp-bg); overflow: hidden; outline: none; }
