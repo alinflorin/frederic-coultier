@@ -4,10 +4,12 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import type { Attached, FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
-import { Viewer, type Section, type ViewerStats } from "./viewer/Viewer";
+import { Viewer, type Pin, type Probe, type Section, type ViewerStats } from "./viewer/Viewer";
+import type { Measurement, P3 } from "./viewer/measure";
+import { FindingsCard, LocateCard, MeasurePanel, Readout } from "./viewer/Panels";
 import { Gizmo } from "./viewer/Gizmo";
 import { Annotator } from "./viewer/Annotator";
-import type { Diagnostic, PrintLayout, RenderError } from "../api";
+import { extraChecks, locateSource, meshHealth, meshReport, type Diagnostic, type Finding, type Health, type PrintLayout, type RenderError, type SourceHit } from "../api";
 import type { MeshBuf } from "./viewer/geometry";
 import { Icon } from "./Icon";
 
@@ -36,6 +38,7 @@ export function PreviewPane({
   onStats,
   onViewer,
   onAnnotated,
+  onLocate,
 }: {
   project: FcProject;
   render: RenderState;
@@ -53,6 +56,8 @@ export function PreviewPane({
   onViewer?: (v: Viewer | null) => void;
   /** Drawing on the view to show the agent: given, the tool is offered and its picture goes here. */
   onAnnotated?: (picture: Attached) => void;
+  /** The statement of the source a clicked spot comes from, to show in the editor (null = none). */
+  onLocate?: (hit: SourceHit | null) => void;
 }) {
   const { t } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
@@ -67,8 +72,20 @@ export function PreviewPane({
   const compact = useMediaQuery("(max-width: 899px)");
   const [console_, setConsole] = useState(false);
   const [annotate, setAnnotate] = useState(false);
-  const [editMode, setEditMode] = useState<"supports" | "sprue" | null>(null);
-  const toggleEdit = (m: "supports" | "sprue") => setEditMode((v) => (v === m ? null : m));
+  const [editMode, setEditMode] = useState<"supports" | "sprue" | "measure" | "locate" | null>(null);
+  const toggleEdit = (m: "supports" | "sprue" | "measure" | "locate") => setEditMode((v) => (v === m ? null : m));
+  // analysis: what the piece is like, drawn over it. None of it is part of a picture unless asked for.
+  const [overhangOn, setOverhangOn] = useState(false);
+  const [healthOn, setHealthOn] = useState(false);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [findingsOn, setFindingsOn] = useState(false);
+  const [found, setFound] = useState<{ items: { n: number; f: Finding }[] | null; busy: boolean; error: string | null }>({ items: null, busy: false, error: null });
+  const [probeOn, setProbeOn] = useState(false);
+  const [readout, setReadout] = useState<Probe | null>(null);
+  const [mPoints, setMPoints] = useState<P3[]>([]);
+  const [measurement, setMeasurement] = useState<Measurement | null>(null);
+  const [located, setLocated] = useState<{ hits: SourceHit[] | null; truncated: boolean; busy: boolean; current: SourceHit | null }>({ hits: null, truncated: false, busy: false, current: null });
+  const probeFrame = useRef(0);
   const down = useRef<{ x: number; y: number } | null>(null);
 
   const { render: r, material } = project.settings;
@@ -78,7 +95,15 @@ export function PreviewPane({
   const showLayout = layout && (!supOn || printView);
   const editSup = !annotate && editMode === "supports" && supOn && printView;
   const editSprue = !annotate && editMode === "sprue" && sprueOn && !!showLayout;
-
+  const measuring = !annotate && editMode === "measure";
+  const locating = !annotate && editMode === "locate";
+  const pr = project.settings.printing;
+  // the build direction in scene coordinates: straight up in the print layout, tilted for the piece as modelled
+  const tiltRad = ((showLayout || !supOn ? 0 : pr.tilt) * Math.PI) / 180;
+  const buildUp: P3 = showLayout ? [0, 0, 1] : [0, Math.sin(tiltRad), Math.cos(tiltRad)];
+  const upKey = buildUp.join(",");
+  const checkKey = JSON.stringify([extraChecks(project), pr.minWall, project.settings.material.process]);
+  const renderedSource = render.source ?? project.source;
   useEffect(() => {
     if (!host.current) return;
     let v: Viewer;
@@ -124,11 +149,112 @@ export function PreviewPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer, render.mesh, layout, showLayout]);
 
+  useEffect(() => {
+    viewer?.setFrame(showLayout ? layout.tilt : 0, showLayout ? layout.zoff : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, showLayout, layout]);
+
+  useEffect(() => {
+    viewer?.setBuildUp(buildUp);
+    viewer?.setOverhang(overhangOn ? { up: buildUp, angle: project.settings.printing.supports.overhangAngle } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, overhangOn, upKey, project.settings.printing.supports.overhangAngle]);
+
+  useEffect(() => {
+    if (!viewer || !healthOn || render.status !== "ok" || !render.mesh) {
+      viewer?.setHealth(null);
+      setHealth(null);
+      return;
+    }
+    let live = true;
+    meshHealth(renderedSource)
+      .then((h) => {
+        if (!live) return;
+        viewer.setHealth(h);
+        setHealth(h);
+      })
+      .catch(() => live && setHealth(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, healthOn, render.mesh]);
+
+  useEffect(() => {
+    if (!viewer || !findingsOn || render.status !== "ok" || !render.mesh) {
+      viewer?.setPins(null);
+      setFound({ items: null, busy: false, error: null });
+      return;
+    }
+    let live = true;
+    setFound((f) => ({ ...f, busy: true, error: null }));
+    meshReport(renderedSource, undefined, { minWall: pr.minWall, minGap: 0.3, casting: project.settings.material.process === "casting" }, extraChecks(project))
+      .then((r) => {
+        if (!live) return;
+        // the ones with a place on the piece get a number; the pin on the piece wears the same
+        const items = r.findings
+          .filter((f) => (f.level === "warn" || f.level === "fail") && f.at?.length)
+          .map((f, i) => ({ n: i + 1, f }));
+        const pins: Pin[] = items.flatMap(({ n, f }) =>
+          (f.at ?? []).map((at) => ({ at, text: String(n), color: f.level === "fail" ? "#d93025" : "#e8890c" })),
+        );
+        viewer.setPins(pins);
+        setFound({ items, busy: false, error: null });
+      })
+      .catch((e) => {
+        if (!live) return;
+        viewer.setPins(null);
+        setFound({ items: null, busy: false, error: typeof e === "string" ? e : e instanceof Error ? e.message : String(e) });
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, findingsOn, render.mesh, checkKey]);
+
+  // measuring: the points picked so far, drawn on the piece
+  useEffect(() => {
+    if (!viewer) return;
+    setMeasurement(viewer.setMeasure(measuring ? mPoints : []));
+  }, [viewer, measuring, mPoints]);
+  useEffect(() => {
+    if (!measuring) setMPoints([]);
+  }, [measuring]);
+  useEffect(() => {
+    if (!locating) {
+      setLocated({ hits: null, truncated: false, busy: false, current: null });
+      onLocate?.(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locating]);
+  useEffect(() => {
+    if (!probeOn) setReadout(null);
+  }, [probeOn]);
+
+  async function locateAt(clientX: number, clientY: number) {
+    const hit = viewer?.probe(clientX, clientY);
+    if (!hit) return;
+    if (hit.kind !== "model") {
+      setLocated({ hits: [], truncated: false, busy: false, current: null });
+      return;
+    }
+    setLocated({ hits: null, truncated: false, busy: true, current: null });
+    try {
+      const r = await locateSource(renderedSource, hit.model);
+      const leaf = [...r.hits].reverse().find((h) => h.leaf) ?? r.hits[r.hits.length - 1] ?? null;
+      setLocated({ hits: r.hits, truncated: r.truncated, busy: false, current: leaf });
+      onLocate?.(leaf);
+    } catch {
+      setLocated({ hits: [], truncated: false, busy: false, current: null });
+    }
+  }
+
   const cycle = () => onPatchRender({ shading: MODES[(MODES.indexOf(r.shading) + 1) % MODES.length] });
   const onKey = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (k === "f") viewer?.fit();
+    if (e.key === "Escape") setEditMode(null);
+    else if (k === "f") viewer?.fit();
     else if (k === "o") onPatchRender({ orthographic: !r.orthographic });
     else if (k === "w") cycle();
     else if (k === "g") setGrid((g) => !g);
@@ -152,13 +278,30 @@ export function PreviewPane({
         tabIndex={0}
         onKeyDown={onKey}
         bg="var(--vp-bg)"
-        style={{ flex: 1, minHeight: 160, overflow: "hidden", outline: "none", cursor: editSup || editSprue ? "crosshair" : undefined }}
+        style={{ flex: 1, minHeight: 160, overflow: "hidden", outline: "none", cursor: editSup || editSprue || measuring || locating ? "crosshair" : undefined }}
         onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
+        onPointerLeave={() => setReadout(null)}
+        onPointerMove={(e) => {
+          if (!probeOn || e.buttons || !viewer) return;
+          const { clientX, clientY } = e;
+          cancelAnimationFrame(probeFrame.current);
+          probeFrame.current = requestAnimationFrame(() => setReadout(viewer.probe(clientX, clientY)));
+        }}
         onPointerUp={(e) => {
           const d = down.current;
           down.current = null;
-          if (!(editSup || editSprue) || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+          if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
           if ((e.target as HTMLElement).closest("[data-vp-ui]")) return;
+          if (measuring) {
+            const hit = viewer?.pick(e.clientX, e.clientY);
+            if (hit) setMPoints((cur) => (cur.length >= 3 ? [hit.point] : [...cur, hit.point]));
+            return;
+          }
+          if (locating) {
+            void locateAt(e.clientX, e.clientY);
+            return;
+          }
+          if (!(editSup || editSprue) || !showLayout) return;
           const hit = viewer?.pick(e.clientX, e.clientY);
           if (!hit) return;
           if (editSprue) {
@@ -169,6 +312,24 @@ export function PreviewPane({
         <Box ref={host} pos="absolute" inset={0} />
         <Gizmo viewer={viewer} />
         {annotate && onAnnotated && <Annotator viewer={viewer} onSend={onAnnotated} onClose={() => setAnnotate(false)} />}
+        {probeOn && readout && !measuring && !locating && <Readout probe={readout} minWall={pr.minWall} overhangAngle={project.settings.printing.supports.overhangAngle} />}
+        {measuring && <MeasurePanel points={mPoints.length} m={measurement} onClear={() => setMPoints([])} onClose={() => setEditMode(null)} />}
+        {locating && (
+          <LocateCard
+            hits={located.hits}
+            truncated={located.truncated}
+            busy={located.busy}
+            current={located.current}
+            onPick={(h) => {
+              setLocated((l) => ({ ...l, current: h }));
+              onLocate?.(h);
+            }}
+            onClose={() => setEditMode(null)}
+          />
+        )}
+        {findingsOn && (
+          <FindingsCard items={found.items} busy={found.busy} error={found.error} onFocus={(f) => f.at?.[0] && viewer?.focus(f.at[0])} onClose={() => setFindingsOn(false)} />
+        )}
 
         <Stack
           data-vp-ui
@@ -197,6 +358,29 @@ export function PreviewPane({
               {MODES.map((m) => (
                 <Menu.Item key={m} role="menuitemradio" aria-checked={r.shading === m} c={r.shading === m ? "var(--accent)" : undefined} bg={r.shading === m ? "var(--accent-soft)" : undefined} onClick={() => onPatchRender({ shading: m })}>
                   {t(`preview.shading.${m}`)}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
+          <Menu position="left-start" offset={8} shadow="md" withinPortal closeOnItemClick={false}>
+            <Menu.Target>
+              <ActionIcon {...tool(overhangOn || healthOn || findingsOn || probeOn || measuring || locating)} title={t("analysis.title")} aria-label={t("analysis.title")}>
+                <Icon name="scan" size={18} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown miw={200}>
+              {(
+                [
+                  ["overhang", overhangOn, () => setOverhangOn((v) => !v)],
+                  ["health", healthOn, () => setHealthOn((v) => !v)],
+                  ["findings", findingsOn, () => setFindingsOn((v) => !v)],
+                  ["probe", probeOn, () => setProbeOn((v) => !v)],
+                  ["measure", measuring, () => toggleEdit("measure")],
+                  ["locate", locating, () => toggleEdit("locate")],
+                ] as const
+              ).map(([id, on, toggle]) => (
+                <Menu.Item key={id} role="menuitemcheckbox" aria-checked={on} c={on ? "var(--accent)" : undefined} bg={on ? "var(--accent-soft)" : undefined} onClick={toggle} title={t(`analysis.${id}Hint`)}>
+                  {t(`analysis.${id}`)}
                 </Menu.Item>
               ))}
             </Menu.Dropdown>
@@ -294,6 +478,14 @@ export function PreviewPane({
         {stats && <span>{t("preview.volume")} {(stats.metalVolumeMm3 / 1000).toFixed(2)} cm³</span>}
         {stats && <span>{t("preview.weight")} ≈ {grams.toFixed(1)} g</span>}
         {supOn && <span>{t("preview.supports", { count: supTotal })}</span>}
+        {healthOn && health && (
+          <Group gap={4} c={health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length ? "var(--bad)" : "var(--ok)"}>
+            <Icon name={health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length ? "warn" : "check"} size={13} />
+            {health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length
+              ? t("analysis.healthBad", { open: health.open.length, shared: health.nonManifold.length, flipped: health.winding.length, empty: health.degenerate.length })
+              : t("analysis.healthOk")}
+          </Group>
+        )}
         {showLayout && !layout.fits && <Group gap={4} c="var(--bad)"><Icon name="warn" size={13} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</Group>}
         {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
           <Anchor component="button" type="button" fz={12} ml="auto" c="var(--accent)" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>

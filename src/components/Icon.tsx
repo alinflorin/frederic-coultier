@@ -25,6 +25,7 @@ const PATHS: Record<string, string> = {
   section: "M3 12h3M9 12h3M15 12h3M20 12h1M6 4h12v16H6z",
   plus: "M12 5v14M5 12h14",
   pen: "M4 20l1-4L16 5l3 3L8 19zM14 7l3 3",
+  scan: "M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M9 12h6M12 9v6",
   sparkle: "M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z",
 };
 

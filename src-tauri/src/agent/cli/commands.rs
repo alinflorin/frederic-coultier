@@ -90,6 +90,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "set" => set(c, args).await,
         "check" => check(c, args).await,
         "orient" => orient(c, args).await,
+        "locate" => locate(c, args).await,
         "supports ls" => supports_ls(c, args).await,
         "supports auto" => supports_auto(c, args).await,
         "supports add" => supports_add(c, args).await,
@@ -792,6 +793,10 @@ pub(super) const SHOT_FLAGS: &[Flag] = &[
     opt("metal"),
     opt("bg"),
     opt("size"),
+    switch("findings"),
+    switch("annotate"),
+    switch("overhang"),
+    switch("health"),
 ];
 
 fn one_of(flag: &str, value: &str, allowed: &[&str]) -> Result<String, String> {
@@ -901,6 +906,11 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         a.insert("width".into(), json!(w));
         a.insert("height".into(), json!(h));
     }
+    for flag in ["findings", "annotate", "overhang", "health"] {
+        if p.has(flag) {
+            a.insert(flag.into(), json!(true));
+        }
+    }
     let v = c.slow("view.capture", Value::Object(a)).await?;
     let png = v["png"]
         .as_str()
@@ -911,10 +921,34 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         .filter(|s| !s.is_empty())
         .map(|s| format!(". {s}"))
         .unwrap_or_default();
-    Ok(Out {
-        text: format!("{}×{} px{note}", v["width"], v["height"]),
-        images: vec![(png, "image/png".into())],
-    })
+    // the picture comes first and is exactly what the preview renders; the annotated copy follows it
+    let mut images = vec![(png, "image/png".to_string())];
+    if let Some(copy) = v["annotated"].as_str() {
+        images.push((copy.to_owned(), "image/png".into()));
+    }
+    let mut text = format!("{}×{} px{note}", v["width"], v["height"]);
+    if let Some(f) = v["findings"].as_object() {
+        text.push('\n');
+        text.push_str(&findings_text(f));
+    }
+    Ok(Out { text, images })
+}
+
+/// The findings of a picture as lines of JSON: the box, then one finding per line (`n` is its pin's number).
+fn findings_text(f: &Map<String, Value>) -> String {
+    let mut l = vec![format!(
+        "findings (JSON, one per line; n is the number of its pin; at = model coordinates in mm; bbox {} mm):",
+        size_of(&f["bbox"])
+    )];
+    for item in f["items"].as_array().into_iter().flatten() {
+        let mut o = item.as_object().cloned().unwrap_or_default();
+        o.retain(|_, v| !v.is_null());
+        l.push(Value::Object(o).to_string());
+    }
+    if l.len() == 1 {
+        l.push("(nothing to report)".into());
+    }
+    l.join("\n")
 }
 
 // ---- settings ----
@@ -1037,8 +1071,13 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             .filter(|d| !d.is_empty())
             .map(|d| format!(": {d}"))
             .unwrap_or_default();
+        let vals = fd["vals"]
+            .as_array()
+            .filter(|a| !a.is_empty())
+            .map(|_| format!(" values {}", nums(&fd["vals"])))
+            .unwrap_or_default();
         l.push(format!(
-            "[{}] {}{}{}{}",
+            "[{}] {}{}{}{}{}",
             fd["level"].as_str().unwrap_or("?"),
             fd["code"].as_str().unwrap_or("?"),
             detail,
@@ -1051,8 +1090,12 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
                 format!(" +{more} more")
             } else {
                 String::new()
-            }
+            },
+            vals
         ));
+        if fd["data"].is_object() {
+            l.push(format!("    data {}", fd["data"]));
+        }
     }
     if let Some(sm) = v["simplify"].as_object() {
         l.push(format!(
@@ -1066,6 +1109,42 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
                 format!("rejected ({})", sm["reason"].as_str().unwrap_or("?"))
             }
         ));
+    }
+    say(l.join("\n"))
+}
+
+async fn locate(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let [at] = p.pos.as_slice() else {
+        return Err("give one point: X,Y,Z in model coordinates (mm)".into());
+    };
+    let point = parse::point(at)?;
+    let v = c
+        .slow("analysis.locate", json!({ "point": point }))
+        .await?;
+    let hits: Vec<&Value> = v["hits"].as_array().into_iter().flatten().collect();
+    if hits.is_empty() {
+        return say(format!(
+            "no statement of the source has ({}) on its surface. Check the point is on the piece's surface (model coordinates, as in `check` locations); a spot made by hull(), minkowski() or a boolean of several parts may belong to none of them alone.",
+            nums(&json!(point))
+        ));
+    }
+    let mut l = vec![format!(
+        "({}) comes from, outermost first (→ marks where it is made):",
+        nums(&json!(point))
+    )];
+    for h in &hits {
+        let depth = h["depth"].as_u64().unwrap_or(0) as usize;
+        l.push(format!(
+            "{}{}line {}: {}",
+            "  ".repeat(depth.min(8)),
+            if h["leaf"] == true { "→ " } else { "" },
+            h["line"],
+            h["text"].as_str().unwrap_or("")
+        ));
+    }
+    if v["truncated"] == true {
+        l.push("(the search stopped early; the list may be incomplete)".into());
     }
     say(l.join("\n"))
 }
@@ -1384,9 +1463,29 @@ mod tests {
             "project.save" => {
                 Ok(json!({ "path": args["path"].as_str().unwrap_or("/tmp/ring.fc") }))
             }
-            "view.capture" => Ok(
-                json!({ "png": "AAAA", "width": 800, "height": 600, "note": "Scene: as modelled." }),
-            ),
+            "view.capture" => {
+                let mut v = json!({ "png": "AAAA", "width": 800, "height": 600, "note": "Scene: as modelled." });
+                if args["annotate"] == true {
+                    v["annotated"] = json!("BBBB");
+                }
+                if args["findings"] == true || args["annotate"] == true {
+                    v["findings"] = json!({
+                        "bbox": [20.5, 2.4, 20.5],
+                        "items": [
+                            { "n": 1, "level": "warn", "code": "thin", "detail": "1|0.3|2|0.5", "at": [[1.0, 2.0, 3.0]], "values": [0.3] },
+                            { "level": "info", "code": "ringFit", "data": { "innerDiameterMm": 17.29 }, "extra": null }
+                        ]
+                    });
+                }
+                Ok(v)
+            }
+            "analysis.locate" => Ok(json!({
+                "hits": [
+                    { "line": 18, "text": "band();", "depth": 0, "leaf": false },
+                    { "line": 13, "text": "cylinder(d = 20);", "depth": 2, "leaf": true }
+                ],
+                "truncated": false
+            })),
             "supports.add" => Ok(json!({ "added": [5, 6], "enabled": true })),
             "supports.remove" => Ok(json!({ "removed": [5], "remaining": 3 })),
             "supports.auto" => {
@@ -1690,6 +1789,45 @@ mod tests {
         // no options: an empty request, the app keeps the user's view
         a.ok("shot").await;
         assert_eq!(a.last("view.capture"), json!({}));
+    }
+
+    #[tokio::test]
+    async fn shot_findings_and_pins_come_separately_from_the_picture() {
+        let a = app("");
+        let r = a.fc("shot --annotate --overhang --health").await;
+        assert!(r.error.is_none(), "{}", r.out.text);
+        assert_eq!(
+            a.last("view.capture"),
+            json!({ "annotate": true, "overhang": true, "health": true })
+        );
+        // the plain picture first, then the copy with the pins
+        assert_eq!(
+            r.out.images,
+            [
+                ("AAAA".to_string(), "image/png".to_string()),
+                ("BBBB".to_string(), "image/png".to_string())
+            ]
+        );
+        assert!(r.out.text.contains("bbox 20.5×2.4×20.5 mm"), "{}", r.out.text);
+        assert!(r.out.text.contains(r#""code":"thin""#), "{}", r.out.text);
+        // empty values are left out of the lines
+        assert!(!r.out.text.contains("null"), "{}", r.out.text);
+
+        let r = a.fc("shot --findings").await;
+        assert_eq!(a.last("view.capture"), json!({ "findings": true }));
+        assert_eq!(r.out.images.len(), 1);
+        assert!(r.out.text.contains("ringFit"));
+    }
+
+    #[tokio::test]
+    async fn locate_prints_the_chain_and_marks_the_leaf() {
+        let a = app("");
+        let out = a.ok("locate 3.2,-1.4,7").await;
+        assert_eq!(a.last("analysis.locate"), json!({ "point": [3.2, -1.4, 7.0] }));
+        assert!(out.contains("line 18: band();"), "{out}");
+        assert!(out.contains("→ line 13: cylinder(d = 20);"), "{out}");
+        a.err("locate 1,2").await;
+        a.err("locate").await;
     }
 
     #[tokio::test]

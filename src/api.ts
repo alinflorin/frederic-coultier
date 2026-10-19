@@ -143,6 +143,10 @@ export interface Finding {
   detail: string;
   /** Where the problem is, in model coordinates. */
   at?: [number, number, number][];
+  /** What was measured at each place in `at` (mm; mm³ for cavities). */
+  vals?: number[];
+  /** Everything measured, as numbers rather than a sentence. */
+  data?: Record<string, unknown>;
 }
 
 export interface SimplifyReport {
@@ -159,11 +163,59 @@ export interface MeshReport {
   simplify: SimplifyReport | null;
 }
 
+/** What the extra checks (ring fit, overhang, sprue) need besides the geometry. */
+export interface ExtraChecks {
+  notes: string;
+  tilt: number;
+  overhangAngle: number;
+  sprue?: SprueOpts;
+}
+
+/** The extra checks for a project, with the print settings it has now. */
+export function extraChecks(p: FcProject): ExtraChecks {
+  const pr = p.settings.printing;
+  return {
+    notes: p.settings.general.notes,
+    tilt: pr.supports.enabled ? pr.tilt : 0,
+    overhangAngle: pr.supports.overhangAngle,
+    sprue: pr.sprue ? { diameter: pr.sprueDiameter, length: pr.sprueLength, at: pr.sprueAt } : undefined,
+  };
+}
+
 export const meshReport = (
   source: string,
   simplify?: { keepPercent: number; maxVolumeChange: number },
   checks?: { minWall: number; minGap: number; casting?: boolean },
-) => invoke<MeshReport>("mesh_report", { source, simplify: simplify ?? null, checks: checks ?? null });
+  extra?: ExtraChecks,
+) => invoke<MeshReport>("mesh_report", { source, simplify: simplify ?? null, checks: checks ?? null, extra: extra ? { ...extra, sprue: extra.sprue ?? null } : null });
+
+/** Where the mesh is broken, in model coordinates, to draw over it. */
+export interface Health {
+  open: [[number, number, number], [number, number, number]][];
+  nonManifold: [[number, number, number], [number, number, number]][];
+  winding: [[number, number, number], [number, number, number]][];
+  degenerate: [number, number, number][];
+  truncated: boolean;
+}
+
+export const meshHealth = (source: string) => invoke<Health>("mesh_health", { source });
+
+/** A statement of the source that has a spot on its surface. */
+export interface SourceHit {
+  /** Range in the source, in editor (UTF-16) units. */
+  from: number;
+  to: number;
+  line: number;
+  column: number;
+  endLine: number;
+  text: string;
+  depth: number;
+  /** Nothing inside it has the spot too: this is where the spot comes from. */
+  leaf: boolean;
+}
+
+export const locateSource = (source: string, point: [number, number, number], tol?: number) =>
+  invoke<{ hits: SourceHit[]; truncated: boolean }>("locate_source", { source, point, tol: tol ?? null });
 
 // --- supports ---
 
@@ -233,6 +285,8 @@ export interface PrintLayout {
   fits: boolean;
   /** Lift applied to the tilted model, to map clicks back to model coordinates. */
   zoff: number;
+  /** Tilt (degrees about X) the model was printed at in this layout. */
+  tilt: number;
 }
 
 /**
@@ -267,6 +321,7 @@ export async function printLayout(
   const sprueStart = supStart + info.supportsLen;
   const supports_ = info.supportsLen > MESH_HEADER ? { buf, offset: supStart, length: info.supportsLen } : null;
   if (prev && info.modelLen === undefined) return { ...prev, supports: supports_ };
+  const tilt = print.tilt;
   return {
     key: info.key,
     model: { buf, offset: start, length: modelLen },
@@ -275,6 +330,7 @@ export async function printLayout(
     size: info.size as [number, number, number],
     fits: info.fits as boolean,
     zoff: info.zoff as number,
+    tilt,
     sprueAt: info.sprueAt ?? null,
   };
 }

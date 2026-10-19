@@ -38,6 +38,25 @@ pub struct Finding {
     /// Where the problem is, in model coordinates.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub at: Vec<V3>,
+    /// What was measured at each place in `at` (mm, or mm³ for cavities), when the check measures one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub vals: Vec<f64>,
+    /// Everything measured, for callers that want numbers rather than the sentence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+}
+
+impl Finding {
+    pub fn new(level: &'static str, code: &'static str, detail: String) -> Self {
+        Finding {
+            level,
+            code,
+            detail,
+            at: Vec::new(),
+            vals: Vec::new(),
+            data: None,
+        }
+    }
 }
 
 fn sub(a: V3, b: V3) -> V3 {
@@ -126,12 +145,7 @@ pub fn analyze(mesh: &Mesh) -> MeshStats {
 pub fn validate(stats: &MeshStats) -> Vec<Finding> {
     let mut f = Vec::new();
     let mut add = |level, code, detail: String| {
-        f.push(Finding {
-            level,
-            code,
-            detail,
-            at: Vec::new(),
-        })
+        f.push(Finding::new(level, code, detail))
     };
 
     if stats.triangles == 0 {
@@ -343,7 +357,7 @@ pub struct SprueSpec {
 }
 
 /// Closest point to `p` on triangle `abc` (Ericson, Real-Time Collision Detection).
-fn closest_on_tri(p: V3, a: V3, b: V3, c: V3) -> V3 {
+pub(crate) fn closest_on_tri(p: V3, a: V3, b: V3, c: V3) -> V3 {
     let add = |u: V3, v: V3, k: f64| [u[0] + v[0] * k, u[1] + v[1] * k, u[2] + v[2] * k];
     let (ab, ac, ap) = (sub(b, a), sub(c, a), sub(p, a));
     let (d1, d2) = (dot(ab, ap), dot(ac, ap));

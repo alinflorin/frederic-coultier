@@ -52,6 +52,7 @@ export function HistoryDialog({
     <Dialog
       title={t("history.title")}
       wide
+      fixed
       onClose={onClose}
       footer={
         <>
@@ -79,8 +80,8 @@ export function HistoryDialog({
       {list.length === 0 ? (
         <Text c="dimmed">{t("history.empty")}</Text>
       ) : (
-        <Box style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(180px, 240px) 1fr", gap: 14, minHeight: 0 }}>
-          <Stack gap={4} aria-label={t("history.title")} style={{ overflowY: "auto", maxHeight: "100%" }}>
+        <Box style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(180px, 240px) 1fr", gap: 14, minHeight: 0, height: "100%" }}>
+          <Stack gap={4} aria-label={t("history.title")} style={{ overflowY: "auto", minHeight: 0 }}>
             {list.map((s) => (
               <UnstyledButton
                 key={s.id}
@@ -98,7 +99,7 @@ export function HistoryDialog({
             ))}
           </Stack>
           {snap && (
-            <Stack gap={8} style={{ minWidth: 0 }}>
+            <Stack gap={8} style={{ minWidth: 0, minHeight: 0, overflowY: "auto" }}>
               <Group gap={8}>
                 <Button
                   disabled={same}

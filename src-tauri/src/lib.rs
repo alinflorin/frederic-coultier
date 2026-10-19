@@ -2,6 +2,7 @@ mod agent;
 mod bvh;
 mod checks;
 mod hollow;
+mod insight;
 mod meshtools;
 mod project;
 mod render;
@@ -111,6 +112,7 @@ async fn mesh_report(
     source: String,
     simplify: Option<SimplifySpec>,
     checks: Option<checks::CheckOptions>,
+    extra: Option<insight::Extra>,
     cache: State<'_, RenderCache>,
 ) -> Result<MeshReport, String> {
     let cache = cache.inner().clone();
@@ -123,12 +125,10 @@ async fn mesh_report(
         if let Some(o) = checks.filter(|_| watertight) {
             findings.extend(checks::deep_checks(&mesh, &o));
         } else if checks.is_some() && stats.triangles > 0 {
-            findings.push(Finding {
-                level: "info",
-                code: "deepSkipped",
-                detail: String::new(),
-                at: Vec::new(),
-            });
+            findings.push(Finding::new("info", "deepSkipped", String::new()));
+        }
+        if let Some(o) = &extra {
+            findings.extend(insight::extra_findings(&mesh, o));
         }
         let simplify = if mesh.is_empty() {
             None
@@ -140,6 +140,40 @@ async fn mesh_report(
             findings,
             simplify,
         })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Where the model is broken (open borders, flipped or shared edges, empty triangles), to draw over it.
+#[tauri::command]
+async fn mesh_health(
+    source: String,
+    cache: State<'_, RenderCache>,
+) -> Result<insight::Health, String> {
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+        Ok(insight::health(&mesh))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceLookup {
+    hits: Vec<insight::SourceHit>,
+    /// The search hit its limit before it was done.
+    truncated: bool,
+}
+
+/// Which statements of the source make the surface at `point` (model coordinates).
+#[tauri::command]
+async fn locate_source(source: String, point: [f64; 3], tol: Option<f64>) -> Result<SourceLookup, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (hits, truncated) = insight::locate(&source, point, tol.unwrap_or(0.05))?;
+        Ok(SourceLookup { hits, truncated })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -371,7 +405,9 @@ pub fn run() {
             suggest_tilt,
             auto_supports,
             print_layout,
-            mesh_report
+            mesh_report,
+            mesh_health,
+            locate_source
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

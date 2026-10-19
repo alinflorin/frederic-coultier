@@ -29,6 +29,24 @@ const errorLineField = StateField.define({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+const setHit = StateEffect.define<{ from: number; to: number } | null>();
+
+/** The statement a spot of the piece comes from (see the "find in source" tool). */
+const hitField = StateField.define({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setHit)) continue;
+      const r = e.value;
+      const len = tr.state.doc.length;
+      deco = r && r.to > r.from && r.to <= len ? Decoration.set([Decoration.mark({ class: "cm-sourceHit" }).range(r.from, r.to)]) : Decoration.none;
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 const theme = EditorView.theme({
   "&": { height: "100%", background: "var(--code-bg)", color: "var(--text)", fontSize: "12.5px" },
   ".cm-scroller": { fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace', lineHeight: "1.6" },
@@ -41,6 +59,7 @@ const theme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { background: "var(--accent-soft)" },
   ".cm-selectionMatch": { background: "var(--accent-soft)" },
   ".cm-errorLine": { background: "color-mix(in srgb, var(--bad) 22%, transparent)", boxShadow: "inset 3px 0 0 var(--bad)" },
+  ".cm-sourceHit": { background: "color-mix(in srgb, var(--accent) 28%, transparent)", borderBottom: "2px solid var(--accent)" },
   ".cm-panels": { background: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" },
   ".cm-tooltip": { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" },
 });
@@ -48,10 +67,13 @@ const theme = EditorView.theme({
 export function SourcePane({
   source,
   errorLine,
+  highlight,
   onChange,
 }: {
   source: string;
   errorLine?: number | null;
+  /** A range to mark and scroll to (editor offsets), or null for none. */
+  highlight?: { from: number; to: number } | null;
   onChange: (source: string) => void;
 }) {
   const { t } = useTranslation();
@@ -72,6 +94,7 @@ export function SourcePane({
           openscadLanguage,
           EditorView.lineWrapping,
           errorLineField,
+          hitField,
           theme,
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
@@ -99,6 +122,17 @@ export function SourcePane({
   useEffect(() => {
     view.current?.dispatch({ effects: setErrorLine.of(errorLine ?? null) });
   }, [errorLine, source]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    const r = highlight && highlight.to <= v.state.doc.length ? highlight : null;
+    v.dispatch({
+      effects: [setHit.of(r), ...(r ? [EditorView.scrollIntoView(r.from, { y: "center" })] : [])],
+    });
+    // the highlight is about the source as it was when the spot was clicked
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlight]);
 
   function copy() {
     navigator.clipboard?.writeText(source).then(() => {

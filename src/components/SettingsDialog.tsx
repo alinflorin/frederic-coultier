@@ -5,23 +5,20 @@ import { ActionIcon, Button, Group, List, Slider, Table, Tabs, Text, Textarea } 
 import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import type { FcProject, Finish, Metal, ProjectSettings, Support, SupportsData } from "../types";
-import { autoSupports, type PrintLayout, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
+import { autoSupports, extraChecks, type PrintLayout, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
 import { DENSITY } from "../materials";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { settingsSchema } from "../validation";
+import { findingParams } from "../findings";
 import { CheckField, ColorField, Enabled, Field, Num, NumField, Section, SelectField, Stat } from "./form";
 
 type Tab = "general" | "material" | "printing" | "optimization" | "checks";
+/** Each tab scrolls on its own, so the tab list stays put. */
+const PANEL = { flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", paddingRight: 4 } as const;
 const TABS: Tab[] = ["general", "material", "printing", "optimization", "checks"];
 const METALS: Metal[] = ["silver925", "gold18y", "gold18r", "gold18w", "platinum", "resin"];
 const FINISHES: Finish[] = ["polished", "satin", "matte"];
-
-/** Findings carry either one value or "a|b|c|d"; the translations use whichever they need. */
-function findingParams(detail: string) {
-  const [a, b, c, d] = detail.split("|");
-  return { detail, n: a, min: b, area: c, limit: d, worst: a, reach: b, vol: b, massArea: b, massLimit: c };
-}
 
 export function SettingsDialog({
   project,
@@ -82,6 +79,7 @@ export function SettingsDialog({
       setReport(
         await meshReport(project.source, s.optimization.simplify ? { keepPercent: s.optimization.keepPercent, maxVolumeChange: s.optimization.maxVolumeChange } : undefined,
           tab === "checks" ? { minWall: s.printing.minWall, minGap: 0.3, casting: s.material.process === "casting" } : undefined,
+          tab === "checks" ? extraChecks({ ...project, settings: s }) : undefined,
         ),
       );
     } catch (e) {
@@ -134,6 +132,7 @@ export function SettingsDialog({
   return (
     <Dialog
       wide
+      fixed
       title={t("settings.title")}
       onClose={onClose}
       footer={
@@ -150,13 +149,13 @@ export function SettingsDialog({
           ))}
         </Tabs.List>
 
-        <Tabs.Panel value="general" style={{ minWidth: 0 }}>
+        <Tabs.Panel value="general" style={PANEL}>
           <Field label={t("settings.notes")}>
             <Controller control={control} name="general.notes" render={({ field }) => <Textarea rows={4} flex={1} {...field} value={field.value ?? ""} />} />
           </Field>
         </Tabs.Panel>
 
-        <Tabs.Panel value="material" style={{ minWidth: 0 }}>
+        <Tabs.Panel value="material" style={PANEL}>
           <Section first>{t("settings.materialTitle")}</Section>
           <SelectField control={control} name="material.metal" label={t("settings.metal")} hint={t("settings.metalHint")} data={METALS.map((m) => ({ value: m, label: t(`metal.${m}`) }))} />
           <SelectField control={control} name="material.process" label={t("settings.process")} data={[
@@ -169,7 +168,7 @@ export function SettingsDialog({
           <NumField control={control} name="render.previewQuality" label={t("settings.previewQuality")} hint={t("settings.previewQualityHint")} step={4} unit="$fn" />
         </Tabs.Panel>
 
-        <Tabs.Panel value="printing" style={{ minWidth: 0 }}>
+        <Tabs.Panel value="printing" style={PANEL}>
           <SelectField control={control} name="printing.printer" label={t("settings.printer")} data={[{ value: "Elegoo Mars 5", label: "Elegoo Mars 5" }]} />
           <NumField control={control} name="printing.minWall" label={t("settings.minWall")} hint={t("settings.minWallHint")} unit="mm" />
           <NumField control={control} name="printing.tilt" label={t("settings.tilt")} hint={t("settings.tiltHint")} step={5} unit="°" />
@@ -266,7 +265,7 @@ export function SettingsDialog({
           </Enabled>
         </Tabs.Panel>
 
-        <Tabs.Panel value="optimization" style={{ minWidth: 0 }}>
+        <Tabs.Panel value="optimization" style={PANEL}>
           <Text c="dimmed" mb={6}>{t("settings.optimizeIntro")}</Text>
           <CheckField control={control} name="optimization.simplify" label={t("settings.simplify")} />
           <Enabled on={s.optimization.simplify}>
@@ -296,7 +295,7 @@ export function SettingsDialog({
           )}
         </Tabs.Panel>
 
-        <Tabs.Panel value="checks" style={{ minWidth: 0 }}>
+        <Tabs.Panel value="checks" style={PANEL}>
           <Text c="dimmed" mb={6}>{t("settings.checksIntro")}</Text>
           <Button variant="default" size="xs" disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</Button>
           {reportError && <Text c="var(--bad)" role="alert" mt={6}>{reportError}</Text>}

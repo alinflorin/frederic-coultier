@@ -58,7 +58,7 @@ fn hash(source: &str) -> u64 {
 }
 
 /// 1-based line and column of a byte offset.
-fn line_col(source: &str, offset: usize) -> (usize, usize) {
+pub(crate) fn line_col(source: &str, offset: usize) -> (usize, usize) {
     let offset = offset.min(source.len());
     let before = source.get(..offset).unwrap_or_else(|| {
         // offset fell inside a multi-byte character; back up to a boundary

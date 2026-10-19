@@ -1,8 +1,13 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { acceleratedRaycast } from "three-mesh-bvh";
+import type { Health } from "../../api";
 import type { ShadingMode } from "../../types";
+import { measure, type Measurement, type P3 } from "./measure";
 import { BvhBuilder } from "./bvh";
 import { type MeshBuf, shadedMesh } from "./geometry";
 
@@ -16,6 +21,12 @@ const LABEL: Partial<CSSStyleDeclaration> = {
 const TICK: Partial<CSSStyleDeclaration> = {
   position: "absolute", left: "0", top: "0", font: "600 10px ui-monospace, Menlo, monospace", color: "var(--text)", whiteSpace: "nowrap",
   textShadow: "0 0 3px var(--vp-bg), 0 0 3px var(--vp-bg)",
+};
+
+const PIN: Partial<CSSStyleDeclaration> = {
+  position: "absolute", left: "0", top: "0", minWidth: "18px", height: "18px", padding: "0 5px", borderRadius: "9px", boxSizing: "border-box",
+  font: "700 11px/18px ui-monospace, Menlo, monospace", textAlign: "center", color: "#fff", border: "2px solid #fff",
+  boxShadow: "0 1px 4px rgba(0,0,0,.45)", whiteSpace: "nowrap",
 };
 
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
@@ -36,6 +47,32 @@ export interface Section {
   axis: "x" | "y" | "z";
   t: number;
   flip: boolean;
+}
+
+/** A numbered pin on a spot of the piece (model coordinates), for findings. */
+export interface Pin {
+  at: P3;
+  text: string;
+  color: string;
+}
+
+/** Faces within `angle` degrees of a ceiling, with `up` the build direction in scene coordinates. */
+export interface OverhangView {
+  up: P3;
+  angle: number;
+}
+
+/** What is under the pointer. */
+export interface Probe {
+  kind: "model" | "support";
+  /** Scene coordinates (what the viewer shows), and the same in the model's own coordinates. */
+  point: P3;
+  model: P3;
+  normal: P3;
+  /** Metal behind the spot, straight in: null for supports or when nothing is behind it. */
+  thickness: number | null;
+  /** Degrees between the build direction and the surface normal: 0 faces up, 90 is a wall, 180 a ceiling. */
+  incline: number;
 }
 
 export interface ViewerStats {
@@ -77,6 +114,19 @@ export interface CaptureOptions {
   background?: string;
   width?: number;
   height?: number;
+  /** Diagnostics are left out of pictures unless asked for here. */
+  overhang?: OverhangView;
+  health?: Health;
+  /** Drawn on a second copy of the picture, which is returned as `annotated`; the picture itself is untouched. */
+  pins?: Pin[];
+}
+
+export interface Captured {
+  png: string;
+  width: number;
+  height: number;
+  /** The same picture with the pins drawn on it (only when `pins` were given). */
+  annotated?: string;
 }
 
 /** A text label drawn on top of a captured picture (the on-screen ones are HTML). */
@@ -151,6 +201,27 @@ export class Viewer {
   private capSize: [number, number] | null = null;
   private marks: Mark[] | null = null;
 
+  // diagnostics: they live outside the model, so a picture can leave them out
+  /** Lines and points in model coordinates (broken edges). */
+  private diag = new THREE.Group();
+  /** Measurement drawing, in scene coordinates. */
+  private tools = new THREE.Group();
+  /** Model → scene: identity for the piece as modelled, tilt and lift for the piece as printed. */
+  private frame = new THREE.Matrix4();
+  private frameInv = new THREE.Matrix4();
+  private overUniforms = {
+    uOverOn: { value: 0 },
+    uOverUp: { value: new THREE.Vector3(0, 0, 1) },
+    uOverCos: { value: Math.cos(THREE.MathUtils.degToRad(45)) },
+  };
+  private overhang: OverhangView | null = null;
+  private up = new THREE.Vector3(0, 0, 1);
+  private lineMats: LineMaterial[] = [];
+  private pinLayer: HTMLElement;
+  private pins: { data: Pin; el: HTMLElement }[] = [];
+  private measureLabels: { el: HTMLElement; at: THREE.Vector3 }[] = [];
+  private rc = new THREE.Raycaster();
+
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -180,6 +251,28 @@ export class Viewer {
     this.boxHelper = new THREE.Box3Helper(this.box, new THREE.Color("#d4a24c"));
     this.scene.add(this.boxHelper);
 
+    this.diag.matrixAutoUpdate = false;
+    this.diag.renderOrder = 10;
+    this.tools.renderOrder = 11;
+    this.scene.add(this.diag, this.tools);
+    (this.rc as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
+    this.metalMat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, this.overUniforms);
+      // tints the faces that overhang, from the face's own normal (not the smoothed one)
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform float uOverOn;\nuniform vec3 uOverUp;\nuniform float uOverCos;")
+        .replace(
+          "#include <color_fragment>",
+          `#include <color_fragment>
+          if (uOverOn > 0.5) {
+            vec3 fn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
+            if (!gl_FrontFacing) fn = -fn;
+            float d = dot(normalize((vec4(fn, 0.0) * viewMatrix).xyz), uOverUp);
+            if (d < -uOverCos) diffuseColor.rgb = mix(vec3(1.0, 0.75, 0.1), vec3(0.95, 0.12, 0.1), smoothstep(-uOverCos, -1.0, d));
+          }`,
+        );
+    };
+
     const overlay = document.createElement("div");
     Object.assign(overlay.style, LAYER);
     for (const axis of ["x", "y", "z"] as const) {
@@ -193,6 +286,9 @@ export class Viewer {
     this.tickLayer = document.createElement("div");
     Object.assign(this.tickLayer.style, LAYER);
     host.appendChild(this.tickLayer);
+    this.pinLayer = document.createElement("div");
+    Object.assign(this.pinLayer.style, LAYER);
+    host.appendChild(this.pinLayer);
 
     this.persp.up.set(0, 0, 1);
     this.ortho.up.set(0, 0, 1);
@@ -381,18 +477,212 @@ export class Viewer {
     });
   }
 
-  /** What is under a screen position: the model or a support, and the point in scene (print) coordinates. */
-  pick(clientX: number, clientY: number): { kind: "model" | "support"; point: [number, number, number] } | null {
+  /** The first thing under a screen position. */
+  private cast(clientX: number, clientY: number) {
     if (!this.model) return null;
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
-    const rc = new THREE.Raycaster();
-    (rc as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
-    rc.setFromCamera(ndc, this.camera);
-    const hit = rc.intersectObjects(this.model.children, false)[0];
+    this.rc.setFromCamera(ndc, this.camera);
+    return this.rc.intersectObjects(this.model.children, false)[0] ?? null;
+  }
+
+  /** What is under a screen position: the model or a support, and the point in scene (print) coordinates. */
+  pick(clientX: number, clientY: number): { kind: "model" | "support"; point: [number, number, number] } | null {
+    const hit = this.cast(clientX, clientY);
     if (!hit) return null;
     const kind = (hit.object as THREE.Mesh).material === this.supportMat ? "support" : "model";
     return { kind, point: [hit.point.x, hit.point.y, hit.point.z] };
+  }
+
+  /** Everything the pointer is over: where, which way the surface faces, and how much metal is behind it. */
+  probe(clientX: number, clientY: number): Probe | null {
+    const hit = this.cast(clientX, clientY);
+    if (!hit?.face) return null;
+    const mesh = hit.object as THREE.Mesh;
+    const kind = mesh.material === this.supportMat ? "support" : "model";
+    const n = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
+    // facing away from the camera (a cut piece shows its inside): report the side that is seen
+    if (n.dot(this.rc.ray.direction) > 0) n.negate();
+    const point = hit.point.clone();
+    let thickness: number | null = null;
+    if (kind === "model") {
+      // straight in, to the first surface that faces away: where the ray leaves the metal
+      const mat = mesh.material as THREE.Material;
+      const side = mat.side;
+      mat.side = THREE.BackSide;
+      const inward = new THREE.Raycaster(point.clone().addScaledVector(n, -1e-3), n.clone().negate(), 0, 200);
+      (inward as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
+      const out = inward.intersectObject(mesh, false)[0];
+      mat.side = side;
+      thickness = out ? out.distance + 1e-3 : null;
+    }
+    const model = point.clone().applyMatrix4(this.frameInv);
+    return {
+      kind,
+      point: [point.x, point.y, point.z],
+      model: [model.x, model.y, model.z],
+      normal: [n.x, n.y, n.z],
+      thickness,
+      incline: THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(n.dot(this.up), -1, 1))),
+    };
+  }
+
+  /** Model → scene: the tilt (degrees about X) and lift of the piece as printed; 0, 0 for the piece as modelled. */
+  setFrame(tiltDeg: number, lift: number) {
+    this.frame.makeRotationX(THREE.MathUtils.degToRad(tiltDeg)).setPosition(0, 0, lift);
+    this.frameInv.copy(this.frame).invert();
+    this.diag.matrix.copy(this.frame);
+    this.diag.matrixWorldNeedsUpdate = true;
+    this.dirty = true;
+  }
+
+  /** The direction the piece is built upwards, in scene coordinates (for the slope of what is probed). */
+  setBuildUp(up: P3) {
+    this.up.set(...up).normalize();
+  }
+
+  /** Tints the faces that overhang (null = off). */
+  setOverhang(o: OverhangView | null) {
+    this.overhang = o;
+    this.applyOverhang(o);
+    this.dirty = true;
+  }
+
+  private applyOverhang(o: OverhangView | null) {
+    this.overUniforms.uOverOn.value = o ? 1 : 0;
+    if (o) {
+      this.overUniforms.uOverUp.value.set(...o.up).normalize();
+      this.overUniforms.uOverCos.value = Math.cos(THREE.MathUtils.degToRad(o.angle));
+    }
+  }
+
+  /** Draws where the mesh is broken (null = off): open borders, shared or flipped edges, empty triangles. */
+  setHealth(h: Health | null) {
+    this.clearDiag();
+    if (h) this.addHealth(this.diag, h);
+    this.dirty = true;
+  }
+
+  private clearDiag() {
+    for (const o of [...this.diag.children]) {
+      this.diag.remove(o);
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      if (mat instanceof LineMaterial) this.lineMats = this.lineMats.filter((x) => x !== mat);
+      mat?.dispose();
+    }
+  }
+
+  private addHealth(into: THREE.Object3D, h: Health) {
+    const kinds: [[P3, P3][], string][] = [
+      [h.open, "#ff3b30"],
+      [h.nonManifold, "#d946ef"],
+      [h.winding, "#ff9500"],
+    ];
+    const [w, hh] = this.viewSize();
+    for (const [segs, color] of kinds) {
+      if (!segs.length) continue;
+      const g = new LineSegmentsGeometry().setPositions(segs.flatMap(([a, b]) => [...a, ...b]));
+      const mat = new LineMaterial({ color: new THREE.Color(color).getHex(), linewidth: 3, depthTest: false, transparent: true });
+      mat.resolution.set(w, hh);
+      this.lineMats.push(mat);
+      const l = new LineSegments2(g, mat);
+      l.renderOrder = 10;
+      into.add(l);
+    }
+    if (h.degenerate.length) {
+      const g = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(h.degenerate.flat(), 3));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: "#ffd60a", size: 9, sizeAttenuation: false, depthTest: false }));
+      pts.renderOrder = 10;
+      into.add(pts);
+    }
+  }
+
+  /** Numbered pins on spots of the piece (null = none). They are HTML over the picture, never part of it. */
+  setPins(pins: Pin[] | null) {
+    for (const p of this.pins) p.el.remove();
+    this.pins = (pins ?? []).map((data) => {
+      const el = document.createElement("span");
+      el.textContent = data.text;
+      Object.assign(el.style, PIN, { background: data.color });
+      this.pinLayer.appendChild(el);
+      return { data, el };
+    });
+    this.dirty = true;
+  }
+
+  /** Flies the camera to look at a point of the piece (model coordinates), keeping the direction. */
+  focus(model: P3) {
+    const target = new THREE.Vector3(...model).applyMatrix4(this.frame);
+    this.goTo(this.currentDir(), target, true, this.fitDistance() * 0.5);
+  }
+
+  /** Draws the points picked with the measure tool (scene coordinates) and returns what they say. */
+  setMeasure(points: P3[]): Measurement | null {
+    for (const o of [...this.tools.children]) {
+      this.tools.remove(o);
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      if (mat instanceof LineMaterial) this.lineMats = this.lineMats.filter((x) => x !== mat);
+      mat?.dispose();
+    }
+    for (const l of this.measureLabels) l.el.remove();
+    this.measureLabels = [];
+    this.dirty = true;
+    if (!points.length) return null;
+    const color = "#00b3ff";
+    const r = Math.max(this.radius * 0.012, 0.05);
+    for (const p of points) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), new THREE.MeshBasicMaterial({ color, depthTest: false }));
+      dot.position.set(...p);
+      dot.renderOrder = 11;
+      this.tools.add(dot);
+    }
+    const m = measure(points);
+    if (!m) return null;
+    const [w, h] = this.viewSize();
+    const line = (pts: P3[]) => {
+      const g = new LineSegmentsGeometry().setPositions(pts.slice(1).flatMap((q, i) => [...pts[i], ...q]));
+      const mat = new LineMaterial({ color: new THREE.Color(color).getHex(), linewidth: 2.5, depthTest: false, transparent: true });
+      mat.resolution.set(w, h);
+      this.lineMats.push(mat);
+      const l = new LineSegments2(g, mat);
+      l.renderOrder = 11;
+      this.tools.add(l);
+    };
+    line(points);
+    const label = (text: string, at: THREE.Vector3) => {
+      const el = document.createElement("span");
+      el.textContent = text;
+      Object.assign(el.style, LABEL, { borderColor: color });
+      this.pinLayer.appendChild(el);
+      this.measureLabels.push({ el, at });
+    };
+    for (let i = 1; i < points.length; i++) {
+      const a = new THREE.Vector3(...points[i - 1]);
+      const b = new THREE.Vector3(...points[i]);
+      label(`${a.distanceTo(b).toFixed(2)} mm`, a.add(b).multiplyScalar(0.5));
+    }
+    if (m.circle) {
+      const { centre, radius, normal } = m.circle;
+      // the circle only helps when it is about the size of the piece, not a near-straight line's huge one
+      if (radius < this.radius * 6) {
+        const c = new THREE.Vector3(...centre);
+        const nrm = new THREE.Vector3(...normal);
+        const u = new THREE.Vector3(...points[0]).sub(c).normalize();
+        const v = nrm.clone().cross(u);
+        const ring: P3[] = [];
+        for (let i = 0; i <= 64; i++) {
+          const t = (i / 64) * Math.PI * 2;
+          const q = c.clone().addScaledVector(u, Math.cos(t) * radius).addScaledVector(v, Math.sin(t) * radius);
+          ring.push([q.x, q.y, q.z]);
+        }
+        line(ring);
+      }
+    }
+    return m;
   }
 
   /** Floor grid, shadow catcher and light follow the model's bounds. */
@@ -437,7 +727,7 @@ export class Viewer {
    * the length of this synchronous call and puts everything back before the browser paints, so
    * the user sees no flicker.
    */
-  capture(o: CaptureOptions): { png: string; width: number; height: number } {
+  capture(o: CaptureOptions): Captured {
     if (!this.model) throw new Error("There is nothing to show: the model is empty.");
     if (this.tween) {
       this.applyTween(this.tween, 1);
@@ -454,6 +744,13 @@ export class Viewer {
       alpha: this.renderer.getClearAlpha(),
       ratio: this.renderer.getPixelRatio(),
     };
+    // what the user has switched on for analysis stays out of the picture, unless the caller asks for it
+    const diagWas = this.diag.visible;
+    const toolsWas = this.tools.visible;
+    this.diag.visible = false;
+    this.tools.visible = false;
+    this.applyOverhang(o.overhang ?? null);
+    let extra: THREE.Group | null = null;
     const w = Math.round(THREE.MathUtils.clamp(o.width ?? this.host.clientWidth, 16, 2048));
     const h = Math.round(THREE.MathUtils.clamp(o.height ?? this.host.clientHeight, 16, 2048));
     try {
@@ -476,6 +773,13 @@ export class Viewer {
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(w, h, false);
       this.setViewport(w, h);
+      if (o.health) {
+        extra = new THREE.Group();
+        extra.matrixAutoUpdate = false;
+        extra.matrix.copy(this.frame);
+        this.addHealth(extra, o.health);
+        this.scene.add(extra);
+      }
 
       if (o.view || o.azimuth !== undefined || o.elevation !== undefined || o.zoom !== undefined || o.target) {
         const cur = this.currentDir();
@@ -526,8 +830,33 @@ export class Viewer {
         ctx.fillStyle = m.color;
         ctx.fillText(m.text, m.x, m.y);
       }
-      return { png: out.toDataURL("image/png").split(",")[1], width: w, height: h };
+      const png = out.toDataURL("image/png").split(",")[1];
+      let annotated: string | undefined;
+      if (o.pins?.length) {
+        // a copy: the picture above is already encoded and stays exactly as rendered
+        const copy = document.createElement("canvas");
+        copy.width = w;
+        copy.height = h;
+        const c2 = copy.getContext("2d")!;
+        c2.drawImage(out, 0, 0);
+        this.drawPins(c2, o.pins, w, h);
+        annotated = copy.toDataURL("image/png").split(",")[1];
+      }
+      return { png, width: w, height: h, annotated };
     } finally {
+      if (extra) {
+        this.scene.remove(extra);
+        extra.traverse((x) => {
+          const m = x as THREE.Mesh;
+          m.geometry?.dispose();
+          const mat = m.material as THREE.Material | undefined;
+          if (mat instanceof LineMaterial) this.lineMats = this.lineMats.filter((l) => l !== mat);
+          mat?.dispose();
+        });
+      }
+      this.diag.visible = diagWas;
+      this.tools.visible = toolsWas;
+      this.applyOverhang(this.overhang);
       this.marks = null;
       this.capSize = null;
       if (style) this.setStyle(style);
@@ -566,6 +895,7 @@ export class Viewer {
     this.renderer.forceContextLoss();
     this.labelLayer.remove();
     this.tickLayer.remove();
+    this.pinLayer.remove();
     this.axesLines?.geometry.dispose();
     this.renderer.domElement.remove();
   }
@@ -595,8 +925,8 @@ export class Viewer {
     return (this.radius * 1.2) / Math.sin(half);
   }
 
-  private goTo(dir: THREE.Vector3, target: THREE.Vector3, animate: boolean) {
-    const dist = this.fitDistance();
+  private goTo(dir: THREE.Vector3, target: THREE.Vector3, animate: boolean, distance?: number) {
+    const dist = distance ?? this.fitDistance();
     const zoom = ORTHO_HALF / (dist * TAN_HALF);
     const tw: Tween = {
       t0: performance.now(),
@@ -657,6 +987,7 @@ export class Viewer {
 
   /** Aspect ratio and frustum for a `w` × `h` picture, without touching the canvas. */
   private setViewport(w: number, h: number) {
+    for (const m of this.lineMats) m.resolution.set(w, h);
     const a = w / h;
     this.persp.aspect = a;
     this.persp.updateProjectionMatrix();
@@ -769,6 +1100,67 @@ export class Viewer {
     });
   }
 
+  /** Is the point (scene coordinates) in view, and not hidden behind the piece? */
+  private visibleFromCamera(p: THREE.Vector3): boolean {
+    if (!this.model) return false;
+    const from = this.camera.position;
+    const dir = p.clone().sub(from);
+    const d = dir.length();
+    this.rc.set(from, dir.normalize());
+    this.rc.far = d;
+    this.rc.near = 0;
+    const hit = this.rc.intersectObjects(this.model.children, false)[0];
+    this.rc.far = Infinity;
+    return !hit || hit.distance > d - Math.max(0.15, this.radius * 0.02);
+  }
+
+  /** Puts the pins and the measurement labels over the spots they belong to. */
+  private updatePins() {
+    const [w, h] = this.viewSize();
+    const place = (el: HTMLElement, at: THREE.Vector3) => {
+      const v = at.clone().project(this.camera);
+      el.style.transform = `translate(-50%, -50%) translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px)`;
+      el.style.visibility = v.z > 1 ? "hidden" : "visible";
+    };
+    for (const p of this.pins) {
+      const at = new THREE.Vector3(...p.data.at).applyMatrix4(this.frame);
+      place(p.el, at);
+      p.el.style.opacity = this.visibleFromCamera(at) ? "1" : "0.35";
+    }
+    for (const l of this.measureLabels) place(l.el, l.at);
+  }
+
+  /** The pins drawn on a copy of the picture: a dot with its number, dimmed when the spot is behind the piece. */
+  private drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], w: number, h: number) {
+    const taken: [number, number][] = [];
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const pin of pins) {
+      const at = new THREE.Vector3(...pin.at).applyMatrix4(this.frame);
+      const v = at.clone().project(this.camera);
+      if (v.z > 1) continue;
+      let x = (v.x * 0.5 + 0.5) * w;
+      let y = (-v.y * 0.5 + 0.5) * h;
+      // pins landing on top of each other fan out upwards
+      while (taken.some(([tx, ty]) => Math.hypot(tx - x, ty - y) < 22)) y -= 22;
+      taken.push([x, y]);
+      const r = Math.max(10, Math.min(w, h) / 40);
+      ctx.save();
+      ctx.globalAlpha = this.visibleFromCamera(at) ? 1 : 0.45;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = pin.color;
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `700 ${Math.round(r * 1.1)}px sans-serif`;
+      ctx.fillText(pin.text, x, y + 0.5);
+      ctx.restore();
+    }
+  }
+
   private updateLabels() {
     if (!this.style?.dimensions || !this.model) return;
     const { min, max } = this.box;
@@ -806,6 +1198,7 @@ export class Viewer {
     this.updateAxes(); // before drawing: it toggles and rebuilds the axis lines
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
+    this.updatePins();
     if (!this.lastQ.equals(this.camera.quaternion)) {
       this.lastQ.copy(this.camera.quaternion);
       this.orientCbs.forEach((cb) => cb(this.lastQ));

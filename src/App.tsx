@@ -134,6 +134,8 @@ function App() {
   const [render, setRender] = useState<RenderState>(IDLE);
   const [layout, setLayout] = useState<PrintLayout | null>(null);
   const [printView, setPrintView] = useState(true);
+  /** The statement that makes the spot clicked with the "find in source" tool. */
+  const [sourceHit, setSourceHit] = useState<{ from: number; to: number } | null>(null);
   const [triangles, setTriangles] = useState<number | null>(null);
   const [recents, setRecents] = useState(getRecents);
 
@@ -616,6 +618,7 @@ function App() {
         key={projectId}
         source={project.source}
         errorLine={render.status === "error" ? render.error?.line : null}
+        highlight={sourceHit}
         onChange={(src) => edit((p) => (p.source === src ? p : { ...p, source: src }))}
       />
     ),
@@ -668,6 +671,7 @@ function App() {
         onPickSprue={pickSprue}
         onStats={(s) => setTriangles(s ? s.tris : null)}
         onViewer={(v) => (viewerRef.current = v)}
+        onLocate={(h) => setSourceHit(h ? { from: h.from, to: h.to } : null)}
         onAnnotated={
           chatEnabled
             ? (picture) => {

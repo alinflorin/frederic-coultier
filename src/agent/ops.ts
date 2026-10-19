@@ -1,6 +1,9 @@
 import {
   autoSupports,
   exportModel,
+  extraChecks,
+  locateSource,
+  meshHealth,
   meshReport,
   printLayout,
   printParams,
@@ -9,7 +12,7 @@ import {
 } from "../api";
 import type { RenderState } from "../components/PreviewPane";
 import { MESH_HEADER, type MeshBuf } from "../components/viewer/geometry";
-import type { CaptureOptions, Viewer } from "../components/viewer/Viewer";
+import type { CaptureOptions, Pin, Viewer } from "../components/viewer/Viewer";
 import { DENSITY } from "../materials";
 import type { ExportFormat, FcProject, Support } from "../types";
 import { DEFAULT_SETTINGS } from "../defaults";
@@ -248,6 +251,7 @@ const OPS: Record<string, Handler> = {
       p.source,
       a.simplifyPreview ? { keepPercent: s.optimization.keepPercent, maxVolumeChange: s.optimization.maxVolumeChange } : undefined,
       a.deepChecks ? { minWall: s.printing.minWall, minGap: 0.3, casting: s.material.process === "casting" } : undefined,
+      extraChecks(p),
     );
     return {
       units: "mm, mm², mm³",
@@ -255,6 +259,14 @@ const OPS: Record<string, Handler> = {
       metalGrams: +((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(3),
       metal: s.material.metal,
     };
+  },
+
+  "analysis.locate": async (api, a) => {
+    const p = open(api);
+    if (!Array.isArray(a.point) || a.point.length !== 3) throw new Error("point must be [x, y, z]");
+    const point = a.point.map((v: unknown, i: number) => num(v, ["x", "y", "z"][i])) as [number, number, number];
+    const r = await locateSource(p.source, point, a.tol === undefined ? undefined : num(a.tol, "tol"));
+    return r;
   },
 
   "analysis.tilt": async (api) => {
@@ -419,16 +431,50 @@ const OPS: Record<string, Handler> = {
         opts.section = { axis: a.section.axis, t: Math.min(1, Math.max(0, t)), flip: !!a.section.flip };
       }
       for (const k of ["zoom", "azimuth", "elevation"] as const) if (opts[k] !== undefined) num(opts[k], k);
-      const shot = viewer.capture(opts);
       const lay = api.layout();
       const showingPrint = !!lay && (!p.settings.printing.supports.enabled || api.printView());
+
+      // Diagnostics are never part of the picture unless asked for; findings and pins come with a
+      // separate copy, so the picture itself stays as rendered.
+      const pr = p.settings.printing;
+      if (a.overhang) {
+        const tilt = ((showingPrint || !pr.supports.enabled ? 0 : pr.tilt) * Math.PI) / 180;
+        opts.overhang = { up: showingPrint ? [0, 0, 1] : [0, Math.sin(tilt), Math.cos(tilt)], angle: pr.supports.overhangAngle };
+      }
+      if (a.health) opts.health = await meshHealth(r.source ?? p.source);
+      let report: Awaited<ReturnType<typeof findingsFor>> | null = null;
+      if (a.findings || a.annotate) {
+        report = await findingsFor(p);
+        if (a.annotate) opts.pins = report.pins;
+      }
+      const shot = viewer.capture(opts);
       notes.unshift(showingPrint ? "Scene: as printed." : "Scene: as modelled.");
-      return { ...shot, note: notes.join(" ") };
+      if (a.annotate) {
+        notes.push(report && report.pins.length ? "The second picture has numbered pins; the numbers are the findings' n." : "Nothing to pin: no finding has a place on the piece.");
+      }
+      return { ...shot, note: notes.join(" "), ...(report ? { findings: { bbox: report.bbox, items: report.items } } : {}) };
     } finally {
       if (switched) api.setPrintView(wasPrintView);
     }
   },
 };
+
+/** The findings of a deep check, as numbers the agent can use, and the pins that mark them on the piece. */
+async function findingsFor(p: FcProject) {
+  const s = p.settings;
+  const r = await meshReport(p.source, undefined, { minWall: s.printing.minWall, minGap: 0.3, casting: s.material.process === "casting" }, extraChecks(p));
+  const shown = r.findings.filter((f) => f.level !== "pass" || f.data);
+  let n = 0;
+  const pins: Pin[] = [];
+  const items = shown.map((f) => {
+    // only the ones that point at a place on the piece get a number
+    const placed = f.level !== "pass" && !!f.at?.length;
+    const id = placed ? ++n : undefined;
+    if (id) for (const at of f.at ?? []) pins.push({ at, text: String(id), color: f.level === "fail" ? "#d93025" : f.level === "warn" ? "#e8890c" : "#3b6fd4" });
+    return { n: id, level: f.level, code: f.code, detail: f.detail, at: f.at, values: f.vals, data: f.data };
+  });
+  return { bbox: r.stats.size, items, pins };
+}
 
 export async function handle(api: AgentApi, op: string, args: Args): Promise<unknown> {
   const fn = OPS[op];

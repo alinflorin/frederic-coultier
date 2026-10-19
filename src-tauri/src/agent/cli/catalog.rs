@@ -282,7 +282,7 @@ pub const COMMANDS: &[Cmd] = &[
         name: "shot",
         usage: "shot [OPTIONS]",
         summary: "picture of the 3D preview",
-        details: "A picture of the 3D preview, returned as an image. **Every option is optional: what you leave out stays as the user currently has it on screen**, so plain `shot` shows exactly the user's view. Options apply only to the picture; the user's view does not change.\nNeeds the preview to be visible and the model to render without errors.",
+        details: "A picture of the 3D preview, returned as an image. **Every option is optional: what you leave out stays as the user currently has it on screen**, so plain `shot` shows exactly the user's view. Options apply only to the picture; the user's view does not change.\nThe analysis overlays the user may have switched on in the app (overhang tint, mesh health, pins, measurements) are never in a picture unless you ask for them with `--overhang` or `--health`. `--findings` and `--annotate` leave the picture untouched: the numbers come as text, and the pins on a separate second image.\nNeeds the preview to be visible and the model to render without errors.",
         flags: SHOT_FLAGS,
         opts: &[
             o(
@@ -336,9 +336,32 @@ pub const COMMANDS: &[Cmd] = &[
                 "WxH",
                 "picture size in pixels, 16–2048 each way; default: the size of the preview on screen",
             ),
+            o(
+                "findings",
+                "",
+                "also print the measurements as JSON, one finding per line: ring bore against the size in the notes, thin walls and gaps with their thickness at each spot, overhang area and regions, trapped voids, casting fill, sprue join and reach, and the bounding box. The picture is not changed",
+            ),
+            o(
+                "annotate",
+                "",
+                "also return a second picture, a copy with numbered pins on the spots the findings point to (the number is the finding's `n`); implies --findings. The first picture stays exactly as rendered",
+            ),
+            o(
+                "overhang",
+                "",
+                "tint the faces that need support red/amber in the picture itself (flatter is redder)",
+            ),
+            o(
+                "health",
+                "",
+                "draw the broken edges in the picture itself: open borders red, shared edges magenta, flipped edges orange, empty triangles yellow",
+            ),
         ],
         examples: &[
             "shot",
+            "shot --findings",
+            "shot --annotate --view iso",
+            "shot --overhang --scene print",
             "shot --view top --axes",
             "shot --az 40 --el 25 --zoom 1.5 --shading xray",
             "shot --cut z:0.5 --scene print --size 1000x800",
@@ -373,7 +396,7 @@ pub const COMMANDS: &[Cmd] = &[
         name: "check",
         usage: "check [--deep] [--simplify]",
         summary: "measure the model and check it for printing",
-        details: "Measures the model (size, volume, area, triangles, shells, weight of metal) and prints printability findings as `[fail|warn|pass|info] code: detail at (x,y,z)`, with locations in model coordinates.",
+        details: "Measures the model (size, volume, area, triangles, shells, weight of metal) and prints printability findings as `[fail|warn|pass|info] code: detail at (x,y,z) values …`, with locations in model coordinates and, where a check measures something, the measured value at each location (mm; mm³ for `cavity`). Findings that carry more numbers are followed by an indented `data {…}` line.\nCodes beyond the basic mesh ones: `ringFit` (inner/outer diameter of the bore, EU and US size, band width; the axis through the finger is the smallest side of the box), `ringTarget`/`ringTargetOk` (the bore against the size written in the project notes, e.g. `EU 54`, `US 7`, `inner diameter 17.2 mm`; tolerance 0.15 mm), `overhang` (area and regions that need support at the current tilt, with the flattest slope of each; the same rule as the automatic supports), `sprueJoin`/`sprueJoinOk` (sprue diameter against the metal thickness where it joins; about 0.6–1.5 is fine), `sprueReach` (thin sections too far from the sprue foot to fill). With `--deep` also `thin`, `gaps`, `selfInt`, `fill`, `cavity` (closed voids trap air and investment) and `heavy`.",
         flags: CHECK_FLAGS,
         opts: &[
             o(
@@ -398,6 +421,16 @@ pub const COMMANDS: &[Cmd] = &[
         flags: NO_FLAGS,
         opts: &[],
         examples: &[],
+    },
+    Cmd {
+        group: "Checking",
+        name: "locate",
+        usage: "locate X,Y,Z",
+        summary: "which line of the source makes a spot of the piece",
+        details: "Takes a point on the surface of the piece (model coordinates, mm: the locations `check` prints, or any point you read off the model) and prints the statements of the source whose own shape has that point on its surface, outermost first; `→` marks the innermost one, where the spot comes from. Each candidate is evaluated alone inside the transforms around it, and calls of your own modules are followed into their bodies. Use it to find which line to change for a thin wall or an overhang reported at a location. A spot made by `hull()`, `minkowski()` or an intersection may belong to no single statement; the outer ones are still listed.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["locate 3.2,-1.4,7"],
     },
     // ---- Supports and sprue ----
     Cmd {

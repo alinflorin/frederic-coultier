@@ -21,7 +21,7 @@ pub struct CheckOptions {
 
 const SAMPLES: usize = 600;
 const SELFINT_MAX_TRIS: usize = 100_000;
-const FILL_THIN: f64 = 0.7;
+pub(crate) const FILL_THIN: f64 = 0.7;
 const FILL_FEED: f64 = 2.0;
 const FILL_REACH: f64 = 8.0;
 const MAX_LOCATIONS: usize = 8;
@@ -40,14 +40,14 @@ fn dist(a: V3, b: V3) -> f64 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
-struct Sample {
-    centre: V3,
-    normal: V3,
-    tri: usize,
-    area: f64,
+pub(crate) struct Sample {
+    pub centre: V3,
+    pub normal: V3,
+    pub tri: usize,
+    pub area: f64,
 }
 
-fn samples(m: &Mesh) -> Vec<Sample> {
+pub(crate) fn samples(m: &Mesh) -> Vec<Sample> {
     let stride = (m.tris.len() / SAMPLES).max(1);
     (0..m.tris.len())
         .step_by(stride)
@@ -94,6 +94,13 @@ fn finding(level: &'static str, code: &'static str, detail: String, at: &[(f64, 
         code,
         detail,
         at: at.iter().take(MAX_LOCATIONS).map(|(_, p)| *p).collect(),
+        // thin walls and gaps: the measured size; fill: the distance from thick metal; cavities: volume
+        vals: if at.iter().all(|(v, _)| *v == 0.0) {
+            Vec::new()
+        } else {
+            at.iter().take(MAX_LOCATIONS).map(|(v, _)| v.abs()).collect()
+        },
+        data: None,
     }
 }
 
