@@ -199,7 +199,7 @@ async fn locate_source(source: String, point: [f64; 3], tol: Option<f64>) -> Res
 /// Pads JSON with spaces so the binary that follows it starts on a 4-byte boundary
 /// (the frontend builds `Float32Array`/`Uint32Array` views over it).
 fn pad4(json: &mut Vec<u8>) {
-    while json.len() % 4 != 0 {
+    while !json.len().is_multiple_of(4) {
         json.push(b' ');
     }
 }

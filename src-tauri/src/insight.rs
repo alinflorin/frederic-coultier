@@ -297,8 +297,8 @@ pub fn overhang(mesh: &Mesh, tilt: f64, angle: f64) -> (f64, f64, Vec<(V3, f64, 
         match regions.iter_mut().find(|r| dist(r.0, centre) < 2.5) {
             Some(r) => {
                 let w = r.1 + area;
-                for k in 0..3 {
-                    r.0[k] = (r.0[k] * r.1 + centre[k] * area) / w;
+                for (rk, ck) in r.0.iter_mut().zip(centre) {
+                    *rk = (*rk * r.1 + ck * area) / w;
                 }
                 r.1 = w;
                 r.2 = r.2.min(slope);
