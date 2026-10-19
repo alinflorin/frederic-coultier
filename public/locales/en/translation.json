@@ -95,7 +95,7 @@
     "noPdf": "{{agent}} cannot read PDF files",
     "model": "Model",
     "default": "Agent default",
-    "defaultNamed": "{{name}} (app default)",
+    "defaultNamed": "{{name}} · default",
     "effort": "Thinking level",
     "effortDefault": "Agent default"
   },
@@ -250,7 +250,8 @@
     "matte": "Matte"
   },
   "params": {
-    "title": "Parameters"
+    "title": "Parameters",
+    "reset": "Reset to {{value}}"
   },
   "history": {
     "title": "Version history",
@@ -346,6 +347,7 @@
   "mcp": {
     "agent": "Agent",
     "off": "MCP off",
+    "error": "MCP error",
     "ready": "Agent: waiting",
     "idle": "{{name}} · idle",
     "active": "{{name}} · working",

@@ -95,7 +95,7 @@
     "noPdf": "{{agent}} nu poate citi fișiere PDF",
     "model": "Model",
     "default": "Implicit agent",
-    "defaultNamed": "{{name}} (implicit aplicație)",
+    "defaultNamed": "{{name}} · implicit",
     "effort": "Nivel de gândire",
     "effortDefault": "Implicit agent"
   },
@@ -250,7 +250,8 @@
     "matte": "Mat"
   },
   "params": {
-    "title": "Parametri"
+    "title": "Parametri",
+    "reset": "Revino la {{value}}"
   },
   "history": {
     "title": "Istoric versiuni",
@@ -346,6 +347,7 @@
   "mcp": {
     "agent": "Agent",
     "off": "MCP oprit",
+    "error": "MCP eroare",
     "ready": "Agent: în așteptare",
     "idle": "{{name}} · inactiv",
     "active": "{{name}} · lucrează",

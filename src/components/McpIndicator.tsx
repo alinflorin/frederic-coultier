@@ -37,9 +37,10 @@ export function McpIndicator({ onClick }: { onClick: () => void }) {
   const name = s.client ?? t("mcp.agent");
   const seen = s.idleSecs !== null;
   const active = s.running && seen && s.idleSecs! < ACTIVE_SECS;
-  const state = !s.running ? "off" : active ? "active" : seen ? "idle" : "ready";
+  const state = !s.running ? (s.error ? "error" : "off") : active ? "active" : seen ? "idle" : "ready";
   const label = {
     off: t("mcp.off"),
+    error: t("mcp.error"),
     ready: t("mcp.ready"),
     idle: t("mcp.idle", { name }),
     active: t("mcp.active", { name }),

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { humanize, parseParams, setParam } from "../params";
+import { humanize, parseParams, setParam, splitUnit } from "../params";
 import { getPref, setPref } from "../prefs";
 import { Icon } from "./Icon";
 
@@ -22,6 +22,11 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
       }),
     [source],
   );
+  // The value each parameter had when it first showed up, so it can be put back with one click.
+  const initial = useRef(new Map<string, number | boolean>());
+  const names = new Set(params.map((p) => p.name));
+  for (const p of params) if (!initial.current.has(p.name)) initial.current.set(p.name, p.value);
+  for (const n of [...initial.current.keys()]) if (!names.has(n)) initial.current.delete(n);
   const [open, setOpen] = useState(() => getPref<boolean>("paramsOpen") !== false);
   if (params.length === 0) return null;
   const toggle = () => {
@@ -37,37 +42,57 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
       </button>
       {open && (
         <div className="params-body">
-          {params.map((p) => (
-            <div className="param" key={p.name} title={p.note || p.name}>
-              <label htmlFor={`param-${p.name}`}>
-                {humanize(p.name)}
-                {p.note && <span className="muted"> {p.note}</span>}
-              </label>
-              {p.kind === "bool" ? (
-                <input id={`param-${p.name}`} type="checkbox" checked={p.value as boolean} onChange={(e) => onChange(setParam(source, p, e.currentTarget.checked))} />
-              ) : (
-                <>
-                  <input
-                    id={`param-${p.name}`}
-                    type="range"
-                    min={p.min}
-                    max={p.max}
-                    step={p.step}
-                    value={p.value as number}
-                    onChange={(e) => onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
-                  />
-                  <input
-                    className="param-num"
-                    type="number"
-                    step={p.step}
-                    value={p.value as number}
-                    aria-label={humanize(p.name)}
-                    onChange={(e) => Number.isFinite(e.currentTarget.valueAsNumber) && onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
-                  />
-                </>
-              )}
-            </div>
-          ))}
+          {params.map((p) => {
+            const { base, unit } = splitUnit(p.name);
+            const label = humanize(base);
+            const was = initial.current.get(p.name);
+            const changed = was !== undefined && was !== p.value;
+            return (
+              <div className="param" key={p.name} title={p.note || p.name}>
+                <label htmlFor={`param-${p.name}`}>
+                  {label}
+                  {p.note && <span className="muted"> {p.note}</span>}
+                </label>
+                {p.kind === "bool" ? (
+                  <input id={`param-${p.name}`} type="checkbox" checked={p.value as boolean} onChange={(e) => onChange(setParam(source, p, e.currentTarget.checked))} />
+                ) : (
+                  <>
+                    <input
+                      id={`param-${p.name}`}
+                      type="range"
+                      min={p.min}
+                      max={p.max}
+                      step={p.step}
+                      value={p.value as number}
+                      onChange={(e) => onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
+                    />
+                    <span className="param-val">
+                      <input
+                        className="param-num"
+                        type="number"
+                        step={p.step}
+                        value={p.value as number}
+                        aria-label={label}
+                        onChange={(e) => Number.isFinite(e.currentTarget.valueAsNumber) && onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
+                      />
+                      <span className="param-unit muted">{unit}</span>
+                    </span>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="icon-btn param-reset"
+                  style={{ visibility: changed ? "visible" : "hidden" }}
+                  tabIndex={changed ? 0 : -1}
+                  title={t("params.reset", { value: String(was) })}
+                  aria-label={t("params.reset", { value: String(was) })}
+                  onClick={() => was !== undefined && onChange(setParam(source, p, was))}
+                >
+                  <Icon name="rotate" size={13} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

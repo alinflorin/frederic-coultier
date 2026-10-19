@@ -131,3 +131,12 @@ export const humanize = (name: string) => {
   const s = name.replace(/_+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+const UNITS = new Set(["mm", "cm", "deg", "g", "ct", "pct"]);
+const UNIT_LABEL: Record<string, string> = { deg: "°", pct: "%" };
+
+/** `ring_size_mm` -> `{ base: "ring_size", unit: "mm" }`; a name without a known unit suffix keeps an empty unit. */
+export const splitUnit = (name: string) => {
+  const m = /^(.+?)_([a-z]+)$/.exec(name);
+  return m && UNITS.has(m[2]) ? { base: m[1], unit: UNIT_LABEL[m[2]] ?? m[2] } : { base: name, unit: "" };
+};
