@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ExportFormat, FcProject, Support } from "./types";
-import { MESH_HEADER } from "./components/viewer/geometry";
+import { MESH_HEADER, type MeshBuf } from "./components/viewer/geometry";
 import { safeName, type WireProject } from "./project";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -33,8 +33,8 @@ export interface Diagnostic {
 }
 
 export interface RenderResult {
-  /** Indexed mesh (see `indexedGeometry`), or null when the model has no geometry. */
-  mesh: ArrayBuffer | null;
+  /** Shaded mesh (see `shadedMesh`), or null when the model has no geometry. */
+  mesh: MeshBuf | null;
   echoes: string[];
   diagnostics: Diagnostic[];
   ms: number;
@@ -74,7 +74,7 @@ export async function renderScad(source: string): Promise<RenderResult> {
     empty: boolean;
   };
   return {
-    mesh: info.empty ? null : buf.slice(4 + jsonLength),
+    mesh: info.empty ? null : { buf, offset: 4 + jsonLength, length: buf.byteLength - 4 - jsonLength },
     echoes: info.echoes,
     diagnostics: info.diagnostics,
     ms: info.ms,
@@ -220,11 +220,11 @@ export const autoSupports = (
   });
 
 export interface PrintLayout {
-  model: ArrayBuffer;
+  model: MeshBuf;
   /** Supports and raft, null when there are none. */
-  supports: ArrayBuffer | null;
+  supports: MeshBuf | null;
   /** The casting sprue, null when off or no spot was found. */
-  sprue: ArrayBuffer | null;
+  sprue: MeshBuf | null;
   /** Where the sprue sits, in model coordinates (the manual spot or the automatic pick). */
   sprueAt: [number, number, number] | null;
   size: [number, number, number];
@@ -254,9 +254,9 @@ export async function printLayout(
   const supStart = start + info.modelLen;
   const sprueStart = supStart + info.supportsLen;
   return {
-    model: buf.slice(start, supStart),
-    supports: info.supportsLen > MESH_HEADER ? buf.slice(supStart, sprueStart) : null,
-    sprue: buf.byteLength - sprueStart > MESH_HEADER ? buf.slice(sprueStart) : null,
+    model: { buf, offset: start, length: info.modelLen },
+    supports: info.supportsLen > MESH_HEADER ? { buf, offset: supStart, length: info.supportsLen } : null,
+    sprue: buf.byteLength - sprueStart > MESH_HEADER ? { buf, offset: sprueStart, length: buf.byteLength - sprueStart } : null,
     size: info.size,
     fits: info.fits,
     zoff: info.zoff,

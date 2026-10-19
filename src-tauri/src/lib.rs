@@ -5,6 +5,7 @@ mod hollow;
 mod meshtools;
 mod project;
 mod render;
+mod shade;
 mod supports;
 
 use std::path::PathBuf;
@@ -49,7 +50,7 @@ struct RenderInfo {
 
 /// Renders OpenSCAD source. The reply is binary, to avoid pushing megabytes of
 /// mesh through JSON: `u32 LE JSON length | RenderInfo JSON (padded to 4 bytes) | indexed mesh`
-/// (see `render::encode_indexed`).
+/// (see `shade`).
 #[tauri::command]
 async fn render_scad(
     source: String,
@@ -80,7 +81,7 @@ async fn render_scad(
     })?;
     pad4(&mut info);
 
-    let mesh = if empty { Vec::new() } else { render::encode_indexed(&rendered.mesh) };
+    let mesh = if empty { Vec::new() } else { render::encode_model(&rendered.mesh) };
     let mut out = Vec::with_capacity(4 + info.len() + mesh.len());
     out.extend_from_slice(&(info.len() as u32).to_le_bytes());
     out.extend_from_slice(&info);
@@ -225,11 +226,11 @@ async fn print_layout(
         let sprue_at = planned.as_ref().map(|p| p.2);
         let stub = planned.map(|(m, _, _)| m);
         let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
-        let model = render::encode_indexed(&supports::tilted_model(&mesh, &print, zoff));
+        let model = render::encode_model(&supports::tilted_model(&mesh, &print, zoff));
         let sprue_mesh = stub
-            .map(|m| render::encode_indexed(&supports::tilted_model(&m, &print, zoff)))
+            .map(|m| render::encode_flat(&supports::tilted_model(&m, &print, zoff)))
             .unwrap_or_default();
-        let sup = if supports.is_empty() { Vec::new() } else { render::encode_indexed(&supports::support_mesh(&supports, &print, zoff)) };
+        let sup = if supports.is_empty() { Vec::new() } else { render::encode_flat(&supports::support_mesh(&supports, &print, zoff)) };
         let mut info = serde_json::to_vec(&serde_json::json!({
             "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff, "sprueAt": sprue_at,
         }))

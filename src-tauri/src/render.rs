@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use openrscad_eval::{NullResolver, eval_program_with_budget, register_system_fonts};
+use crate::shade;
 use openrscad_geom::{GeomCache, Mesh, render_cached_warns};
 use serde::Serialize;
 
@@ -178,24 +179,17 @@ pub fn mesh_for(source: &str, cache: &RenderCache) -> Result<Arc<Mesh>, RenderFa
     render_on_big_stack(source.to_owned(), cache).map(|r| r.mesh)
 }
 
-/// Indexed mesh for the preview, all little-endian and 4-byte aligned:
-/// `u32 vertex count | u32 triangle count | f32 x,y,z per vertex | u32 a,b,c per triangle`.
-/// About a fifth of the size of the equivalent binary STL, and needs no parsing on the other side.
-pub fn encode_indexed(mesh: &Mesh) -> Vec<u8> {
-    let mut out = Vec::with_capacity(8 + 12 * (mesh.verts.len() + mesh.tris.len()));
-    out.extend_from_slice(&(mesh.verts.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(mesh.tris.len() as u32).to_le_bytes());
-    for v in &mesh.verts {
-        for c in v {
-            out.extend_from_slice(&(*c as f32).to_le_bytes());
-        }
-    }
-    for t in &mesh.tris {
-        for i in t {
-            out.extend_from_slice(&i.to_le_bytes());
-        }
-    }
-    out
+/// Preview payload of a model: smooth normals and feature edges precomputed (see `shade`).
+pub fn encode_model(mesh: &Mesh) -> Vec<u8> {
+    shade::encode(
+        mesh,
+        &shade::Shading::Creased { crease: 35f64.to_radians(), edge_angle: 28f64.to_radians() },
+    )
+}
+
+/// Preview payload of supports and sprue, which are drawn faceted.
+pub fn encode_flat(mesh: &Mesh) -> Vec<u8> {
+    shade::encode(mesh, &shade::Shading::Flat)
 }
 
 pub fn encode(format: &str, mesh: &Mesh, name: &str) -> Option<Vec<u8>> {
@@ -215,17 +209,18 @@ mod tests {
     const RING: &str = include_str!("../../src/sample.scad");
 
     #[test]
-    fn indexed_encoding_has_the_documented_layout() {
+    fn model_encoding_has_the_documented_layout() {
         let mesh = Mesh {
             verts: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             tris: vec![[0, 1, 2]],
         };
-        let b = encode_indexed(&mesh);
-        assert_eq!(b.len(), 8 + 3 * 12 + 12);
-        assert_eq!(u32::from_le_bytes(b[0..4].try_into().unwrap()), 3);
-        assert_eq!(u32::from_le_bytes(b[4..8].try_into().unwrap()), 1);
-        assert_eq!(f32::from_le_bytes(b[8 + 28..8 + 32].try_into().unwrap()), 2.0);
-        assert_eq!(u32::from_le_bytes(b[b.len() - 4..].try_into().unwrap()), 2);
+        let b = encode_model(&mesh);
+        let u = |at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+        assert_eq!((u(0), u(4), u(8), u(12)), (3, 1, 1, 6)); // one open triangle: 3 boundary edges
+        assert_eq!(b.len(), shade::HEADER + 3 * 12 + 3 * 12 + 12 + 6 * 12);
+        assert_eq!(f32::from_le_bytes(b[shade::HEADER + 28..shade::HEADER + 32].try_into().unwrap()), 2.0);
+        let flat = encode_flat(&mesh);
+        assert_eq!(flat.len(), shade::HEADER + 3 * 12 * 2);
     }
 
     #[test]

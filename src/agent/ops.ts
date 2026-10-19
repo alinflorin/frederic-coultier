@@ -8,6 +8,7 @@ import {
   type PrintLayout,
 } from "../api";
 import type { RenderState } from "../components/PreviewPane";
+import { MESH_HEADER, type MeshBuf } from "../components/viewer/geometry";
 import type { CaptureOptions, Viewer } from "../components/viewer/Viewer";
 import { DENSITY } from "../materials";
 import type { ExportFormat, FcProject, Support } from "../types";
@@ -68,29 +69,24 @@ const num = (v: unknown, name: string): number => {
 
 // --- render state ---
 
-/** Triangle count and bounding-box size of a binary STL. */
-function stlInfo(buf: ArrayBuffer | null): { triangles: number; size: [number, number, number] | null } {
-  if (!buf || buf.byteLength < 84) return { triangles: 0, size: null };
-  const view = new DataView(buf);
-  const n = Math.min(view.getUint32(80, true), Math.floor((buf.byteLength - 84) / 50));
-  if (n === 0) return { triangles: 0, size: null };
+/** Triangle count and bounding-box size of a preview mesh (see `shadedMesh`). */
+function meshInfo(m: MeshBuf | null): { triangles: number; size: [number, number, number] | null } {
+  if (!m || m.length <= MESH_HEADER) return { triangles: 0, size: null };
+  const [nv, nt] = new Uint32Array(m.buf, m.offset, 2);
+  if (!nt) return { triangles: 0, size: null };
+  const p = new Float32Array(m.buf, m.offset + MESH_HEADER, nv * 3);
   const lo = [Infinity, Infinity, Infinity];
   const hi = [-Infinity, -Infinity, -Infinity];
-  for (let t = 0; t < n; t++) {
-    const base = 84 + t * 50 + 12; // skip the normal
-    for (let v = 0; v < 3; v++) {
-      for (let a = 0; a < 3; a++) {
-        const x = view.getFloat32(base + v * 12 + a * 4, true);
-        if (x < lo[a]) lo[a] = x;
-        if (x > hi[a]) hi[a] = x;
-      }
-    }
+  for (let i = 0; i < p.length; i++) {
+    const a = i % 3;
+    if (p[i] < lo[a]) lo[a] = p[i];
+    if (p[i] > hi[a]) hi[a] = p[i];
   }
-  return { triangles: n, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] };
+  return { triangles: nt, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] };
 }
 
 function renderReply(r: RenderState, status: string) {
-  const { triangles, size } = stlInfo(r.mesh);
+  const { triangles, size } = meshInfo(r.mesh);
   return {
     status,
     ms: r.ms ?? null,

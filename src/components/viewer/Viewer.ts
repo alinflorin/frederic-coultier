@@ -2,8 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { ShadingMode } from "../../types";
-import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { flatGeometry, indexedGeometry, meshVolume } from "./geometry";
+import { type MeshBuf, shadedMesh } from "./geometry";
 
 const AXIS_COLOR = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" };
 /** Full-size layer for the dimension labels and axis ticks drawn over the canvas. */
@@ -279,12 +278,12 @@ export class Viewer {
   }
 
   /**
-   * Shows an indexed mesh (see `indexedGeometry`). Returns its stats, or null when there is nothing to show.
+   * Shows a shaded mesh (see `shadedMesh`). Returns its stats, or null when there is nothing to show.
    */
   setMesh(
-    mesh: ArrayBuffer | null,
-    supports: ArrayBuffer | null = null,
-    sprue: ArrayBuffer | null = null,
+    mesh: MeshBuf | null,
+    supports: MeshBuf | null = null,
+    sprue: MeshBuf | null = null,
   ): ViewerStats | null {
     const first = !this.model;
     if (this.model) {
@@ -294,33 +293,26 @@ export class Viewer {
       this.edges = [];
     }
     this.dirty = true;
-    const raw = mesh ? indexedGeometry(mesh) : null;
-    if (!raw) {
+    const body3 = mesh ? shadedMesh(mesh) : null;
+    if (!body3) {
       if (this.style) this.setStyle(this.style);
       return null;
     }
 
-    const total = raw.index!.count / 3;
-    const volume = meshVolume(raw);
-    const geo = toCreasedNormals(raw, THREE.MathUtils.degToRad(35));
-    raw.dispose();
-    const body = new THREE.Mesh(geo, this.metalMat);
+    const body = new THREE.Mesh(body3.geometry, this.metalMat);
     body.castShadow = true;
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), this.edgeMat);
-    body.add(edges);
-    this.edges = [edges];
-    this.model = new THREE.Group().add(body);
-    const supGeo = supports && flatGeometry(supports);
-    if (supGeo) {
-      const sup = new THREE.Mesh(supGeo, this.supportMat);
-      sup.castShadow = true;
-      this.model.add(sup);
+    if (body3.edges) {
+      const edges = new THREE.LineSegments(body3.edges, this.edgeMat);
+      body.add(edges);
+      this.edges = [edges];
     }
-    const sprueGeo = sprue && flatGeometry(sprue);
-    if (sprueGeo) {
-      const sp = new THREE.Mesh(sprueGeo, this.sprueMat);
-      sp.castShadow = true;
-      this.model.add(sp);
+    this.model = new THREE.Group().add(body);
+    for (const [buf, mat] of [[supports, this.supportMat], [sprue, this.sprueMat]] as const) {
+      const shaded = buf && shadedMesh(buf);
+      if (!shaded) continue;
+      const m = new THREE.Mesh(shaded.geometry, mat);
+      m.castShadow = true;
+      this.model.add(m);
     }
     this.scene.add(this.model);
 
@@ -337,8 +329,8 @@ export class Viewer {
     const size = this.box.getSize(new THREE.Vector3());
     return {
       size: [size.x, size.y, size.z],
-      tris: total,
-      metalVolumeMm3: volume,
+      tris: body3.triangles,
+      metalVolumeMm3: body3.volume,
     };
   }
 

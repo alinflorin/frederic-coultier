@@ -8,13 +8,14 @@ import { Viewer, type Section, type ViewerStats } from "./viewer/Viewer";
 import { Gizmo } from "./viewer/Gizmo";
 import { Annotator } from "./viewer/Annotator";
 import type { Diagnostic, PrintLayout, RenderError } from "../api";
+import type { MeshBuf } from "./viewer/geometry";
 import { Icon } from "./Icon";
 
 const MODES: ShadingMode[] = ["shaded", "edges", "wireframe", "xray"];
 
 export interface RenderState {
   status: "idle" | "rendering" | "ok" | "error";
-  mesh: ArrayBuffer | null;
+  mesh: MeshBuf | null;
   ms?: number;
   error?: RenderError;
   diagnostics: Diagnostic[];
