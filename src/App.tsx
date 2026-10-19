@@ -615,7 +615,7 @@ function App() {
   const panes = project && {
     source: (
       <SourcePane
-        key={projectId}
+        key={`source-${projectId}`}
         source={project.source}
         errorLine={render.status === "error" ? render.error?.line : null}
         highlight={sourceHit}
@@ -661,7 +661,7 @@ function App() {
     ),
     preview: (
       <PreviewPane
-        key={projectId}
+        key={`preview-${projectId}`}
         project={project}
         render={render}
         layout={layout}

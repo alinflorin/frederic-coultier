@@ -1,6 +1,6 @@
 [package]
 name = "frederic-coultier"
-version = "0.2.3"
+version = "0.2.5"
 description = "Frederic Coultier desktop app"
 authors = ["Alin-Florin Ciu"]
 edition = "2024"
