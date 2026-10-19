@@ -7,7 +7,6 @@ export const DEFAULT_SETTINGS: FcProject["settings"] = {
   material: { metal: "silver925", process: "casting" },
   render: {
     metalColor: "#cfd2d6",
-    gemColor: "#7fd4f2",
     finish: "polished",
     shading: "shaded",
     orthographic: false,

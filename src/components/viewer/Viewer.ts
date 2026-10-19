@@ -2,15 +2,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { ShadingMode } from "../../types";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { meshVolume } from "./geometry";
+import { flatGeometry, indexedGeometry, meshVolume } from "./geometry";
 
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 export interface ViewerStyle {
   metalColor: string;
-  gemColor: string;
   roughness: number;
   display: ShadingMode;
   ortho: boolean;
@@ -102,19 +100,6 @@ export class Viewer {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
   private controls: OrbitControls;
   private metalMat = new THREE.MeshStandardMaterial({ metalness: 1 });
-  private gemMat = new THREE.MeshPhysicalMaterial({
-    metalness: 0,
-    roughness: 0.02,
-    transmission: 0.92,
-    ior: 2.4,
-    thickness: 2,
-    specularIntensity: 1,
-    envMapIntensity: 2.2,
-    clearcoat: 1,
-    clearcoatRoughness: 0,
-    side: THREE.DoubleSide,
-    flatShading: true,
-  });
   private sprueMat = new THREE.MeshStandardMaterial({ color: 0xf0a030, metalness: 0.3, roughness: 0.4 });
   private supportMat = new THREE.MeshStandardMaterial({ color: 0xd9534f, metalness: 0.1, roughness: 0.6 });
   private model: THREE.Group | null = null;
@@ -233,8 +218,6 @@ export class Viewer {
     this.style = s;
     this.metalMat.color.set(s.metalColor);
     this.metalMat.roughness = s.roughness;
-    this.gemMat.color.set(s.gemColor);
-    this.gemMat.attenuationColor.set(s.gemColor);
 
     const wire = s.display === "wireframe";
     const xray = s.display === "xray";
@@ -244,11 +227,6 @@ export class Viewer {
     m.opacity = xray ? 0.3 : 1;
     m.depthWrite = !xray;
     m.needsUpdate = true;
-    const g = this.gemMat;
-    g.wireframe = wire;
-    g.opacity = xray ? 0.3 : 1;
-    g.transparent = xray;
-    g.needsUpdate = true;
     for (const e of this.edges) e.visible = s.display === "edges" || xray;
     this.shadow.visible = !wire;
     this.grid.visible = s.grid;
@@ -269,7 +247,7 @@ export class Viewer {
 
   private applySection() {
     const s = this.section;
-    const mats = [this.metalMat, this.gemMat, this.sprueMat, this.supportMat, this.edgeMat];
+    const mats = [this.metalMat, this.sprueMat, this.supportMat, this.edgeMat];
     for (const m of mats) {
       m.clippingPlanes = s ? [this.clip] : null;
       if ("clipShadows" in m) m.clipShadows = true;
@@ -286,14 +264,12 @@ export class Viewer {
   }
 
   /**
-   * Shows an STL (binary or ASCII). Returns its stats, or null when there is nothing to show.
-   * The last `gemTris` triangles of the STL are stones and are drawn as glass.
+   * Shows an indexed mesh (see `indexedGeometry`). Returns its stats, or null when there is nothing to show.
    */
   setMesh(
-    stl: ArrayBuffer | null,
-    supportsStl: ArrayBuffer | null = null,
-    sprueStl: ArrayBuffer | null = null,
-    gemTris = 0,
+    mesh: ArrayBuffer | null,
+    supports: ArrayBuffer | null = null,
+    sprue: ArrayBuffer | null = null,
   ): ViewerStats | null {
     const first = !this.model;
     if (this.model) {
@@ -303,52 +279,31 @@ export class Viewer {
       this.edges = [];
     }
     this.dirty = true;
-    if (!stl || stl.byteLength < 84) {
+    const raw = mesh ? indexedGeometry(mesh) : null;
+    if (!raw) {
       if (this.style) this.setStyle(this.style);
       return null;
     }
 
-    const raw = new STLLoader().parse(stl);
-    const total = raw.attributes.position.count / 3;
+    const total = raw.index!.count / 3;
     const volume = meshVolume(raw);
-    const gems = Math.min(Math.max(0, Math.floor(gemTris)), total);
-    let gemGeo: THREE.BufferGeometry | null = null;
-    let metalRaw = raw;
-    if (gems > 0) {
-      const cut = (total - gems) * 3;
-      const part = (from: number, to: number) => {
-        const g = new THREE.BufferGeometry();
-        for (const name of ["position", "normal"] as const) {
-          const a = raw.getAttribute(name);
-          if (a) g.setAttribute(name, new THREE.BufferAttribute(a.array.slice(from * a.itemSize, to * a.itemSize), a.itemSize));
-        }
-        return g;
-      };
-      metalRaw = part(0, cut);
-      gemGeo = part(cut, total * 3);
-      raw.dispose();
-    }
-    // a design made only of stones has no metal to smooth
-    const geo = metalRaw.attributes.position.count > 0 ? toCreasedNormals(metalRaw, THREE.MathUtils.degToRad(35)) : metalRaw;
-    if (geo !== metalRaw) metalRaw.dispose();
-    const mesh = new THREE.Mesh(geo, this.metalMat);
-    mesh.castShadow = true;
+    const geo = toCreasedNormals(raw, THREE.MathUtils.degToRad(35));
+    raw.dispose();
+    const body = new THREE.Mesh(geo, this.metalMat);
+    body.castShadow = true;
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), this.edgeMat);
-    mesh.add(edges);
+    body.add(edges);
     this.edges = [edges];
-    this.model = new THREE.Group().add(mesh);
-    if (gemGeo) {
-      const gem = new THREE.Mesh(gemGeo, this.gemMat);
-      gem.renderOrder = 1;
-      this.model.add(gem);
-    }
-    if (supportsStl && supportsStl.byteLength > 84) {
-      const sup = new THREE.Mesh(new STLLoader().parse(supportsStl), this.supportMat);
+    this.model = new THREE.Group().add(body);
+    const supGeo = supports && flatGeometry(supports);
+    if (supGeo) {
+      const sup = new THREE.Mesh(supGeo, this.supportMat);
       sup.castShadow = true;
       this.model.add(sup);
     }
-    if (sprueStl && sprueStl.byteLength > 84) {
-      const sp = new THREE.Mesh(new STLLoader().parse(sprueStl), this.sprueMat);
+    const sprueGeo = sprue && flatGeometry(sprue);
+    if (sprueGeo) {
+      const sp = new THREE.Mesh(sprueGeo, this.sprueMat);
       sp.castShadow = true;
       this.model.add(sp);
     }

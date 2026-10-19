@@ -27,7 +27,7 @@ const ENUMS: Record<string, string[]> = {
   "render.shading": ["shaded", "edges", "wireframe", "xray"],
 };
 
-const COLORS = new Set(["render.metalColor", "render.gemColor"]);
+const COLORS = new Set(["render.metalColor"]);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -105,7 +105,6 @@ const DESCRIPTIONS: Record<string, string> = {
   "material.metal": "the metal; sets the density, so the weight",
   "material.process": "`casting`: the print is a master for casting; `direct`: printed directly in the final material",
   "render.metalColor": "metal colour in the preview",
-  "render.gemColor": "gem colour in the preview",
   "render.finish": "surface finish; changes how shiny the preview is",
   "render.shading": "how the preview is drawn",
   "render.orthographic": "orthographic instead of perspective camera",

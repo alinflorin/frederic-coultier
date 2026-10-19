@@ -177,7 +177,6 @@
     "casting": "Casting master",
     "direct": "Printed directly",
     "metalColor": "Metal colour",
-    "gemColor": "Stone colour",
     "finish": "Finish",
     "previewQuality": "Sketch quality",
     "previewQualityHint": "Facets used in fast previews; exports always use full quality.",

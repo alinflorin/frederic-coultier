@@ -24,7 +24,6 @@ export interface ProjectSettings {
   };
   render: {
     metalColor: string;
-    gemColor: string;
     finish: Finish;
     shading: ShadingMode;
     orthographic: boolean;

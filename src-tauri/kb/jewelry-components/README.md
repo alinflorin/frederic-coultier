@@ -7,7 +7,7 @@ and no dependencies on the others unless the header says so.
 
 | file | modules |
 |------|---------|
-| `gems.scad` | `gem()` marker, `round_brilliant`, `oval_brilliant`, `princess`, `cabochon` |
+| `gems.scad` | `round_brilliant`, `oval_brilliant`, `princess`, `cabochon` |
 | `bands.scad` | `ring_band` (comfort / flat / knife-edge), `eu_to_d`, `us_to_d` |
 | `prongs.scad` | `prong_head` (3–8 prongs, with basket); needs `round_brilliant` from `gems.scad` |
 | `bezel.scad` | `bezel` (closed or open back); needs `round_brilliant` from `gems.scad` |
@@ -20,9 +20,6 @@ and no dependencies on the others unless the header says so.
 - **Stones are centred on their girdle plane** (`z = 0`): crown above, pavilion below, culet at
   `z = -pavilion depth`. Heads and bezels use the same plane, so a stone and its setting line up
   when they are given the same position and diameter.
-- **Mark every stone with `gem() { ... }`.** The app draws what is inside `gem()` as glass and leaves
-  it out of the metal weight. Define `module gem() { children(); }` once (it is in `gems.scad`); the
-  line has to read exactly `module gem() {`. A stone that is not wrapped is shown as metal.
 - Subtract the stone from the setting (the heads and bezels already do this), do not leave them
   overlapping in the metal: the overlap is what the casting master has to carve out.
 - `$fn` is set by the caller. For stones, `facets = 16` (the default) gives a faceted look in the
@@ -36,12 +33,11 @@ bail wire ≥ 1.0 mm, earring post ≥ 0.8 mm. Run `check --deep` after changing
 ## Example: solitaire ring
 
 ```
-module gem() { children(); }
 // ... ring_band, prong_head, round_brilliant copied here ...
 ring_size_mm = 17.3; band_thick = 1.6; stone_d = 5;
 ring_band(ring_size_mm, 2.4, band_thick);
 translate([0, 0, ring_size_mm / 2 + band_thick - 0.3]) {
   prong_head(stone_d);
-  gem() round_brilliant(stone_d);
+  round_brilliant(stone_d);
 }
 ```

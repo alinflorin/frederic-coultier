@@ -99,7 +99,7 @@ Draft the model, look at it, correct it, repeat.
 ### 3.4a Components, stones, parameters and versions
 
 - **Reusable parts.** The knowledge base has ready-made, tested modules in `jewelry-components` (`kb ls --dir jewelry-components`; start with its `README.md`): stones (`round_brilliant`, `oval_brilliant`, `princess`, `cabochon`), `ring_band`, `prong_head`, `bezel`, and findings (`jump_ring`, `bail`, `earring_post`, `hoop`, `toggle_bar`). There is no `include`: read the file with `kb cat` and copy only the modules you need into the source, above the geometry. They follow the conventions below, so a stone and its setting line up when given the same diameter and position.
-- **Mark stones with `gem()`.** Define `module gem() { children(); }` once (exactly this line) and wrap every stone in `gem() { ... }`. The preview then draws it as glass, and `check` reports the weight of the metal without the stone. Never wrap metal in `gem()`. Colours in the source (`color()`) are ignored by the renderer.
+- **Colours in the source (`color()`) are ignored by the renderer.** Stones are drawn as metal, and `check` weighs the whole model.
 - **Parameters at the top, one per line, always with a range.** The app turns every `name = number;` line at the top level of the source into a slider the user drags. **Always write the range in a trailing comment, as `[min:step:max]`** (or `[min:max]` when the step does not matter), on every numeric parameter you create or touch, for example:
   ```
   ring_size_mm = 17.3;  // inner diameter [14:0.1:24]

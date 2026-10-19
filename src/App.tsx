@@ -222,7 +222,7 @@ function App() {
       try {
         const res = await renderScad(source);
         if (id !== request.current) return;
-        setRender({ status: "ok", mesh: res.stl, gems: res.gems, metalVolume: res.metalVolume, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
+        setRender({ status: "ok", mesh: res.mesh, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
       } catch (e) {
         if (id !== request.current) return;
         // keep showing the last good model while the source is broken

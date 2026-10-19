@@ -256,7 +256,7 @@ const OPS: Record<string, Handler> = {
     return {
       units: "mm, mm², mm³",
       ...report,
-      metalGrams: +(((report.metalVolume ?? report.stats.volume) / 1000) * DENSITY[s.material.metal]).toFixed(3),
+      metalGrams: +((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(3),
       metal: s.material.metal,
     };
   },

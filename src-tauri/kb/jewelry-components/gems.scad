@@ -1,7 +1,4 @@
 // Gems. Girdle plane at z = 0, crown up, culet down. All sizes are the girdle diameter / width.
-// Wrap every stone in gem() so the app draws it as glass and keeps it out of the metal weight.
-
-module gem() { children(); }
 
 // Round brilliant, standard proportions (table 56%, crown 16.2%, pavilion 43.1%).
 // `grow` enlarges the stone for use as a cutter in a setting.
@@ -53,7 +50,7 @@ module cabochon(d = 6, height = 0.45, base = 0.4, facets = 48) {
     }
 }
 
-// demo: gem() round_brilliant(5);
-// demo: gem() oval_brilliant(7, 5);
-// demo: gem() princess(4.5);
-// demo: gem() cabochon(6);
+// demo: round_brilliant(5);
+// demo: oval_brilliant(7, 5);
+// demo: princess(4.5);
+// demo: cabochon(6);

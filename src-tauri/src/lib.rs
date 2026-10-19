@@ -1,7 +1,6 @@
 mod agent;
 mod bvh;
 mod checks;
-mod gems;
 mod hollow;
 mod meshtools;
 mod project;
@@ -46,24 +45,19 @@ struct RenderInfo {
     diagnostics: Vec<render::Diagnostic>,
     ms: u64,
     empty: bool,
-    /// Triangles at the end of the STL that belong to gems (see `gems.rs`).
-    gems: usize,
-    /// Volume of the metal alone when there are gems (mm³).
-    metal_volume: Option<f64>,
 }
 
 /// Renders OpenSCAD source. The reply is binary, to avoid pushing megabytes of
-/// mesh through JSON: `u32 LE JSON length | RenderInfo JSON | binary STL`.
+/// mesh through JSON: `u32 LE JSON length | RenderInfo JSON (padded to 4 bytes) | indexed mesh`
+/// (see `render::encode_indexed`).
 #[tauri::command]
 async fn render_scad(
     source: String,
     cache: State<'_, RenderCache>,
 ) -> Result<Response, RenderFailure> {
     let cache = cache.inner().clone();
-    let (rendered, split) = tauri::async_runtime::spawn_blocking(move || {
-        let rendered = render::render_on_big_stack(source.clone(), &cache)?;
-        let split = gems::split(&source, &rendered.mesh);
-        Ok::<_, RenderFailure>((rendered, split))
+    let rendered = tauri::async_runtime::spawn_blocking(move || {
+        render::render_on_big_stack(source, &cache)
     })
     .await
     .map_err(|e| RenderFailure {
@@ -73,30 +67,24 @@ async fn render_scad(
     })??;
 
     let empty = rendered.mesh.is_empty();
-    let gems = split.as_ref().map_or(0, |s| s.gem_tris);
-    let info = serde_json::to_vec(&RenderInfo {
+    let mut info = serde_json::to_vec(&RenderInfo {
         echoes: rendered.echoes,
         diagnostics: rendered.diagnostics,
         ms: rendered.ms,
         empty,
-        gems,
-        metal_volume: split.as_ref().map(|s| s.metal.volume()),
     })
     .map_err(|e| RenderFailure {
         message: e.to_string(),
         line: None,
         column: None,
     })?;
+    pad4(&mut info);
 
-    let stl = if empty {
-        Vec::new()
-    } else {
-        split.map_or_else(|| rendered.mesh.to_binary_stl(), |s| s.full.to_binary_stl())
-    };
-    let mut out = Vec::with_capacity(4 + info.len() + stl.len());
+    let mesh = if empty { Vec::new() } else { render::encode_indexed(&rendered.mesh) };
+    let mut out = Vec::with_capacity(4 + info.len() + mesh.len());
     out.extend_from_slice(&(info.len() as u32).to_le_bytes());
     out.extend_from_slice(&info);
-    out.extend_from_slice(&stl);
+    out.extend_from_slice(&mesh);
     Ok(Response::new(out))
 }
 
@@ -114,8 +102,6 @@ struct MeshReport {
     stats: MeshStats,
     findings: Vec<Finding>,
     simplify: Option<SimplifyReport>,
-    /// Volume of the metal alone when the design has `gem()` stones (mm³).
-    metal_volume: Option<f64>,
 }
 
 /// Measurements, print checks and (optionally) a dry run of the simplification.
@@ -148,18 +134,22 @@ async fn mesh_report(
         } else {
             simplify.map(|s| meshtools::simplify(&mesh, &s).1)
         };
-        let metal_volume = gems::metal_source(&source)
-            .and_then(|m| render::render_plain(m).ok())
-            .map(|r| r.mesh.volume());
         Ok(MeshReport {
             stats,
             findings,
             simplify,
-            metal_volume,
         })
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Pads JSON with spaces so the binary that follows it starts on a 4-byte boundary
+/// (the frontend builds `Float32Array`/`Uint32Array` views over it).
+fn pad4(json: &mut Vec<u8>) {
+    while json.len() % 4 != 0 {
+        json.push(b' ');
+    }
 }
 
 fn failure_text(e: RenderFailure) -> String {
@@ -216,8 +206,9 @@ async fn auto_supports(
     .map_err(|e| e.to_string())?
 }
 
-/// The piece as it will be printed. Reply: `u32 LE JSON length | JSON {size, fits, modelLen} |
-/// binary STL of the tilted model | binary STL of the supports and raft | binary STL of the sprue`.
+/// The piece as it will be printed. Reply: `u32 LE JSON length | JSON {size, fits, modelLen, ...}
+/// (padded to 4 bytes) | indexed mesh of the tilted model | indexed mesh of the supports and raft |
+/// indexed mesh of the sprue` (empty sections are zero bytes).
 #[tauri::command]
 async fn print_layout(
     source: String,
@@ -234,21 +225,22 @@ async fn print_layout(
         let sprue_at = planned.as_ref().map(|p| p.2);
         let stub = planned.map(|(m, _, _)| m);
         let (zoff, frame) = supports::frame(&mesh, &print).ok_or("The model is empty.")?;
-        let model = supports::tilted_model(&mesh, &print, zoff).to_binary_stl();
-        let sprue_stl = stub
-            .map(|m| supports::tilted_model(&m, &print, zoff).to_binary_stl())
+        let model = render::encode_indexed(&supports::tilted_model(&mesh, &print, zoff));
+        let sprue_mesh = stub
+            .map(|m| render::encode_indexed(&supports::tilted_model(&m, &print, zoff)))
             .unwrap_or_default();
-        let sup = if supports.is_empty() { Vec::new() } else { supports::support_mesh(&supports, &print, zoff).to_binary_stl() };
-        let info = serde_json::to_vec(&serde_json::json!({
+        let sup = if supports.is_empty() { Vec::new() } else { render::encode_indexed(&supports::support_mesh(&supports, &print, zoff)) };
+        let mut info = serde_json::to_vec(&serde_json::json!({
             "size": frame.size, "fits": frame.fits, "modelLen": model.len(), "supportsLen": sup.len(), "zoff": zoff, "sprueAt": sprue_at,
         }))
         .map_err(|e| e.to_string())?;
-        let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len() + sprue_stl.len());
+        pad4(&mut info);
+        let mut out = Vec::with_capacity(4 + info.len() + model.len() + sup.len() + sprue_mesh.len());
         out.extend_from_slice(&(info.len() as u32).to_le_bytes());
         out.extend_from_slice(&info);
         out.extend_from_slice(&model);
         out.extend_from_slice(&sup);
-        out.extend_from_slice(&sprue_stl);
+        out.extend_from_slice(&sprue_mesh);
         Ok(Response::new(out))
     })
     .await

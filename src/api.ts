@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ExportFormat, FcProject, Support } from "./types";
+import { MESH_HEADER } from "./components/viewer/geometry";
 import { safeName, type WireProject } from "./project";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -32,15 +33,11 @@ export interface Diagnostic {
 }
 
 export interface RenderResult {
-  /** Binary STL, or null when the model has no geometry. */
-  stl: ArrayBuffer | null;
+  /** Indexed mesh (see `indexedGeometry`), or null when the model has no geometry. */
+  mesh: ArrayBuffer | null;
   echoes: string[];
   diagnostics: Diagnostic[];
   ms: number;
-  /** Triangles at the end of the STL that are gems (see `gem()` in the model). */
-  gems: number;
-  /** Volume of the metal alone, when the model has gems (mm³). */
-  metalVolume: number | null;
 }
 
 export class RenderError extends Error {
@@ -61,7 +58,7 @@ function toRenderError(e: unknown): RenderError {
   return new RenderError(String(e));
 }
 
-/** Reply layout: u32 LE JSON length | JSON | binary STL. */
+/** Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | indexed mesh. */
 export async function renderScad(source: string): Promise<RenderResult> {
   let buf: ArrayBuffer;
   try {
@@ -75,13 +72,9 @@ export async function renderScad(source: string): Promise<RenderResult> {
     diagnostics: Diagnostic[];
     ms: number;
     empty: boolean;
-    gems?: number;
-    metalVolume?: number | null;
   };
   return {
-    gems: info.gems ?? 0,
-    metalVolume: info.metalVolume ?? null,
-    stl: info.empty ? null : buf.slice(4 + jsonLength),
+    mesh: info.empty ? null : buf.slice(4 + jsonLength),
     echoes: info.echoes,
     diagnostics: info.diagnostics,
     ms: info.ms,
@@ -164,8 +157,6 @@ export interface MeshReport {
   stats: MeshStats;
   findings: Finding[];
   simplify: SimplifyReport | null;
-  /** Volume of the metal alone when the model has `gem()` stones (mm³). */
-  metalVolume: number | null;
 }
 
 export const meshReport = (
@@ -242,7 +233,7 @@ export interface PrintLayout {
   zoff: number;
 }
 
-/** Reply layout: u32 LE JSON length | JSON | model STL | supports STL. */
+/** Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | model mesh | supports mesh | sprue mesh. */
 export async function printLayout(
   source: string,
   print: PrintParams,
@@ -264,8 +255,8 @@ export async function printLayout(
   const sprueStart = supStart + info.supportsLen;
   return {
     model: buf.slice(start, supStart),
-    supports: info.supportsLen > 84 ? buf.slice(supStart, sprueStart) : null,
-    sprue: buf.byteLength - sprueStart > 84 ? buf.slice(sprueStart) : null,
+    supports: info.supportsLen > MESH_HEADER ? buf.slice(supStart, sprueStart) : null,
+    sprue: buf.byteLength - sprueStart > MESH_HEADER ? buf.slice(sprueStart) : null,
     size: info.size,
     fits: info.fits,
     zoff: info.zoff,
