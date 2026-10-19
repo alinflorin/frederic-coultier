@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Box, Button, Group, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { diffStats, lineDiff, sameDesign } from "../history";
 import type { FcProject } from "../types";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
+import { labelSchema } from "../validation";
 
 export function HistoryDialog({
   project,
@@ -21,9 +26,19 @@ export function HistoryDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const compact = useMediaQuery("(max-width: 899px)");
   const list = useMemo(() => [...project.history].reverse(), [project.history]);
   const [selected, setSelected] = useState<string | null>(list[0]?.id ?? null);
-  const [label, setLabel] = useState("");
+  const rules = useMemo(() => labelSchema(t), [t]);
+  // the names are checked when the field was touched and left, and again when taking or renaming
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const take = useForm<{ label: string }>({ defaultValues: { label: "" }, resolver: zodResolver(rules) as any, mode: "onTouched" });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rename = useForm<{ label: string }>({ defaultValues: { label: "" }, resolver: zodResolver(rules) as any, mode: "onTouched" });
+  const takeSnapshot = take.handleSubmit((v) => {
+    onSnapshot(v.label);
+    take.reset({ label: "" });
+  });
   // window.prompt is not available in the desktop webview, so renaming happens inline
   const [renaming, setRenaming] = useState<string | null>(null);
   const snap = list.find((s) => s.id === selected) ?? null;
@@ -40,51 +55,52 @@ export function HistoryDialog({
       onClose={onClose}
       footer={
         <>
-          <input
-            className="grow"
-            value={label}
-            placeholder={t("history.namePlaceholder")}
-            onChange={(e) => setLabel(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && label.trim()) {
-                onSnapshot(label.trim());
-                setLabel("");
-              }
-            }}
+          <Controller
+            control={take.control}
+            name="label"
+            render={({ field, fieldState }) => (
+              <TextInput
+                flex={1}
+                {...field}
+                placeholder={t("history.namePlaceholder")}
+                error={fieldState.isTouched ? fieldState.error?.message : undefined}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void takeSnapshot();
+                }}
+              />
+            )}
           />
-          <button
-            className="primary"
-            onClick={() => {
-              onSnapshot(label.trim());
-              setLabel("");
-            }}
-          >
-            <Icon name="plus" /> {t("history.take")}
-          </button>
+          <Button leftSection={<Icon name="plus" />} onClick={() => void takeSnapshot()}>
+            {t("history.take")}
+          </Button>
         </>
       }
     >
       {list.length === 0 ? (
-        <p className="muted">{t("history.empty")}</p>
+        <Text c="dimmed">{t("history.empty")}</Text>
       ) : (
-        <div className="history">
-          <ul className="history-list" aria-label={t("history.title")}>
+        <Box style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(180px, 240px) 1fr", gap: 14, minHeight: 0 }}>
+          <Stack gap={4} aria-label={t("history.title")} style={{ overflowY: "auto", maxHeight: "100%" }}>
             {list.map((s) => (
-              <li key={s.id}>
-                <button className={`history-item${s.id === selected ? " on" : ""}`} onClick={() => setSelected(s.id)}>
-                  <b>{name(s)}</b>
-                  <span className="muted">
-                    {when(s.time)} · {t(`history.kind.${s.kind}`)}
-                  </span>
-                </button>
-              </li>
+              <UnstyledButton
+                key={s.id}
+                onClick={() => setSelected(s.id)}
+                p="8px 10px"
+                bg={s.id === selected ? "var(--accent-soft)" : "var(--surface-2)"}
+                bd={`1px solid ${s.id === selected ? "var(--accent)" : "var(--border)"}`}
+                style={{ borderRadius: 6, width: "100%" }}
+              >
+                <Text fw={700} inherit>{name(s)}</Text>
+                <Text c="dimmed" inherit>
+                  {when(s.time)} · {t(`history.kind.${s.kind}`)}
+                </Text>
+              </UnstyledButton>
             ))}
-          </ul>
+          </Stack>
           {snap && (
-            <div className="history-detail">
-              <div className="history-actions">
-                <button
-                  className="primary"
+            <Stack gap={8} style={{ minWidth: 0 }}>
+              <Group gap={8}>
+                <Button
                   disabled={same}
                   onClick={() => {
                     onRestore(snap.id);
@@ -92,44 +108,66 @@ export function HistoryDialog({
                   }}
                 >
                   {t("history.restore")}
-                </button>
-                <button onClick={() => setRenaming(snap.label)}>{t("history.renameAction")}</button>
-                <button onClick={() => onDelete(snap.id)}>{t("history.delete")}</button>
-              </div>
+                </Button>
+                <Button variant="default" onClick={() => {
+                  rename.reset({ label: snap.label });
+                  setRenaming(snap.label);
+                }}>{t("history.renameAction")}</Button>
+                <Button variant="default" onClick={() => onDelete(snap.id)}>{t("history.delete")}</Button>
+              </Group>
               {renaming !== null && (
-                <input
-                  autoFocus
-                  value={renaming}
-                  aria-label={t("history.rename")}
-                  onChange={(e) => setRenaming(e.currentTarget.value)}
-                  onBlur={() => setRenaming(null)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      onRename(snap.id, renaming.trim());
-                      setRenaming(null);
-                    } else if (e.key === "Escape") {
-                      e.stopPropagation();
-                      setRenaming(null);
-                    }
-                  }}
+                <Controller
+                  control={rename.control}
+                  name="label"
+                  render={({ field, fieldState }) => (
+                    <TextInput
+                      data-autofocus
+                      {...field}
+                      aria-label={t("history.rename")}
+                      error={fieldState.isTouched ? fieldState.error?.message : undefined}
+                      onBlur={() => {
+                        field.onBlur();
+                        // leaving the field with a valid name closes it; an invalid one stays, with its message, to be fixed
+                        void rename.trigger("label").then((ok) => ok && setRenaming(null));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          void rename.handleSubmit((v) => {
+                            onRename(snap.id, v.label);
+                            setRenaming(null);
+                          })();
+                        } else if (e.key === "Escape") {
+                          e.stopPropagation();
+                          setRenaming(null);
+                        }
+                      }}
+                    />
+                  )}
                 />
               )}
-              <p className="muted">
+              <Text c="dimmed">
                 {same ? t("history.same") : t("history.changes", { added: stats.added, removed: stats.removed })}
-              </p>
+              </Text>
               {!same && stats.added + stats.removed > 0 && (
-                <pre className="diff" aria-label={t("history.diff")}>
+                <Box component="pre" aria-label={t("history.diff")} m={0} p="8px 10px" fz={12} bg="var(--code-bg)" bd="1px solid var(--border)" style={{ borderRadius: 8, overflow: "auto", maxHeight: 360, lineHeight: 1.5 }}>
                   {diff.map((l, i) => (
-                    <div key={i} className={l.op === "+" ? "add" : l.op === "-" ? "del" : ""}>
+                    <Box
+                      key={i}
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-all",
+                        background: l.op === "+" ? "color-mix(in srgb, var(--ok) 20%, transparent)" : l.op === "-" ? "color-mix(in srgb, var(--bad) 20%, transparent)" : undefined,
+                      }}
+                    >
                       {l.op} {l.text}
-                    </div>
+                    </Box>
                   ))}
-                </pre>
+                </Box>
               )}
-              {!same && stats.added + stats.removed === 0 && <p className="muted">{t("history.settingsOnly")}</p>}
-            </div>
+              {!same && stats.added + stats.removed === 0 && <Text c="dimmed">{t("history.settingsOnly")}</Text>}
+            </Stack>
           )}
-        </div>
+        </Box>
       )}
     </Dialog>
   );

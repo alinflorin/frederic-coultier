@@ -1,3 +1,4 @@
+import { Button, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { Dialog } from "./Dialog";
 
@@ -20,14 +21,14 @@ export function ConfirmDialog({
       onClose={onCancel}
       footer={
         <>
-          <button onClick={onDiscard}>{t("file.discardButton")}</button>
-          <span className="grow" />
-          <button onClick={onCancel}>{t("common.cancel")}</button>
-          <button className="primary" autoFocus onClick={onSave}>{t("menu.save")}</button>
+          <Button variant="default" onClick={onDiscard}>{t("file.discardButton")}</Button>
+          <span style={{ flex: 1 }} />
+          <Button variant="default" onClick={onCancel}>{t("common.cancel")}</Button>
+          <Button autoFocus onClick={onSave}>{t("menu.save")}</Button>
         </>
       }
     >
-      <p style={{ margin: 0 }}>{t("file.unsavedBody", { name })}</p>
+      <Text>{t("file.unsavedBody", { name })}</Text>
     </Dialog>
   );
 }

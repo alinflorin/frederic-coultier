@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ActionIcon, Box, Group, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, keymap } from "@codemirror/view";
@@ -107,17 +108,17 @@ export function SourcePane({
   }
 
   return (
-    <section className="pane source-pane" aria-label={t("source.title")}>
-      <header className="pane-head">
-        <div className="file-tab">
+    <Stack component="section" gap={0} bg="var(--surface)" aria-label={t("source.title")} style={{ minWidth: 0, minHeight: 0 }}>
+      <Group component="header" gap="xs" px={10} py={6} mih={40} wrap="nowrap" bd="0 solid var(--border)" style={{ flex: "none", borderBottomWidth: 1 }}>
+        <Group gap={6} fw={600} fz={13} ff="monospace" wrap="nowrap">
           <Icon name="code" /> model.scad
-        </div>
-        <button className="icon-btn push" onClick={copy} title={t("source.copy")} aria-label={t("source.copy")}>
+        </Group>
+        <ActionIcon variant="subtle" color="gray" ml="auto" onClick={copy} title={t("source.copy")} aria-label={t("source.copy")}>
           <Icon name={copied ? "check" : "copy"} />
-        </button>
-      </header>
+        </ActionIcon>
+      </Group>
       <ParamsPanel source={source} onChange={onChange} />
-      <div className="editor" ref={host} />
-    </section>
+      <Box ref={host} style={{ flex: 1, minHeight: 160, overflow: "hidden" }} />
+    </Stack>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Box, Button, ColorInput, Group, Slider, Text, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Attached } from "../../types";
 import { Icon } from "../Icon";
@@ -137,7 +138,7 @@ export function Annotator({
     <>
       <canvas
         ref={canvas}
-        className="annotate-canvas"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 4, cursor: "crosshair", touchAction: "none" }}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -157,35 +158,48 @@ export function Annotator({
           redraw();
         }}
       />
-      <div className="vp-annotate" onPointerDown={(e) => e.stopPropagation()}>
-        <span className="swatches" role="radiogroup" aria-label={t("annotate.color")}>
+      <Group
+        data-vp-ui
+        gap={8}
+        px={8}
+        py={6}
+        pos="absolute"
+        top={10}
+        left={12}
+        right={56}
+        bg="var(--surface)"
+        bd="1px solid var(--border)"
+        style={{ borderRadius: 8, boxShadow: "var(--shadow)", zIndex: 6 }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Group gap={4} wrap="nowrap" role="radiogroup" aria-label={t("annotate.color")}>
           {COLORS.map((c) => (
-            <button
+            <UnstyledButton
               key={c}
               role="radio"
               aria-checked={color === c}
-              className={`swatch${color === c ? " on" : ""}`}
-              style={{ background: c }}
               title={c}
               aria-label={c}
               onClick={() => setColor(c)}
+              bd="1px solid var(--border)"
+              style={{ width: 20, height: 20, borderRadius: "50%", background: c, outline: color === c ? "2px solid var(--accent)" : undefined, outlineOffset: 1 }}
             />
           ))}
-          <input type="color" value={color} aria-label={t("annotate.color")} onChange={(e) => setColor(e.currentTarget.value)} />
-        </span>
-        <label className="thickness" title={t("annotate.width")}>
-          <input type="range" min={1} max={30} value={width} aria-label={t("annotate.width")} onChange={(e) => setWidth(Number(e.currentTarget.value))} />
-          <i style={{ width: Math.max(width, 3), height: Math.max(width, 3), background: color }} />
-        </label>
-        <button onClick={undo} disabled={count === 0}>{t("annotate.undo")}</button>
-        <button onClick={clear} disabled={count === 0}>{t("annotate.clear")}</button>
-        <span className="grow" />
-        {problem && <span className="bad">{problem}</span>}
-        <button className="primary" onClick={send} disabled={!viewer}>
-          <Icon name="send" size={14} /> {t("annotate.send")}
-        </button>
-        <button onClick={onClose}>{t("annotate.done")}</button>
-      </div>
+          <ColorInput size="xs" w={92} value={color} aria-label={t("annotate.color")} onChange={setColor} format="hex" withPicker={false} swatches={COLORS} />
+        </Group>
+        <Group gap={8} wrap="nowrap" title={t("annotate.width")}>
+          <Slider w={110} size="sm" label={null} min={1} max={30} value={width} aria-label={t("annotate.width")} onChange={setWidth} />
+          <Box component="i" bd="1px solid var(--border)" style={{ display: "inline-block", borderRadius: "50%", flex: "none", width: Math.max(width, 3), height: Math.max(width, 3), background: color }} />
+        </Group>
+        <Button size="compact-xs" variant="default" onClick={undo} disabled={count === 0}>{t("annotate.undo")}</Button>
+        <Button size="compact-xs" variant="default" onClick={clear} disabled={count === 0}>{t("annotate.clear")}</Button>
+        <Box flex={1} />
+        {problem && <Text c="var(--bad)" fz={12}>{problem}</Text>}
+        <Button size="compact-xs" leftSection={<Icon name="send" size={14} />} onClick={send} disabled={!viewer}>
+          {t("annotate.send")}
+        </Button>
+        <Button size="compact-xs" variant="default" onClick={onClose}>{t("annotate.done")}</Button>
+      </Group>
     </>
   );
 }

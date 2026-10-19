@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { Button, List, SimpleGrid, Text, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { EXPORT_FORMATS, type PrintLayout } from "../api";
 import { EXPORT_PRESETS, presetById } from "../exportPresets";
 import { getPref, setPref } from "../prefs";
 import type { ExportFormat, FcProject } from "../types";
 import { Dialog } from "./Dialog";
+import { Check, Section } from "./form";
 
 export interface ExportPick {
   supports: boolean;
@@ -67,80 +69,84 @@ export function ExportDialog({
     size = `~${bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e3)} kB`}`;
   }
 
+  const card = (on: boolean) => ({
+    p: "10px 12px",
+    bg: on ? "var(--accent-soft)" : "var(--surface-2)",
+    bd: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
+    style: { borderRadius: 6, textAlign: "left", display: "block", width: "100%" },
+  }) as const;
+
   return (
     <Dialog
       title={t("export.title")}
       onClose={onClose}
       footer={
         <>
-          <span className="muted grow">
+          <Text c="dimmed" flex={1}>
             {triangles ? `${name}.${f.ext} · ${triangles.toLocaleString()} ${t("preview.tris")} · ${size}` : t("export.noModel")}
-          </span>
-          <button onClick={onClose}>{t("common.cancel")}</button>
-          <button className="primary" disabled={!triangles} onClick={() => onExport(format, { ...pick, supports: canSupports && pick.supports })}>
+          </Text>
+          <Button variant="default" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button disabled={!triangles} onClick={() => onExport(format, { ...pick, supports: canSupports && pick.supports })}>
             {t("export.action")}
-          </button>
+          </Button>
         </>
       }
     >
-      <h3>{t("export.presetTitle")}</h3>
-      <div className="format-grid" role="radiogroup" aria-label={t("export.presetTitle")}>
+      <Section first>{t("export.presetTitle")}</Section>
+      <SimpleGrid cols={2} spacing={8} role="radiogroup" aria-label={t("export.presetTitle")}>
         {EXPORT_PRESETS.map((x) => (
-          <button key={x.id} role="radio" aria-checked={presetId === x.id} className={`format${presetId === x.id ? " on" : ""}`} onClick={() => choosePreset(x.id)}>
-            <b>{t(`export.preset.${x.id}.name`)}</b>
-            <span className="muted">{t(`export.preset.${x.id}.about`)}</span>
-          </button>
+          <UnstyledButton key={x.id} role="radio" aria-checked={presetId === x.id} {...card(presetId === x.id)} onClick={() => choosePreset(x.id)}>
+            <Text fw={700} inherit>{t(`export.preset.${x.id}.name`)}</Text>
+            <Text c="dimmed" inherit>{t(`export.preset.${x.id}.about`)}</Text>
+          </UnstyledButton>
         ))}
-        <button role="radio" aria-checked={!preset} className={`format${!preset ? " on" : ""}`} onClick={() => choosePreset("custom")}>
-          <b>{t("export.preset.custom.name")}</b>
-          <span className="muted">{t("export.preset.custom.about")}</span>
-        </button>
-      </div>
+        <UnstyledButton role="radio" aria-checked={!preset} {...card(!preset)} onClick={() => choosePreset("custom")}>
+          <Text fw={700} inherit>{t("export.preset.custom.name")}</Text>
+          <Text c="dimmed" inherit>{t("export.preset.custom.about")}</Text>
+        </UnstyledButton>
+      </SimpleGrid>
       {preset && (
         <>
-          <ul className="preflight" aria-label={t("export.preflight")}>
+          <List listStyleType="none" aria-label={t("export.preflight")} mt={10} mb={4} spacing={3} fz={13}>
             {checks.map((c) => (
-              <li key={c.key} className={c.ok === null ? "unknown" : c.ok ? "ok" : "warn"}>
-                {c.ok === null ? "•" : c.ok ? "✓" : "!"} {t(`export.preset.${preset.id}.check.${c.key}.${c.ok === null ? "unknown" : c.ok ? "ok" : "warn"}`, c.values)}
-              </li>
+              <List.Item key={c.key} c={c.ok === null ? "dimmed" : c.ok ? undefined : "var(--bad)"}>
+                {c.ok === null ? "•" : c.ok ? <Text span inherit c="var(--ok)">✓</Text> : "!"} {t(`export.preset.${preset.id}.check.${c.key}.${c.ok === null ? "unknown" : c.ok ? "ok" : "warn"}`, c.values)}
+              </List.Item>
             ))}
-          </ul>
-          <ul className="preset-hints muted">
+          </List>
+          <List mt={6} fz={12.5} c="dimmed" pl={4}>
             {preset.hints.map((h) => (
-              <li key={h}>{t(`export.preset.${preset.id}.hint.${h}`)}</li>
+              <List.Item key={h}>{t(`export.preset.${preset.id}.hint.${h}`)}</List.Item>
             ))}
-          </ul>
+          </List>
         </>
       )}
 
-      <h3>{t("export.format")}</h3>
-      <div className="format-grid" role="radiogroup" aria-label={t("export.format")}>
+      <Section>{t("export.format")}</Section>
+      <SimpleGrid cols={2} spacing={8} role="radiogroup" aria-label={t("export.format")}>
         {EXPORT_FORMATS.map((x) => (
-          <button key={x.id} role="radio" aria-checked={format === x.id} className={`format${format === x.id ? " on" : ""}`} onClick={() => setFormat(x.id)}>
-            <b>{t(`export.fmt.${x.id}`)}</b>
-            <span className="muted">{t(`export.fmtHint.${x.id}`)}</span>
-          </button>
+          <UnstyledButton key={x.id} role="radio" aria-checked={format === x.id} {...card(format === x.id)} onClick={() => setFormat(x.id)}>
+            <Text fw={700} inherit>{t(`export.fmt.${x.id}`)}</Text>
+            <Text c="dimmed" inherit>{t(`export.fmtHint.${x.id}`)}</Text>
+          </UnstyledButton>
         ))}
-      </div>
+      </SimpleGrid>
 
-      <h3>{t("export.options")}</h3>
-      <label className="check">
-        <input type="checkbox" disabled={!canSupports} checked={canSupports && pick.supports} onChange={(e) => setPick({ ...pick, supports: e.currentTarget.checked })} />
-        {t("export.opt.supports")}
-        {!canSupports && <span className="muted"> {t("export.noSupports")}</span>}
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={pick.simplify} onChange={(e) => setPick({ ...pick, simplify: e.currentTarget.checked })} />
-        {t("export.opt.simplify")} <span className="muted">({project.settings.optimization.keepPercent}%)</span>
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={pick.sprue} onChange={(e) => setPick({ ...pick, sprue: e.currentTarget.checked })} />
-        {t("export.opt.sprue")}
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={pick.hollow} onChange={(e) => setPick({ ...pick, hollow: e.currentTarget.checked })} />
-        {t("export.opt.hollow")} <span className="muted">({project.settings.printing.hollow.wall} mm)</span>
-      </label>
+      <Section>{t("export.options")}</Section>
+      <Check
+        disabled={!canSupports}
+        checked={canSupports && pick.supports}
+        onChange={(v) => setPick({ ...pick, supports: v })}
+        label={
+          <>
+            {t("export.opt.supports")}
+            {!canSupports && <Text span inherit c="dimmed"> {t("export.noSupports")}</Text>}
+          </>
+        }
+      />
+      <Check checked={pick.simplify} onChange={(v) => setPick({ ...pick, simplify: v })} label={<>{t("export.opt.simplify")} <Text span inherit c="dimmed">({project.settings.optimization.keepPercent}%)</Text></>} />
+      <Check checked={pick.sprue} onChange={(v) => setPick({ ...pick, sprue: v })} label={t("export.opt.sprue")} />
+      <Check checked={pick.hollow} onChange={(v) => setPick({ ...pick, hollow: v })} label={<>{t("export.opt.hollow")} <Text span inherit c="dimmed">({project.settings.printing.hollow.wall} mm)</Text></>} />
     </Dialog>
   );
 }

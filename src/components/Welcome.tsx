@@ -1,3 +1,4 @@
+import { Box, Button, Group, Image, Stack, Text, Title, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Recent } from "../project";
 import { Icon } from "./Icon";
@@ -17,26 +18,33 @@ export function Welcome({
 }) {
   const { t } = useTranslation();
   return (
-    <main className="welcome">
-      <img src="/logo.svg" width={64} height={64} alt="" />
-      <h1>Frederic Coultier</h1>
-      <p className="muted">{t("welcome.tagline")}</p>
-      <div className="welcome-actions">
-        <button className="primary" onClick={onNew}>{t("welcome.new")}</button>
-        <button onClick={onOpen}><Icon name="folder" /> {t("welcome.open")}</button>
-        <button onClick={onSample}>{t("welcome.sample")}</button>
-      </div>
+    <Stack component="main" flex={1} align="center" justify="center" gap="xs" p="lg" ta="center" c="var(--accent)" style={{ minHeight: 0, overflowY: "auto" }}>
+      <Image src="/logo.svg" w={64} h={64} alt="" />
+      <Title order={1} fz={28} fw={600} c="var(--text)">Frederic Coultier</Title>
+      <Text c="dimmed" maw={420}>{t("welcome.tagline")}</Text>
+      <Group gap="sm" justify="center" mt={14} mb={22}>
+        <Button onClick={onNew}>{t("welcome.new")}</Button>
+        <Button variant="default" leftSection={<Icon name="folder" />} onClick={onOpen}>{t("welcome.open")}</Button>
+        <Button variant="default" onClick={onSample}>{t("welcome.sample")}</Button>
+      </Group>
       {recents.length > 0 && (
-        <div className="recent">
-          <h3>{t("welcome.recent")}</h3>
+        <Stack gap={6} w="min(100%, 420px)" ta="left" c="var(--text)">
+          <Text fz={12} tt="uppercase" lts="0.06em" c="dimmed" component="h3">{t("welcome.recent")}</Text>
           {recents.map((r) => (
-            <button key={r.path} className="recent-item" onClick={() => onOpenRecent(r.path)}>
-              <b>{r.name}</b>
-              <span className="muted">{r.path}</span>
-            </button>
+            <UnstyledButton
+              key={r.path}
+              onClick={() => onOpenRecent(r.path)}
+              p="8px 12px"
+              bg="var(--surface-2)"
+              bd="1px solid var(--border)"
+              style={{ borderRadius: 6, minWidth: 0 }}
+            >
+              <Box fw={700} style={{ overflowWrap: "anywhere" }}>{r.name}</Box>
+              <Text c="dimmed" inherit style={{ overflowWrap: "anywhere" }}>{r.path}</Text>
+            </UnstyledButton>
           ))}
-        </div>
+        </Stack>
       )}
-    </main>
+    </Stack>
   );
 }

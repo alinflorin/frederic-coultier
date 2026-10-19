@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Button, NativeSelect, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
@@ -7,6 +10,8 @@ import { getPref, setPref } from "../prefs";
 import { playChime, setChimeOn, setChimeSecs, useChime } from "../chime";
 import { Dialog } from "./Dialog";
 import { McpPrefs } from "./McpPrefs";
+import { chimeSchema } from "../validation";
+import { Check, Field, Note, NumField, Section } from "./form";
 
 /** App-wide preferences, as opposed to the settings stored in a project. */
 export function PreferencesDialog({
@@ -55,6 +60,21 @@ export function PreferencesDialog({
     onRefreshEngines();
   }, [onRefreshEngines]);
   const chime = useChime();
+  // the minimum time for a chime: a message shows once the field was touched and left, a valid number applies at once
+  const chimeRules = useMemo(() => chimeSchema(t), [t]);
+  const chimeForm = useForm<{ secs: number | string }>({
+    defaultValues: { secs: chime.secs },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(chimeRules) as any,
+    mode: "onTouched",
+  });
+  useEffect(() => {
+    const sub = chimeForm.watch((v) => {
+      const r = chimeRules.safeParse(v);
+      if (r.success) setChimeSecs(r.data.secs);
+    });
+    return () => sub.unsubscribe();
+  }, [chimeForm, chimeRules]);
   const usable = engines?.some((e) => e.available) ?? false;
   return (
     <Dialog
@@ -63,142 +83,86 @@ export function PreferencesDialog({
       onClose={onClose}
       footer={
         <>
-          <span className="muted grow">{t("prefs.hint")}</span>
-          <button className="primary" onClick={onClose}>{t("common.done")}</button>
+          <Text c="dimmed" flex={1}>{t("prefs.hint")}</Text>
+          <Button onClick={onClose}>{t("common.done")}</Button>
         </>
       }
     >
-      <label className="field">
-        <span className="field-label">{t("language")}</span>
-        <span className="field-input">
-          <select value={i18n.resolvedLanguage} onChange={(e) => setLanguage(e.currentTarget.value as Language)}>
-            {SUPPORTED_LANGUAGES.map((l) => (
-              <option key={l} value={l}>{LANGUAGE_NAMES[l]}</option>
-            ))}
-          </select>
-        </span>
-      </label>
-      <label className="field">
-        <span className="field-label">{t("prefs.theme")}</span>
-        <span className="field-input">
-          <select
-            value={theme}
-            onChange={(e) => {
-              const next = e.currentTarget.value as Theme;
-              setThemeState(next);
-              setTheme(next);
-            }}
-          >
-            {THEMES.map((th) => (
-              <option key={th} value={th}>{t(`prefs.themes.${th}`)}</option>
-            ))}
-          </select>
-        </span>
-      </label>
+      <Field label={t("language")}>
+        <NativeSelect
+          size="xs"
+          value={i18n.resolvedLanguage}
+          data={SUPPORTED_LANGUAGES.map((l) => ({ value: l, label: LANGUAGE_NAMES[l] }))}
+          onChange={(e) => setLanguage(e.currentTarget.value as Language)}
+        />
+      </Field>
+      <Field label={t("prefs.theme")}>
+        <NativeSelect
+          size="xs"
+          value={theme}
+          data={THEMES.map((th) => ({ value: th, label: t(`prefs.themes.${th}`) }))}
+          onChange={(e) => {
+            const next = e.currentTarget.value as Theme;
+            setThemeState(next);
+            setTheme(next);
+          }}
+        />
+      </Field>
+      <Field label={t("prefs.autoUpdate")}>
+        <Check checked={autoUpdate} disabled={!autoUpdateAvailable} onChange={onAutoUpdate} label="" />
+      </Field>
+      {!autoUpdateAvailable && <Note>{t("prefs.autoUpdateManaged")}</Note>}
 
-      <label className="field">
-        <span className="field-label">{t("prefs.autoUpdate")}</span>
-        <span className="field-input">
-          <input type="checkbox" checked={autoUpdate} disabled={!autoUpdateAvailable} onChange={(e) => onAutoUpdate(e.currentTarget.checked)} />
-        </span>
-      </label>
-      {!autoUpdateAvailable && <p className="muted">{t("prefs.autoUpdateManaged")}</p>}
-
-      <h3>{t("prefs.chat.title")}</h3>
-      <label className="field">
-        <span className="field-label">{t("prefs.chat.enabled")}</span>
-        <span className="field-input">
-          <input
-            type="checkbox"
-            checked={chatEnabled}
-            disabled={!chatEnabled && !usable}
-            onChange={(e) => onChatEnabled(e.currentTarget.checked)}
-          />
-        </span>
-      </label>
-      <label className="field">
-        <span className="field-label">{t("prefs.chat.allTools")}</span>
-        <span className="field-input">
-          <input
-            type="checkbox"
-            checked={allTools}
-            onChange={(e) => {
-              setPref("chatAllTools", e.currentTarget.checked);
-              setAllTools(e.currentTarget.checked);
-            }}
-          />
-        </span>
-      </label>
-      <p className="muted">{t("prefs.chat.allToolsHint")}</p>
-      <label className="field">
-        <span className="field-label">{t("prefs.chat.chime")}</span>
-        <span className="field-input">
-          <input type="checkbox" checked={chime.on} onChange={(e) => setChimeOn(e.currentTarget.checked)} />
-          <button type="button" onClick={playChime}>{t("prefs.chat.chimePlay")}</button>
-        </span>
-      </label>
-      <label className="field">
-        <span className="field-label">{t("prefs.chat.chimeAfter")}</span>
-        <span className="field-input">
-          <input
-            type="number"
-            min={0}
-            step={5}
-            value={chime.secs}
-            disabled={!chime.on}
-            onChange={(e) => Number.isFinite(e.currentTarget.valueAsNumber) && setChimeSecs(e.currentTarget.valueAsNumber)}
-          />
-        </span>
-      </label>
-      <p className="muted">{t("prefs.chat.chimeHint")}</p>
-      <label className="field">
-        <span className="field-label">{t("prefs.chat.agent")}</span>
-        <span className="field-input">
-          <select value={engine ?? ""} disabled={!usable} onChange={(e) => onEngine(e.currentTarget.value)}>
-            {(engines ?? []).map((e) => (
-              <option key={e.id} value={e.id} disabled={!e.available}>
-                {e.label} — {e.available ? e.detail : t("prefs.chat.unavailable")}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={onRefreshEngines}>{t("prefs.chat.refresh")}</button>
-        </span>
-      </label>
+      <Section>{t("prefs.chat.title")}</Section>
+      <Field label={t("prefs.chat.enabled")}>
+        <Check checked={chatEnabled} disabled={!chatEnabled && !usable} onChange={onChatEnabled} label="" />
+      </Field>
+      <Field label={t("prefs.chat.allTools")}>
+        <Check
+          checked={allTools}
+          onChange={(on) => {
+            setPref("chatAllTools", on);
+            setAllTools(on);
+          }}
+          label=""
+        />
+      </Field>
+      <Note>{t("prefs.chat.allToolsHint")}</Note>
+      <Field label={t("prefs.chat.chime")}>
+        <Check checked={chime.on} onChange={setChimeOn} label="" />
+        <Button type="button" variant="default" size="xs" onClick={playChime}>{t("prefs.chat.chimePlay")}</Button>
+      </Field>
+      <NumField control={chimeForm.control} name="secs" label={t("prefs.chat.chimeAfter")} step={5} disabled={!chime.on} />
+      <Note>{t("prefs.chat.chimeHint")}</Note>
+      <Field label={t("prefs.chat.agent")}>
+        <NativeSelect
+          size="xs"
+          value={engine ?? ""}
+          disabled={!usable}
+          data={(engines ?? []).map((e) => ({ value: e.id, label: `${e.label} — ${e.available ? e.detail : t("prefs.chat.unavailable")}`, disabled: !e.available }))}
+          onChange={(e) => onEngine(e.currentTarget.value)}
+        />
+        <Button type="button" variant="default" size="xs" onClick={onRefreshEngines}>{t("prefs.chat.refresh")}</Button>
+      </Field>
       {usable && (
         <>
-          <label className="field">
-            <span className="field-label">{t("prefs.chat.model")}</span>
-            <span className="field-input">
-              <select value={model} onChange={(e) => onModel(e.currentTarget.value)}>
-                <option value="">{t("prefs.chat.own")}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
-              </select>
-            </span>
-          </label>
+          <Field label={t("prefs.chat.model")}>
+            <NativeSelect size="xs" value={model} data={[{ value: "", label: t("prefs.chat.own") }, ...models.map((m) => ({ value: m.id, label: m.label }))]} onChange={(e) => onModel(e.currentTarget.value)} />
+          </Field>
           {efforts.length > 0 && (
-            <label className="field">
-              <span className="field-label">{t("prefs.chat.effort")}</span>
-              <span className="field-input">
-                <select value={effort} onChange={(e) => onEffort(e.currentTarget.value)}>
-                  <option value="">{t("prefs.chat.own")}</option>
-                  {efforts.map((l) => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-              </span>
-            </label>
+            <Field label={t("prefs.chat.effort")}>
+              <NativeSelect size="xs" value={effort} data={[{ value: "", label: t("prefs.chat.own") }, ...efforts.map((l) => ({ value: l, label: l }))]} onChange={(e) => onEffort(e.currentTarget.value)} />
+            </Field>
           )}
         </>
       )}
-      {engines && !usable && <p className="muted">{t("prefs.chat.none")}</p>}
+      {engines && !usable && <Note>{t("prefs.chat.none")}</Note>}
       {engines?.filter((e) => !e.available).map((e) => (
-        <p key={e.id} className="muted">{e.label}: {e.detail}</p>
+        <Note key={e.id}>{e.label}: {e.detail}</Note>
       ))}
-      <p className="muted">{t("prefs.chat.hint")}</p>
+      <Note>{t("prefs.chat.hint")}</Note>
 
-      <h3>{t("prefs.mcp.title")}</h3>
+      <Section>{t("prefs.mcp.title")}</Section>
       <McpPrefs />
     </Dialog>
   );

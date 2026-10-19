@@ -17,7 +17,16 @@ export function applyTheme(theme: Theme) {
   else root.setAttribute("data-theme", theme);
 }
 
+const listeners = new Set<() => void>();
+
+/** For `useSyncExternalStore`: lets the UI library follow theme changes. */
+export function subscribeTheme(cb: () => void) {
+  listeners.add(cb);
+  return () => void listeners.delete(cb);
+}
+
 export function setTheme(theme: Theme) {
   setPref(KEY, theme);
   applyTheme(theme);
+  listeners.forEach((cb) => cb());
 }

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Box, Button, Code, Group, Image, List, Modal, SegmentedControl, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
 import { Icon } from "./Icon";
+import { Check, Section } from "./form";
 
 export type RunMode = "chat" | "mcp";
 
@@ -27,122 +29,115 @@ export function Onboarding({
   const chosen: RunMode = chatBlocked ? "mcp" : mode;
 
   return (
-    <div className="backdrop onboarding" role="dialog" aria-modal="true" aria-label={t("onboarding.title")}>
-      <div className="dialog onboarding-card">
-        {step === 0 ? (
-          <div className="dialog-body">
-            <h2 className="onboarding-q">{t("onboarding.lookTitle")}</h2>
-            <h3>{t("language")}</h3>
-            <div className="choice-row" role="radiogroup" aria-label={t("language")}>
-              {SUPPORTED_LANGUAGES.map((l: Language) => (
-                <button
-                  key={l}
-                  type="button"
+    <Modal
+      opened
+      onClose={() => {}}
+      withCloseButton={false}
+      closeOnEscape={false}
+      closeOnClickOutside={false}
+      centered
+      size={640}
+      zIndex={400}
+      overlayProps={{ backgroundOpacity: 1, color: "var(--bg)" }}
+      aria-label={t("onboarding.title")}
+    >
+      {step === 0 ? (
+        <Stack gap={0}>
+          <Title order={2} fz={18} mb={4}>{t("onboarding.lookTitle")}</Title>
+          <Section>{t("language")}</Section>
+          <SegmentedControl
+            aria-label={t("language")}
+            value={i18n.resolvedLanguage ?? SUPPORTED_LANGUAGES[0]}
+            data={SUPPORTED_LANGUAGES.map((l: Language) => ({ value: l, label: LANGUAGE_NAMES[l] }))}
+            onChange={(l) => setLanguage(l as Language)}
+          />
+          <Section>{t("prefs.theme")}</Section>
+          <SegmentedControl
+            aria-label={t("prefs.theme")}
+            value={theme}
+            data={THEMES.map((th) => ({ value: th, label: t(`prefs.themes.${th}`) }))}
+            onChange={(th) => {
+              setThemeState(th as Theme);
+              setTheme(th as Theme);
+            }}
+          />
+        </Stack>
+      ) : step === 1 ? (
+        <Stack align="center" ta="center" gap="xs" px="md" py="lg">
+          <Image src="/logo.svg" w={64} h={64} alt="" />
+          <Title order={1} fz={26} fw={600}>{t("onboarding.title")}</Title>
+          <Text maw={460}>{t("onboarding.about1")}</Text>
+          <Text maw={460} c="dimmed">{t("onboarding.about2")}</Text>
+        </Stack>
+      ) : (
+        <Stack gap={8}>
+          <Title order={2} fz={18}>{t("onboarding.modeTitle")}</Title>
+          <Text fz={12} c="dimmed">{t("onboarding.modeHint")}</Text>
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing={12} my={12} role="radiogroup">
+            {(["chat", "mcp"] as const).map((id) => {
+              const disabled = id === "chat" && chatBlocked;
+              const on = chosen === id;
+              return (
+                <UnstyledButton
+                  key={id}
                   role="radio"
-                  aria-checked={i18n.resolvedLanguage === l}
-                  className={i18n.resolvedLanguage === l ? "on" : ""}
-                  onClick={() => setLanguage(l)}
+                  aria-checked={on}
+                  disabled={disabled}
+                  onClick={() => setMode(id)}
+                  p={14}
+                  bg={on ? "var(--accent-soft)" : "var(--surface-2)"}
+                  bd={`1px solid ${on ? "var(--accent)" : "var(--border)"}`}
+                  style={{ borderRadius: 6, textAlign: "left", opacity: disabled ? 0.45 : 1 }}
                 >
-                  {LANGUAGE_NAMES[l]}
-                </button>
-              ))}
-            </div>
-            <h3>{t("prefs.theme")}</h3>
-            <div className="choice-row" role="radiogroup" aria-label={t("prefs.theme")}>
-              {THEMES.map((th) => (
-                <button
-                  key={th}
-                  type="button"
-                  role="radio"
-                  aria-checked={theme === th}
-                  className={theme === th ? "on" : ""}
-                  onClick={() => {
-                    setThemeState(th);
-                    setTheme(th);
-                  }}
-                >
-                  {t(`prefs.themes.${th}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : step === 1 ? (
-          <div className="dialog-body onboarding-body">
-            <img src="/logo.svg" width={64} height={64} alt="" />
-            <h1>{t("onboarding.title")}</h1>
-            <p>{t("onboarding.about1")}</p>
-            <p className="muted">{t("onboarding.about2")}</p>
-          </div>
-        ) : (
-          <div className="dialog-body">
-            <h2 className="onboarding-q">{t("onboarding.modeTitle")}</h2>
-            <p className="muted note">{t("onboarding.modeHint")}</p>
-            <div className="mode-cards" role="radiogroup">
-              {(["chat", "mcp"] as const).map((id) => {
-                const disabled = id === "chat" && chatBlocked;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={chosen === id}
-                    disabled={disabled}
-                    className={`mode-card${chosen === id ? " on" : ""}`}
-                    onClick={() => setMode(id)}
-                  >
-                    <span className="mode-head">
+                  <Stack gap={8}>
+                    <Group gap={8} c="var(--accent)">
                       <Icon name={id === "chat" ? "chat" : "code"} size={20} />
-                      <b>{t(`onboarding.${id}.name`)}</b>
-                      {id === "chat" && <span className="mode-tag">{t("onboarding.recommended")}</span>}
-                    </span>
-                    <span>{t(`onboarding.${id}.what`)}</span>
-                    <span className="muted">{t(`onboarding.${id}.how`)}</span>
-                    {disabled && <span className="mcp-warn">{t("chat.noAgent")}</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {chatBlocked && (
-              <div className="onboarding-signin">
-                <b>{t("onboarding.signin.title")}</b>
-                <ol>
-                  <li>{t("onboarding.signin.step1")}</li>
-                  <li>
-                    <code>claude auth login</code> {t("onboarding.signin.or")} <code>codex login</code>
-                  </li>
-                  <li>{t("onboarding.signin.step3")}</li>
-                </ol>
-                <button type="button" onClick={onRefresh}>{t("onboarding.signin.check")}</button>
-              </div>
-            )}
-            {chosen === "chat" && !chatBlocked && (
-              <>
-                <label className="field">
-                  <span className="field-label">{t("prefs.chat.allTools")}</span>
-                  <span className="field-input">
-                    <input type="checkbox" checked={allTools} onChange={(e) => setAllTools(e.currentTarget.checked)} />
-                  </span>
-                </label>
-                <p className="muted note">{t("prefs.chat.allToolsHint")}</p>
-              </>
-            )}
-            <p className="muted note">{t("onboarding.later")}</p>
-          </div>
-        )}
-        <footer className="dialog-foot onboarding-foot">
-          <span className="onboarding-dots" aria-hidden>
-            {[0, 1, 2].map((i) => (
-              <i key={i} className={step === i ? "on" : ""} />
-            ))}
-          </span>
-          {step > 0 && <button onClick={() => setStep((step - 1) as 0 | 1)}>{t("onboarding.back")}</button>}
-          {step < 2 ? (
-            <button className="primary" onClick={() => setStep((step + 1) as 1 | 2)}>{t("onboarding.next")}</button>
-          ) : (
-            <button className="primary" onClick={() => onDone(chosen, chosen === "chat" && allTools)}>{t("onboarding.start")}</button>
+                      <Text span fw={700} fz={15} c="var(--text)">{t(`onboarding.${id}.name`)}</Text>
+                      {id === "chat" && <Text span fz={11} px={7} bg="var(--accent)" c="var(--accent-text)" style={{ borderRadius: 99 }}>{t("onboarding.recommended")}</Text>}
+                    </Group>
+                    <Text inherit>{t(`onboarding.${id}.what`)}</Text>
+                    <Text inherit c="dimmed">{t(`onboarding.${id}.how`)}</Text>
+                    {disabled && <Text inherit c="var(--accent)">{t("chat.noAgent")}</Text>}
+                  </Stack>
+                </UnstyledButton>
+              );
+            })}
+          </SimpleGrid>
+          {chatBlocked && (
+            <Stack gap={6} fz={13}>
+              <Text fw={700} inherit>{t("onboarding.signin.title")}</Text>
+              <List type="ordered" fz={13}>
+                <List.Item>{t("onboarding.signin.step1")}</List.Item>
+                <List.Item>
+                  <Code>claude auth login</Code> {t("onboarding.signin.or")} <Code>codex login</Code>
+                </List.Item>
+                <List.Item>{t("onboarding.signin.step3")}</List.Item>
+              </List>
+              <Box><Button type="button" variant="default" size="xs" onClick={onRefresh}>{t("onboarding.signin.check")}</Button></Box>
+            </Stack>
           )}
-        </footer>
-      </div>
-    </div>
+          {chosen === "chat" && !chatBlocked && (
+            <>
+              <Check checked={allTools} onChange={setAllTools} label={t("prefs.chat.allTools")} />
+              <Text fz={12} c="dimmed">{t("prefs.chat.allToolsHint")}</Text>
+            </>
+          )}
+          <Text fz={12} c="dimmed">{t("onboarding.later")}</Text>
+        </Stack>
+      )}
+      <Group gap={8} mt="md" justify="flex-end" wrap="nowrap">
+        <Group gap={6} mr="auto" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <Box key={i} w={8} h={8} bg={step === i ? "var(--accent)" : "var(--border)"} style={{ borderRadius: "50%" }} />
+          ))}
+        </Group>
+        {step > 0 && <Button variant="default" onClick={() => setStep((step - 1) as 0 | 1)}>{t("onboarding.back")}</Button>}
+        {step < 2 ? (
+          <Button onClick={() => setStep((step + 1) as 1 | 2)}>{t("onboarding.next")}</Button>
+        ) : (
+          <Button onClick={() => onDone(chosen, chosen === "chat" && allTools)}>{t("onboarding.start")}</Button>
+        )}
+      </Group>
+    </Modal>
   );
 }

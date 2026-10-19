@@ -12,6 +12,16 @@
     "cancel": "Cancel",
     "done": "Done"
   },
+  "validation": {
+    "required": "This field is required.",
+    "number": "Enter a number.",
+    "integer": "Enter a whole number.",
+    "min": "Must be at least {{min}}.",
+    "max": "Must be at most {{max}}.",
+    "color": "Enter a colour like #cfd2d6.",
+    "labelMax": "Use at most {{max}} characters.",
+    "thinnerThanLift": "Must be thinner than the lift ({{max}} mm)."
+  },
   "app": {
     "panes": "Panes"
   },

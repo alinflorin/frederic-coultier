@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { ActionIcon, Anchor, Box, Button, Divider, Group, Menu, Slider, Stack, Text } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import type { Attached, FcProject, ShadingMode } from "../types";
 import { DENSITY, ROUGHNESS } from "../materials";
@@ -61,7 +63,7 @@ export function PreviewPane({
   const [cut, setCut] = useState(false);
   const [section, setSection] = useState<Section>({ axis: "z", t: 0.5, flip: false });
   const [turntable, setTurntable] = useState(false);
-  const [menu, setMenu] = useState(false);
+  const compact = useMediaQuery("(max-width: 899px)");
   const [console_, setConsole] = useState(false);
   const [annotate, setAnnotate] = useState(false);
   const [editMode, setEditMode] = useState<"supports" | "sprue" | null>(null);
@@ -121,13 +123,6 @@ export function PreviewPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer, render.mesh, layout, showLayout]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(false);
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, [menu]);
-
   const cycle = () => onPatchRender({ shading: MODES[(MODES.indexOf(r.shading) + 1) % MODES.length] });
   const onKey = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -141,18 +136,28 @@ export function PreviewPane({
   const dims = stats?.size.map((n) => n.toFixed(1)).join(" × ");
   const grams = stats ? (stats.metalVolumeMm3 / 1000) * DENSITY[material.metal] : 0;
 
+  const tool = (on: boolean) => ({
+    variant: on ? "light" : "subtle",
+    color: on ? "gold" : "gray",
+    size: compact ? 40 : 34,
+    "aria-pressed": on,
+  }) as const;
+  const floating = { bg: "var(--surface)", bd: "1px solid var(--border)", style: { borderRadius: 8, boxShadow: "var(--shadow)" } } as const;
+
   return (
-    <section className="pane preview-pane" aria-label={t("preview.title")}>
-      <div
-        className={`viewport${editSup || editSprue ? " editing" : ""}`}
+    <Stack component="section" gap={0} pos="relative" bg="var(--surface)" aria-label={t("preview.title")} style={{ minWidth: 0, minHeight: 0 }}>
+      <Box
+        pos="relative"
         tabIndex={0}
         onKeyDown={onKey}
+        bg="var(--vp-bg)"
+        style={{ flex: 1, minHeight: 160, overflow: "hidden", outline: "none", cursor: editSup || editSprue ? "crosshair" : undefined }}
         onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
         onPointerUp={(e) => {
           const d = down.current;
           down.current = null;
           if (!(editSup || editSprue) || !showLayout || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
-          if ((e.target as HTMLElement).closest(".vp-tools, .vp-section")) return;
+          if ((e.target as HTMLElement).closest("[data-vp-ui]")) return;
           const hit = viewer?.pick(e.clientX, e.clientY);
           if (!hit) return;
           if (editSprue) {
@@ -160,178 +165,141 @@ export function PreviewPane({
           } else onPickSupport(hit.kind, hit.point);
         }}
       >
-        <div className="vp-host" ref={host} />
+        <Box ref={host} pos="absolute" inset={0} />
         <Gizmo viewer={viewer} />
         {annotate && onAnnotated && <Annotator viewer={viewer} onSend={onAnnotated} onClose={() => setAnnotate(false)} />}
 
-        <div className="vp-tools" onPointerDown={(e) => e.stopPropagation()}>
-          <button className="vp-btn" onClick={() => viewer?.fit()} title={t("preview.fit")} aria-label={t("preview.fit")}>
+        <Stack
+          data-vp-ui
+          gap={4}
+          p={4}
+          pos="absolute"
+          top={10}
+          right={10}
+          bd="1px solid var(--border)"
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ zIndex: 5, borderRadius: 10, background: "color-mix(in srgb, var(--surface) 82%, transparent)", backdropFilter: "blur(8px)" }}
+        >
+          <ActionIcon variant="subtle" color="gray" size={compact ? 40 : 34} onClick={() => viewer?.fit()} title={t("preview.fit")} aria-label={t("preview.fit")}>
             <Icon name="fit" size={18} />
-          </button>
-          <button
-            className={`vp-btn${r.orthographic ? " on" : ""}`}
-            aria-pressed={r.orthographic}
-            onClick={() => onPatchRender({ orthographic: !r.orthographic })}
-            title={t("preview.orthoHint")}
-            aria-label={t("preview.ortho")}
-          >
+          </ActionIcon>
+          <ActionIcon {...tool(r.orthographic)} onClick={() => onPatchRender({ orthographic: !r.orthographic })} title={t("preview.orthoHint")} aria-label={t("preview.ortho")}>
             <Icon name="ortho" size={18} />
-          </button>
-          <div className="vp-menu">
-            <button
-              className={`vp-btn${menu ? " on" : ""}`}
-              aria-haspopup="true"
-              aria-expanded={menu}
-              onClick={() => setMenu((m) => !m)}
-              title={t("preview.display")}
-              aria-label={t("preview.display")}
-            >
-              <Icon name="layers" size={18} />
-            </button>
-            {menu && (
-              <ul className="vp-pop" role="menu">
-                {MODES.map((m) => (
-                  <li key={m}>
-                    <button
-                      role="menuitemradio"
-                      aria-checked={r.shading === m}
-                      className={r.shading === m ? "on" : ""}
-                      onClick={() => {
-                        onPatchRender({ shading: m });
-                        setMenu(false);
-                      }}
-                    >
-                      {t(`preview.shading.${m}`)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          </ActionIcon>
+          <Menu position="left-start" offset={8} shadow="md" withinPortal>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" size={compact ? 40 : 34} title={t("preview.display")} aria-label={t("preview.display")}>
+                <Icon name="layers" size={18} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown miw={130}>
+              {MODES.map((m) => (
+                <Menu.Item key={m} role="menuitemradio" aria-checked={r.shading === m} c={r.shading === m ? "var(--accent)" : undefined} bg={r.shading === m ? "var(--accent-soft)" : undefined} onClick={() => onPatchRender({ shading: m })}>
+                  {t(`preview.shading.${m}`)}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
           {supOn && (
-            <button
-              className={`vp-btn${printView ? " on" : ""}`}
-              aria-pressed={printView}
-              onClick={onTogglePrintView}
-              title={t("preview.printView")}
-              aria-label={t("preview.printView")}
-            >
+            <ActionIcon {...tool(printView)} onClick={onTogglePrintView} title={t("preview.printView")} aria-label={t("preview.printView")}>
               <Icon name="supports" size={18} />
-            </button>
+            </ActionIcon>
           )}
           {supOn && printView && (
-            <button
-              className={`vp-btn${editSup ? " on" : ""}`}
-              aria-pressed={editSup}
-              onClick={() => toggleEdit("supports")}
-              title={t("preview.editSupports")}
-              aria-label={t("preview.editSupports")}
-            >
+            <ActionIcon {...tool(editSup)} onClick={() => toggleEdit("supports")} title={t("preview.editSupports")} aria-label={t("preview.editSupports")}>
               <Icon name="plus" size={18} />
-            </button>
+            </ActionIcon>
           )}
           {sprueOn && showLayout && (
-            <button
-              className={`vp-btn${editSprue ? " on" : ""}`}
-              aria-pressed={editSprue}
-              onClick={() => toggleEdit("sprue")}
-              title={t("preview.moveSprue")}
-              aria-label={t("preview.moveSprue")}
-            >
+            <ActionIcon {...tool(editSprue)} onClick={() => toggleEdit("sprue")} title={t("preview.moveSprue")} aria-label={t("preview.moveSprue")}>
               <Icon name="sprue" size={18} />
-            </button>
+            </ActionIcon>
           )}
-          <span className="vp-sep" />
-          <button className={`vp-btn${grid ? " on" : ""}`} aria-pressed={grid} onClick={() => setGrid(!grid)} title={t("preview.grid")} aria-label={t("preview.grid")}>
+          <Divider mx={4} />
+          <ActionIcon {...tool(grid)} onClick={() => setGrid(!grid)} title={t("preview.grid")} aria-label={t("preview.grid")}>
             <Icon name="grid" size={18} />
-          </button>
-          <button className={`vp-btn${dimensions ? " on" : ""}`} aria-pressed={dimensions} onClick={() => setDimensions(!dimensions)} title={t("preview.dimensions")} aria-label={t("preview.dimensions")}>
+          </ActionIcon>
+          <ActionIcon {...tool(dimensions)} onClick={() => setDimensions(!dimensions)} title={t("preview.dimensions")} aria-label={t("preview.dimensions")}>
             <Icon name="ruler" size={18} />
-          </button>
-          <button className={`vp-btn${axes ? " on" : ""}`} aria-pressed={axes} onClick={() => setAxes(!axes)} title={t("preview.axes")} aria-label={t("preview.axes")}>
+          </ActionIcon>
+          <ActionIcon {...tool(axes)} onClick={() => setAxes(!axes)} title={t("preview.axes")} aria-label={t("preview.axes")}>
             <Icon name="axes" size={18} />
-          </button>
-          <button className={`vp-btn${cut ? " on" : ""}`} aria-pressed={cut} onClick={() => setCut(!cut)} title={t("preview.section")} aria-label={t("preview.section")}>
+          </ActionIcon>
+          <ActionIcon {...tool(cut)} onClick={() => setCut(!cut)} title={t("preview.section")} aria-label={t("preview.section")}>
             <Icon name="section" size={18} />
-          </button>
+          </ActionIcon>
           {onAnnotated && (
-            <button className={`vp-btn${annotate ? " on" : ""}`} aria-pressed={annotate} onClick={() => setAnnotate(!annotate)} title={t("annotate.title")} aria-label={t("annotate.title")}>
+            <ActionIcon {...tool(annotate)} onClick={() => setAnnotate(!annotate)} title={t("annotate.title")} aria-label={t("annotate.title")}>
               <Icon name="pen" size={18} />
-            </button>
+            </ActionIcon>
           )}
-          <button className={`vp-btn${turntable ? " on" : ""}`} aria-pressed={turntable} onClick={() => setTurntable(!turntable)} title={t("preview.turntable")} aria-label={t("preview.turntable")}>
+          <ActionIcon {...tool(turntable)} onClick={() => setTurntable(!turntable)} title={t("preview.turntable")} aria-label={t("preview.turntable")}>
             <Icon name="rotate" size={18} />
-          </button>
-        </div>
-      </div>
+          </ActionIcon>
+        </Stack>
+      </Box>
 
       {cut && (
-        <div className="vp-section" onPointerDown={(e) => e.stopPropagation()}>
+        <Group data-vp-ui gap={6} px={8} py={6} wrap="nowrap" pos="absolute" left={12} bottom={44} {...floating} style={{ ...floating.style, zIndex: 5 }} onPointerDown={(e) => e.stopPropagation()}>
           {(["x", "y", "z"] as const).map((a) => (
-            <button key={a} className={section.axis === a ? "on" : ""} onClick={() => setSection({ ...section, axis: a })}>
+            <Button key={a} size="compact-xs" variant={section.axis === a ? "light" : "default"} onClick={() => setSection({ ...section, axis: a })}>
               {a.toUpperCase()}
-            </button>
+            </Button>
           ))}
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.005}
-            value={section.t}
-            aria-label={t("preview.section")}
-            onChange={(e) => setSection({ ...section, t: Number(e.currentTarget.value) })}
-          />
-          <button className={section.flip ? "on" : ""} aria-pressed={section.flip} onClick={() => setSection({ ...section, flip: !section.flip })}>
+          <Slider w={160} size="sm" label={null} min={0} max={1} step={0.005} value={section.t} aria-label={t("preview.section")} onChange={(v) => setSection({ ...section, t: v })} />
+          <Button size="compact-xs" variant={section.flip ? "light" : "default"} aria-pressed={section.flip} onClick={() => setSection({ ...section, flip: !section.flip })}>
             {t("preview.sectionFlip")}
-          </button>
-        </div>
+          </Button>
+        </Group>
       )}
 
       {render.status === "error" && render.error && (
-        <div className="vp-banner error" role="alert">
+        <Group role="alert" gap={8} wrap="nowrap" px={12} py={6} pos="absolute" top={12} left="50%" c="var(--bad)" fz={13} bg="var(--surface)" bd="1px solid var(--bad)" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
           <Icon name="warn" size={15} />
           <span>
             {render.error.line ? t("preview.line", { line: render.error.line }) + ": " : ""}
             {render.error.message}
           </span>
-        </div>
+        </Group>
       )}
       {render.status === "ok" && !render.mesh && (
-        <div className="vp-banner">{t("preview.empty")}</div>
+        <Group px={12} py={6} pos="absolute" top={12} left="50%" fz={13} bg="var(--surface)" bd="1px solid var(--border)" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
+          {t("preview.empty")}
+        </Group>
       )}
 
       {console_ && (
-        <ul className="diag" aria-label={t("preview.console")}>
+        <Box component="ul" aria-label={t("preview.console")} m={0} px={12} py={6} bg="var(--code-bg)" bd="0 solid var(--border)" ff="monospace" fz={12} style={{ listStyle: "none", maxHeight: 140, overflow: "auto", borderTopWidth: 1, lineHeight: 1.5, flex: "none" }}>
           {render.diagnostics.map((d, i) => (
-            <li key={`d${i}`} className={d.severity}>
+            <Box component="li" key={`d${i}`} c={d.severity === "error" ? "var(--bad)" : "var(--accent)"}>
               {d.line ? `${t("preview.line", { line: d.line })}: ` : ""}
               {d.message}
-            </li>
+            </Box>
           ))}
           {render.echoes.map((e, i) => (
-            <li key={`e${i}`} className="echo">{e}</li>
+            <Box component="li" key={`e${i}`} c="dimmed">{e}</Box>
           ))}
-        </ul>
+        </Box>
       )}
 
-      <footer className="statusbar">
-        {render.status === "rendering" && <span className="busy">{t("preview.rendering")}</span>}
-        {render.status === "error" && <span className="bad"><Icon name="warn" size={13} /> {t("preview.failed")}</span>}
+      <Group component="footer" gap="4px 16px" px={12} py={7} fz={12} c="dimmed" bd="0 solid var(--border)" style={{ flex: "none", borderTopWidth: 1 }}>
+        {render.status === "rendering" && <Text span inherit c="var(--accent)">{t("preview.rendering")}</Text>}
+        {render.status === "error" && <Group gap={4} c="var(--bad)"><Icon name="warn" size={13} /> {t("preview.failed")}</Group>}
         {render.status === "ok" && (
-          <span className="ok"><Icon name="check" size={13} /> {t("preview.rendered", { ms: render.ms })}</span>
+          <Group gap={4} c="var(--ok)"><Icon name="check" size={13} /> {t("preview.rendered", { ms: render.ms })}</Group>
         )}
         {dims && <span>{dims} mm</span>}
         {stats && <span>{stats.tris.toLocaleString()} {t("preview.tris")}</span>}
         {stats && <span>{t("preview.volume")} {(stats.metalVolumeMm3 / 1000).toFixed(2)} cm³</span>}
         {stats && <span>{t("preview.weight")} ≈ {grams.toFixed(1)} g</span>}
         {supOn && <span>{t("preview.supports", { count: supTotal })}</span>}
-        {showLayout && !layout.fits && <span className="bad"><Icon name="warn" size={13} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</span>}
+        {showLayout && !layout.fits && <Group gap={4} c="var(--bad)"><Icon name="warn" size={13} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</Group>}
         {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
-          <button className="link" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>
+          <Anchor component="button" type="button" fz={12} ml="auto" c="var(--accent)" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>
             {t("preview.messages", { count: render.diagnostics.length + render.echoes.length })}
-          </button>
+          </Anchor>
         )}
-      </footer>
-    </section>
+      </Group>
+    </Stack>
   );
 }

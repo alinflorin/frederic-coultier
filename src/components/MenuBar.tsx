@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Button, Group, Image, Kbd, Menu as MantineMenu, Text } from "@mantine/core";
 
 export interface MenuItem {
   label: string;
@@ -16,76 +17,59 @@ export interface Menu {
 }
 
 export function MenuBar({ menus, title, dirty, trailing }: { menus: Menu[]; title: string; dirty: boolean; trailing?: ReactNode }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(null);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
-    window.addEventListener("mousedown", away);
-    window.addEventListener("keydown", esc);
-    return () => {
-      window.removeEventListener("mousedown", away);
-      window.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-
   return (
-    <div className="menubar" ref={ref}>
-      <div className="brand">
-        <img src="/logo.svg" width={20} height={20} alt="" />
-        <span>Frederic Coultier</span>
-      </div>
-      <nav className="menus" role="menubar">
-        {menus.map((m) => (
-          <div className="menu" key={m.id}>
-            <button
-              role="menuitem"
-              aria-haspopup={m.items ? "true" : undefined}
-              aria-expanded={m.items ? open === m.id : undefined}
-              className={open === m.id ? "active" : ""}
-              onClick={() => {
-                if (!m.items) {
-                  setOpen(null);
-                  m.onSelect?.();
-                } else setOpen(open === m.id ? null : m.id);
-              }}
-              onMouseEnter={() => open && setOpen(m.items ? m.id : null)}
-            >
-              {m.label}
-            </button>
-            {m.items && open === m.id && (
-              <ul className="dropdown" role="menu">
-                {m.items!.map((it, i) =>
+    <Group
+      component="header"
+      gap="xs"
+      wrap="nowrap"
+      h={38}
+      px={{ base: 8, md: 10 }}
+      bg="var(--surface)"
+      bd="0 solid var(--border)"
+      style={{ borderBottomWidth: 1, flex: "none" }}
+    >
+      <Group gap={6} wrap="nowrap" mr={6} c="var(--accent)" fw={650}>
+        <Image src="/logo.svg" w={20} h={20} alt="" />
+        <Text visibleFrom="md" inherit>Frederic Coultier</Text>
+      </Group>
+      <Group component="nav" gap={0} wrap="nowrap" role="menubar" flex={{ base: 1, md: "none" }}>
+        {menus.map((m) =>
+          m.items ? (
+            <MantineMenu key={m.id} trigger="click-hover" openDelay={0} closeDelay={80} position="bottom-start" shadow="md" width={230}>
+              <MantineMenu.Target>
+                <Button variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={400}>
+                  {m.label}
+                </Button>
+              </MantineMenu.Target>
+              <MantineMenu.Dropdown>
+                {m.items.map((it, i) =>
                   it.separator ? (
-                    <li key={i} className="sep" role="separator" />
+                    <MantineMenu.Divider key={i} />
                   ) : (
-                    <li key={i}>
-                      <button
-                        role="menuitem"
-                        disabled={it.disabled}
-                        onClick={() => {
-                          setOpen(null);
-                          it.onSelect?.();
-                        }}
-                      >
-                        <span>{it.label}</span>
-                        {it.shortcut && <kbd>{it.shortcut}</kbd>}
-                      </button>
-                    </li>
+                    <MantineMenu.Item
+                      key={i}
+                      disabled={it.disabled}
+                      onClick={it.onSelect}
+                      rightSection={it.shortcut ? <Kbd size="xs" ml="md">{it.shortcut}</Kbd> : undefined}
+                    >
+                      {it.label}
+                    </MantineMenu.Item>
                   ),
                 )}
-              </ul>
-            )}
-          </div>
-        ))}
-      </nav>
-      <div className="doc-title" title={title}>
+              </MantineMenu.Dropdown>
+            </MantineMenu>
+          ) : (
+            <Button key={m.id} variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={400} onClick={m.onSelect}>
+              {m.label}
+            </Button>
+          ),
+        )}
+      </Group>
+      <Text visibleFrom="md" flex={1} ta="center" c="dimmed" truncate="end" title={title}>
         {title}
-        {dirty && <span className="dirty" aria-label="unsaved">●</span>}
-      </div>
+        {dirty && <Text span c="var(--accent)" fz={10} ml={6} aria-label="unsaved">●</Text>}
+      </Text>
       {trailing}
-    </div>
+    </Group>
   );
 }

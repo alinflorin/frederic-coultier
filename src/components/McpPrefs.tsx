@@ -1,9 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ActionIcon, Button, Code, Group, Indicator, Stack, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { inTauri } from "../api";
 import { getPref, setPref } from "../prefs";
 import { Icon } from "./Icon";
+import { mcpSchema } from "../validation";
+import { TextField } from "./form";
 
 export const MCP_DEFAULT_HOST = "127.0.0.1";
 export const MCP_DEFAULT_PORT = 45555;
@@ -24,8 +29,10 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e ===
 function Copy({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
   return (
-    <button
+    <Button
       type="button"
+      variant="default"
+      size="compact-sm"
       onClick={() => {
         navigator.clipboard?.writeText(text).then(
           () => {
@@ -37,8 +44,13 @@ function Copy({ text, label }: { text: string; label: string }) {
       }}
     >
       {done ? "✓" : label}
-    </button>
+    </Button>
   );
+}
+
+/** A command in a scrolling box. */
+function Command({ children }: { children: string }) {
+  return <Code flex={1} fz={12} p="6px 8px" bd="1px solid var(--border)" bg="var(--code-bg)" style={{ minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", borderRadius: 6 }}>{children}</Code>;
 }
 
 interface AgentInfo {
@@ -62,36 +74,43 @@ function AgentRow({ agent, onRun }: { agent: AgentInfo; onRun: (id: string) => P
     }
   };
   return (
-    <div className="mcp-agent">
-      <div className="mcp-agent-name">{agent.name}</div>
+    <Stack gap={2} my={8}>
+      <Text fw={600} fz={13}>{agent.name}</Text>
       {agent.supported ? (
-        <div className="mcp-copy">
-          <code>{agent.command ?? t("prefs.mcp.needsServer")}</code>
-          <button
-            type="button"
-            className="icon-btn"
+        <Group gap={8} my={4} wrap="nowrap">
+          <Command>{agent.command ?? t("prefs.mcp.needsServer")}</Command>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
             title={t("prefs.mcp.run", { name: agent.name })}
             aria-label={t("prefs.mcp.run", { name: agent.name })}
             disabled={!agent.command || state === "running"}
             onClick={run}
           >
             <Icon name="play" />
-          </button>
+          </ActionIcon>
           {agent.command && <Copy text={agent.command} label={t("prefs.mcp.copy")} />}
-        </div>
+        </Group>
       ) : null}
-      {agent.note && <p className={agent.supported ? "muted note" : "note mcp-warn"}>{agent.note}</p>}
-      {state === "running" && <p className="muted note">{t("prefs.mcp.running_cmd")}</p>}
-      {state && state !== "running" && <p className={`note ${state.ok ? "mcp-ok" : "mcp-bad"}`}>{state.text}</p>}
-    </div>
+      {agent.note && <Text fz={12} c={agent.supported ? "dimmed" : "var(--accent)"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{agent.note}</Text>}
+      {state === "running" && <Text fz={12} c="dimmed">{t("prefs.mcp.running_cmd")}</Text>}
+      {state && state !== "running" && <Text fz={12} c={state.ok ? "var(--ok)" : "var(--bad)"}>{state.text}</Text>}
+    </Stack>
   );
 }
 
 /** Host and port of the MCP server that agents connect to, and whether it is running. */
 export function McpPrefs() {
   const { t } = useTranslation();
-  const [host, setHost] = useState(() => getPref<string>("mcpHost") || MCP_DEFAULT_HOST);
-  const [port, setPort] = useState(() => String(getPref<number>("mcpPort") || MCP_DEFAULT_PORT));
+  const schema = useMemo(() => mcpSchema(t), [t]);
+  // a message shows under a field once it was touched and left
+  const form = useForm<{ host: string; port: string }>({
+    defaultValues: { host: getPref<string>("mcpHost") || MCP_DEFAULT_HOST, port: String(getPref<number>("mcpPort") || MCP_DEFAULT_PORT) },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
+    mode: "onTouched",
+  });
+  const { host, port } = useWatch({ control: form.control }) as { host: string; port: string };
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -108,93 +127,78 @@ export function McpPrefs() {
     invoke<McpStatus>("mcp_status").then(setStatus, (e) => setProblem(errorText(e)));
   }, []);
 
-  if (!inTauri()) return <p className="muted note">{t("prefs.mcp.desktopOnly")}</p>;
+  if (!inTauri()) return <Text fz={12} c="dimmed" mt={6}>{t("prefs.mcp.desktopOnly")}</Text>;
 
-  const portNumber = /^\d+$/.test(port.trim()) ? Number(port.trim()) : NaN;
-  const hostOk = /^[A-Za-z0-9.:-]+$/.test(host.trim());
-  const portOk = Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
-  const exposed = hostOk && !LOCAL.has(host.trim().toLowerCase());
+  const valid = schema.safeParse({ host, port }).success;
+  const portNumber = Number(port.trim());
+  const exposed = /^[A-Za-z0-9.:-]+$/.test(host.trim()) && !LOCAL.has(host.trim().toLowerCase());
   const changed = !status || status.host !== host.trim() || status.port !== portNumber;
 
-  async function apply() {
-    if (!hostOk || !portOk) return;
+  const apply = form.handleSubmit(async (v) => {
+    const h = v.host.trim();
+    const p = Number(v.port.trim());
     setBusy(true);
     setProblem(null);
-    setPref("mcpHost", host.trim());
-    setPref("mcpPort", portNumber);
+    setPref("mcpHost", h);
+    setPref("mcpPort", p);
     try {
-      setStatus(await invoke<McpStatus>("mcp_configure", { host: host.trim(), port: portNumber }));
+      setStatus(await invoke<McpStatus>("mcp_configure", { host: h, port: p }));
     } catch (e) {
       setProblem(errorText(e));
     } finally {
       setBusy(false);
     }
-  }
+  });
 
   const url = status?.url ?? null;
 
   return (
     <>
-      <p className="muted note">{t("prefs.mcp.intro")}</p>
-      <label className="field">
-        <span className="field-label">{t("prefs.mcp.host")}</span>
-        <span className="field-input">
-          <input type="text" value={host} spellCheck={false} aria-invalid={!hostOk} onChange={(e) => setHost(e.currentTarget.value)} />
-        </span>
-      </label>
-      <label className="field">
-        <span className="field-label">{t("prefs.mcp.port")}</span>
-        <span className="field-input">
-          <input type="text" inputMode="numeric" value={port} spellCheck={false} aria-invalid={!portOk} onChange={(e) => setPort(e.currentTarget.value)} />
-        </span>
-      </label>
-      {(!hostOk || !portOk) && <p className="note mcp-bad">{!hostOk ? t("prefs.mcp.badHost") : t("prefs.mcp.badPort")}</p>}
-      {exposed && <p className="note mcp-warn">{t("prefs.mcp.exposed")}</p>}
-      <div className="mcp-actions">
-        <button className="primary" disabled={busy || !hostOk || !portOk || !changed} onClick={apply}>
+      <Text fz={12} c="dimmed" mt={6}>{t("prefs.mcp.intro")}</Text>
+      <TextField control={form.control} name="host" label={t("prefs.mcp.host")} />
+      <TextField control={form.control} name="port" label={t("prefs.mcp.port")} />
+      {exposed && <Text fz={12} c="var(--accent)">{t("prefs.mcp.exposed")}</Text>}
+      <Group gap={8} mt={8} mb={4}>
+        <Button disabled={busy || !valid || !changed} onClick={apply}>
           {busy ? t("prefs.mcp.applying") : t("prefs.mcp.apply")}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="default"
           disabled={busy || (host === MCP_DEFAULT_HOST && port === String(MCP_DEFAULT_PORT))}
-          onClick={() => {
-            setHost(MCP_DEFAULT_HOST);
-            setPort(String(MCP_DEFAULT_PORT));
-          }}
+          onClick={() => form.reset({ host: MCP_DEFAULT_HOST, port: String(MCP_DEFAULT_PORT) })}
         >
           {t("prefs.mcp.defaults")}
-        </button>
-      </div>
+        </Button>
+      </Group>
 
-      <div className="mcp-status" role="status">
+      <Group gap={6} mt={10} mb={6} fz={13} role="status">
         {problem ? (
-          <span className="mcp-bad">{problem}</span>
+          <Text span inherit c="var(--bad)">{problem}</Text>
         ) : status?.running ? (
           <>
-            <span className="mcp-dot on" aria-hidden /> {t("prefs.mcp.running")}
+            <Indicator inline size={9} color="var(--ok)" withBorder={false} offset={0} position="middle-center"><span style={{ display: "block", width: 9, height: 9 }} /></Indicator> {t("prefs.mcp.running")}
           </>
         ) : status ? (
           <>
-            <span className="mcp-dot" aria-hidden /> {t("prefs.mcp.stopped")}
-            {status.error && <span className="mcp-bad"> {status.error}</span>}
+            <Indicator inline size={9} color="var(--muted)" withBorder={false} offset={0} position="middle-center"><span style={{ display: "block", width: 9, height: 9 }} /></Indicator> {t("prefs.mcp.stopped")}
+            {status.error && <Text span inherit c="var(--bad)"> {status.error}</Text>}
           </>
         ) : null}
-      </div>
+      </Group>
 
       {url && (
-        <>
-          <div className="mcp-copy">
-            <code>{url}</code>
-            <Copy text={url} label={t("prefs.mcp.copy")} />
-          </div>
-        </>
+        <Group gap={8} my={4} wrap="nowrap">
+          <Command>{url}</Command>
+          <Copy text={url} label={t("prefs.mcp.copy")} />
+        </Group>
       )}
-      <h4 className="mcp-sub">{t("prefs.mcp.agents")}</h4>
-      <p className="muted note">{t("prefs.mcp.connect")}</p>
+      <Title order={5} fz={14} mt={14} mb={2}>{t("prefs.mcp.agents")}</Title>
+      <Text fz={12} c="dimmed" mt={6}>{t("prefs.mcp.connect")}</Text>
       {agents.map((a) => (
         <AgentRow key={`${a.id}${a.command}`} agent={a} onRun={(id) => invoke<string>("mcp_connect", { id })} />
       ))}
-      {status?.running && status.loopback && <p className="muted note">{t("prefs.mcp.local")}</p>}
+      {status?.running && status.loopback && <Text fz={12} c="dimmed" mt={6}>{t("prefs.mcp.local")}</Text>}
     </>
   );
 }

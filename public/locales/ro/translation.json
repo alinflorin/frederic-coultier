@@ -12,6 +12,16 @@
     "cancel": "Anulează",
     "done": "Gata"
   },
+  "validation": {
+    "required": "Câmpul este obligatoriu.",
+    "number": "Introdu un număr.",
+    "integer": "Introdu un număr întreg.",
+    "min": "Trebuie să fie cel puțin {{min}}.",
+    "max": "Trebuie să fie cel mult {{max}}.",
+    "color": "Introdu o culoare de forma #cfd2d6.",
+    "labelMax": "Folosește cel mult {{max}} caractere.",
+    "thinnerThanLift": "Trebuie să fie mai subțire decât înălțarea ({{max}} mm)."
+  },
   "app": {
     "panes": "Panouri"
   },

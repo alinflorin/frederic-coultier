@@ -1,10 +1,16 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useForm, useWatch, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ActionIcon, Button, Group, List, Slider, Table, Tabs, Text, Textarea } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import type { FcProject, Finish, Metal, ProjectSettings, Support, SupportsData } from "../types";
 import { autoSupports, type PrintLayout, meshReport, printParams, suggestTilt, type MeshReport, type TiltRow } from "../api";
 import { DENSITY } from "../materials";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
+import { settingsSchema } from "../validation";
+import { CheckField, ColorField, Enabled, Field, Num, NumField, Section, SelectField, Stat } from "./form";
 
 type Tab = "general" | "material" | "printing" | "optimization" | "checks";
 const TABS: Tab[] = ["general", "material", "printing", "optimization", "checks"];
@@ -15,55 +21,6 @@ const FINISHES: Finish[] = ["polished", "satin", "matte"];
 function findingParams(detail: string) {
   const [a, b, c, d] = detail.split("|");
   return { detail, n: a, min: b, area: c, limit: d, worst: a, reach: b, vol: b, massArea: b, massLimit: c };
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <span className="field-input">{children}</span>
-      {hint && <span className="field-hint muted">{hint}</span>}
-    </label>
-  );
-}
-
-function Num({
-  value,
-  onChange,
-  min,
-  max,
-  step = 0.1,
-  unit,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  unit?: string;
-}) {
-  return (
-    <span className="num">
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.currentTarget.value))}
-      />
-      {unit && <span className="muted">{unit}</span>}
-    </span>
-  );
-}
-
-function Check({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="check">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.currentTarget.checked)} />
-      {label}
-    </label>
-  );
 }
 
 export function SettingsDialog({
@@ -80,8 +37,35 @@ export function SettingsDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const compact = useMediaQuery("(max-width: 899px)");
   const [tab, setTab] = useState<Tab>("general");
-  const s = project.settings;
+  // The form holds the project settings. A message shows for a field once it was touched and left; every
+  // valid change is applied to the project at once, a change that does not validate waits until it does.
+  const schema = useMemo(() => settingsSchema(t), [t]);
+  const form = useForm<ProjectSettings>({
+    defaultValues: project.settings,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
+    mode: "onTouched",
+  });
+  const s = useWatch({ control: form.control }) as ProjectSettings;
+  const latest = useRef(project.settings);
+  latest.current = project.settings;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => {
+    const sub = form.watch((values) => {
+      if (JSON.stringify(values) !== JSON.stringify(latest.current) && schema.safeParse(values).success) onChangeRef.current(values as ProjectSettings);
+    });
+    return () => sub.unsubscribe();
+  }, [form, schema]);
+  // the project changed from elsewhere (the agent, a click in the preview): show it
+  useEffect(() => {
+    if (JSON.stringify(form.getValues()) !== JSON.stringify(project.settings)) form.reset(project.settings, { keepTouched: true });
+  }, [form, project.settings]);
+  const set = (path: string, value: unknown) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    form.setValue(path as any, value as any, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
   const sup = s.printing.supports;
   const list = project.supports.list;
   const nAuto = list.filter((x) => x.source === "auto").length;
@@ -143,11 +127,9 @@ export function SettingsDialog({
   const setSpruePos = (axis: 0 | 1 | 2, v: number) => {
     const at: [number, number, number] = [...(spruePos ?? [0, 0, 0])];
     at[axis] = v;
-    setP({ sprueAt: at });
+    set("printing.sprueAt", at);
   };
-
-  const setP = (p: Partial<ProjectSettings["printing"]>) => onChange({ ...s, printing: { ...s.printing, ...p } });
-  const setSup = (p: Partial<typeof sup>) => setP({ supports: { ...sup, ...p } });
+  const control = form.control;
 
   return (
     <Dialog
@@ -156,259 +138,196 @@ export function SettingsDialog({
       onClose={onClose}
       footer={
         <>
-          <span className="muted grow">{t("settings.autosave")}</span>
-          <button className="primary" onClick={onClose}>{t("common.done")}</button>
+          <Text c="dimmed" flex={1}>{t("settings.autosave")}</Text>
+          <Button onClick={onClose}>{t("common.done")}</Button>
         </>
       }
     >
-      <div className="settings">
-        <div className="tabs" role="tablist">
+      <Tabs value={tab} onChange={(v) => v && setTab(v as Tab)} orientation={compact ? "horizontal" : "vertical"} h="100%" keepMounted={false}>
+        <Tabs.List mr={compact ? 0 : 18} mb={compact ? 10 : 0} w={compact ? undefined : 170} style={{ flex: "none", overflowX: compact ? "auto" : undefined, flexWrap: "nowrap" }}>
           {TABS.map((k) => (
-            <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
-              {t(`settings.tab.${k}`)}
-            </button>
+            <Tabs.Tab key={k} value={k}>{t(`settings.tab.${k}`)}</Tabs.Tab>
           ))}
-        </div>
+        </Tabs.List>
 
-        <div className="tab-body" role="tabpanel">
-          {tab === "general" && (
-            <>
-              <Field label={t("settings.notes")}>
-                <textarea rows={4} value={s.general.notes} onChange={(e) => onChange({ ...s, general: { ...s.general, notes: e.currentTarget.value } })} />
-              </Field>
-            </>
-          )}
+        <Tabs.Panel value="general" style={{ minWidth: 0 }}>
+          <Field label={t("settings.notes")}>
+            <Controller control={control} name="general.notes" render={({ field }) => <Textarea rows={4} flex={1} {...field} value={field.value ?? ""} />} />
+          </Field>
+        </Tabs.Panel>
 
-          {tab === "material" && (
-            <>
-              <h3>{t("settings.materialTitle")}</h3>
-              <Field label={t("settings.metal")} hint={t("settings.metalHint")}>
-                <select value={s.material.metal} onChange={(e) => onChange({ ...s, material: { ...s.material, metal: e.currentTarget.value as Metal } })}>
-                  {METALS.map((m) => <option key={m} value={m}>{t(`metal.${m}`)}</option>)}
-                </select>
-              </Field>
-              <Field label={t("settings.process")}>
-                <select value={s.material.process} onChange={(e) => onChange({ ...s, material: { ...s.material, process: e.currentTarget.value as "direct" | "casting" } })}>
-                  <option value="casting">{t("settings.casting")}</option>
-                  <option value="direct">{t("settings.direct")}</option>
-                </select>
-              </Field>
-              <h3>{t("settings.renderTitle")}</h3>
-              <Field label={t("settings.metalColor")}>
-                <input type="color" value={s.render.metalColor} onChange={(e) => onChange({ ...s, render: { ...s.render, metalColor: e.currentTarget.value } })} />
-              </Field>
-              <Field label={t("settings.finish")}>
-                <select value={s.render.finish} onChange={(e) => onChange({ ...s, render: { ...s.render, finish: e.currentTarget.value as Finish } })}>
-                  {FINISHES.map((f) => <option key={f} value={f}>{t(`finish.${f}`)}</option>)}
-                </select>
-              </Field>
-              <Field label={t("settings.previewQuality")} hint={t("settings.previewQualityHint")}>
-                <Num value={s.render.previewQuality} min={12} max={256} step={4} onChange={(v) => onChange({ ...s, render: { ...s.render, previewQuality: v } })} unit="$fn" />
-              </Field>
-            </>
-          )}
+        <Tabs.Panel value="material" style={{ minWidth: 0 }}>
+          <Section first>{t("settings.materialTitle")}</Section>
+          <SelectField control={control} name="material.metal" label={t("settings.metal")} hint={t("settings.metalHint")} data={METALS.map((m) => ({ value: m, label: t(`metal.${m}`) }))} />
+          <SelectField control={control} name="material.process" label={t("settings.process")} data={[
+            { value: "casting", label: t("settings.casting") },
+            { value: "direct", label: t("settings.direct") },
+          ]} />
+          <Section>{t("settings.renderTitle")}</Section>
+          <ColorField control={control} name="render.metalColor" label={t("settings.metalColor")} />
+          <SelectField control={control} name="render.finish" label={t("settings.finish")} data={FINISHES.map((f) => ({ value: f, label: t(`finish.${f}`) }))} />
+          <NumField control={control} name="render.previewQuality" label={t("settings.previewQuality")} hint={t("settings.previewQualityHint")} step={4} unit="$fn" />
+        </Tabs.Panel>
 
-          {tab === "printing" && (
-            <>
-              <Field label={t("settings.printer")}>
-                <select value={s.printing.printer} onChange={(e) => setP({ printer: e.currentTarget.value })}>
-                  <option>Elegoo Mars 5</option>
-                </select>
-              </Field>
-              <Field label={t("settings.minWall")} hint={t("settings.minWallHint")}>
-                <Num value={s.printing.minWall} min={0.2} max={3} onChange={(v) => setP({ minWall: v })} unit="mm" />
-              </Field>
-              <Field label={t("settings.tilt")} hint={t("settings.tiltHint")}>
-                <Num value={s.printing.tilt} min={0} max={60} step={5} onChange={(v) => setP({ tilt: v })} unit="°" />
-              </Field>
+        <Tabs.Panel value="printing" style={{ minWidth: 0 }}>
+          <SelectField control={control} name="printing.printer" label={t("settings.printer")} data={[{ value: "Elegoo Mars 5", label: "Elegoo Mars 5" }]} />
+          <NumField control={control} name="printing.minWall" label={t("settings.minWall")} hint={t("settings.minWallHint")} unit="mm" />
+          <NumField control={control} name="printing.tilt" label={t("settings.tilt")} hint={t("settings.tiltHint")} step={5} unit="°" />
 
-              <h3>{t("settings.supportsTitle")}</h3>
-              <Check checked={sup.enabled} onChange={(v) => setSup({ enabled: v })} label={t("settings.supportsEnable")} />
-              <fieldset disabled={!sup.enabled}>
-                <Field label={t("settings.tipRadius")}>
-                  <Num value={sup.tipRadius} min={0.1} max={1} step={0.05} onChange={(v) => setSup({ tipRadius: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.baseRadius")}>
-                  <Num value={sup.baseRadius} min={0.2} max={2} step={0.1} onChange={(v) => setSup({ baseRadius: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.overhang")}>
-                  <Num value={sup.overhangAngle} min={0} max={80} step={5} onChange={(v) => setSup({ overhangAngle: v })} unit="°" />
-                </Field>
-                <Field label={t("settings.spacing")}>
-                  <Num value={sup.spacing} min={1} max={10} step={0.5} onChange={(v) => setSup({ spacing: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.raft")}>
-                  <Num value={sup.raftRadius} min={0} max={10} step={0.5} onChange={(v) => setSup({ raftRadius: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.raftThickness")} hint={t("settings.raftThicknessHint")}>
-                  <Num value={sup.raftThickness} min={0} max={Math.max(0, sup.lift - 0.1)} step={0.1} onChange={(v) => setSup({ raftThickness: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.lift")} hint={t("settings.liftHint")}>
-                  <Num value={sup.lift} min={1} max={10} step={0.5} onChange={(v) => setSup({ lift: v })} unit="mm" />
-                </Field>
-                <div className="support-actions">
-                  <span className="muted grow">
-                    {t("settings.supportCount", { count: list.length, auto: nAuto, manual: nManual })}
-                  </span>
-                  <button disabled={working !== null} onClick={runTilt}>{working === "tilt" ? "…" : t("settings.suggestTilt")}</button>
-                  <button disabled={working !== null} onClick={runAuto}>{working === "auto" ? "…" : t("settings.autoSupports")}</button>
-                  <button disabled={working !== null || nAuto === 0} onClick={() => onSupports({ ...project.supports, list: list.filter((x) => x.source === "manual") })}>
-                    {t("settings.clearSupports")}
-                  </button>
-                </div>
-                {note && <p className="muted" role="status">{note}</p>}
-                <div className="support-actions">
-                  <h4 className="grow">{t("settings.supportList")}</h4>
-                  <button onClick={addSupport}>{t("settings.addSupport")}</button>
-                </div>
-                {list.length > 0 && (
-                  <table className="support-table">
-                    <thead>
-                      <tr><th>#</th><th>X</th><th>Y</th><th>Z</th><th /></tr>
-                    </thead>
-                    <tbody>
-                      {list.map((sp) => (
-                        <tr key={sp.id}>
-                          <td className="muted" title={t(`settings.source.${sp.source}`)}>{sp.id}{sp.source === "manual" ? "*" : ""}</td>
-                          {(["x", "y", "z"] as const).map((k) => (
-                            <td key={k}>
-                              <input type="number" step={0.1} value={Number(sp[k].toFixed(2))} onChange={(e) => setSupport(sp.id, { [k]: Number(e.currentTarget.value) })} />
-                            </td>
-                          ))}
-                          <td><button className="icon-btn" onClick={() => removeSupport(sp.id)} title={t("settings.removeSupport")} aria-label={t("settings.removeSupport")}><Icon name="close" size={14} /></button></td>
-                        </tr>
+          <Section>{t("settings.supportsTitle")}</Section>
+          <CheckField control={control} name="printing.supports.enabled" label={t("settings.supportsEnable")} />
+          <Enabled on={sup.enabled}>
+            <NumField control={control} name="printing.supports.tipRadius" label={t("settings.tipRadius")} step={0.05} unit="mm" />
+            <NumField control={control} name="printing.supports.baseRadius" label={t("settings.baseRadius")} unit="mm" />
+            <NumField control={control} name="printing.supports.overhangAngle" label={t("settings.overhang")} step={5} unit="°" />
+            <NumField control={control} name="printing.supports.spacing" label={t("settings.spacing")} step={0.5} unit="mm" />
+            <NumField control={control} name="printing.supports.raftRadius" label={t("settings.raft")} step={0.5} unit="mm" />
+            <NumField control={control} name="printing.supports.raftThickness" label={t("settings.raftThickness")} hint={t("settings.raftThicknessHint")} unit="mm" />
+            <NumField control={control} name="printing.supports.lift" label={t("settings.lift")} hint={t("settings.liftHint")} step={0.5} unit="mm" />
+            <Group gap={6} mt={8} wrap="wrap">
+              <Text c="dimmed" flex={1}>{t("settings.supportCount", { count: list.length, auto: nAuto, manual: nManual })}</Text>
+              <Button variant="default" size="xs" disabled={working !== null} onClick={runTilt}>{working === "tilt" ? "…" : t("settings.suggestTilt")}</Button>
+              <Button variant="default" size="xs" disabled={working !== null} onClick={runAuto}>{working === "auto" ? "…" : t("settings.autoSupports")}</Button>
+              <Button variant="default" size="xs" disabled={working !== null || nAuto === 0} onClick={() => onSupports({ ...project.supports, list: list.filter((x) => x.source === "manual") })}>
+                {t("settings.clearSupports")}
+              </Button>
+            </Group>
+            {note && <Text c="dimmed" role="status" mt={6}>{note}</Text>}
+            <Group gap={6} mt={8}>
+              <Text component="h4" fw={600} flex={1}>{t("settings.supportList")}</Text>
+              <Button variant="default" size="xs" onClick={addSupport}>{t("settings.addSupport")}</Button>
+            </Group>
+            {list.length > 0 && (
+              <Table mt={6} fz={12} withRowBorders={false}>
+                <Table.Thead>
+                  <Table.Tr><Table.Th>#</Table.Th><Table.Th>X</Table.Th><Table.Th>Y</Table.Th><Table.Th>Z</Table.Th><Table.Th /></Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {list.map((sp) => (
+                    <Table.Tr key={sp.id}>
+                      <Table.Td c="dimmed" title={t(`settings.source.${sp.source}`)}>{sp.id}{sp.source === "manual" ? "*" : ""}</Table.Td>
+                      {(["x", "y", "z"] as const).map((k) => (
+                        <Table.Td key={k}>
+                          <Num w={80} value={Number(sp[k].toFixed(2))} onChange={(v) => setSupport(sp.id, { [k]: v })} />
+                        </Table.Td>
                       ))}
-                    </tbody>
-                  </table>
-                )}
-                {rows && (
-                  <table className="tilt-table">
-                    <thead>
-                      <tr>
-                        <th>{t("settings.tiltCol")}</th>
-                        <th>{t("settings.overhangCol")}</th>
-                        <th>{t("settings.flatCol")}</th>
-                        <th>{t("settings.sizeCol")}</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r, i) => (
-                        <tr key={r.tilt} className={i === 0 ? "best" : ""}>
-                          <td>{r.tilt}°</td>
-                          <td>{r.overhang.toFixed(1)}</td>
-                          <td>{r.flat.toFixed(1)}</td>
-                          <td>{r.fits ? r.size.map((n) => n.toFixed(0)).join(" × ") : t("settings.noFit")}</td>
-                          <td><button disabled={s.printing.tilt === r.tilt} onClick={() => setP({ tilt: r.tilt })}>{t("settings.useTilt")}</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </fieldset>
+                      <Table.Td>
+                        <ActionIcon variant="subtle" color="gray" onClick={() => removeSupport(sp.id)} title={t("settings.removeSupport")} aria-label={t("settings.removeSupport")}>
+                          <Icon name="close" size={14} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+            {rows && (
+              <Table mt={8} fz={12.5}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("settings.tiltCol")}</Table.Th>
+                    <Table.Th>{t("settings.overhangCol")}</Table.Th>
+                    <Table.Th>{t("settings.flatCol")}</Table.Th>
+                    <Table.Th>{t("settings.sizeCol")}</Table.Th>
+                    <Table.Th />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {rows.map((r, i) => (
+                    <Table.Tr key={r.tilt}>
+                      <Table.Td c={i === 0 ? "var(--ok)" : undefined} fw={i === 0 ? 600 : undefined}>{r.tilt}°</Table.Td>
+                      <Table.Td>{r.overhang.toFixed(1)}</Table.Td>
+                      <Table.Td>{r.flat.toFixed(1)}</Table.Td>
+                      <Table.Td>{r.fits ? r.size.map((n) => n.toFixed(0)).join(" × ") : t("settings.noFit")}</Table.Td>
+                      <Table.Td><Button variant="default" size="compact-xs" disabled={s.printing.tilt === r.tilt} onClick={() => set("printing.tilt", r.tilt)}>{t("settings.useTilt")}</Button></Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Enabled>
 
-              <h3>{t("settings.hollowTitle")}</h3>
-              <Check checked={s.printing.hollow.enabled} onChange={(v) => setP({ hollow: { ...s.printing.hollow, enabled: v } })} label={t("settings.hollowEnable")} />
-              <fieldset disabled={!s.printing.hollow.enabled}>
-                <Field label={t("settings.hollowWall")}>
-                  <Num value={s.printing.hollow.wall} min={0.4} max={3} onChange={(v) => setP({ hollow: { ...s.printing.hollow, wall: v } })} unit="mm" />
-                </Field>
-                <Field label={t("settings.drain")}>
-                  <Num value={s.printing.hollow.drain} min={0.5} max={3} onChange={(v) => setP({ hollow: { ...s.printing.hollow, drain: v } })} unit="mm" />
-                </Field>
-              </fieldset>
-              <Check checked={s.printing.sprue} onChange={(v) => setP({ sprue: v })} label={t("settings.sprue")} />
-              <fieldset disabled={!s.printing.sprue}>
-                <Field label={t("settings.sprueDiameter")}>
-                  <Num value={s.printing.sprueDiameter} min={0.5} max={6} onChange={(v) => setP({ sprueDiameter: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.sprueLength")}>
-                  <Num value={s.printing.sprueLength} min={1} max={20} step={0.5} onChange={(v) => setP({ sprueLength: v })} unit="mm" />
-                </Field>
-                <Field label={t("settings.spruePos")} hint={s.printing.sprueAt ? t("settings.sprueManual") : t("settings.sprueAuto")}>
-                  <span className="num xyz">
-                    {([0, 1, 2] as const).map((i) => (
-                      <input key={i} type="number" step={0.1} disabled={!spruePos} value={spruePos ? Number(spruePos[i].toFixed(2)) : ""} onChange={(e) => setSpruePos(i, Number(e.currentTarget.value))} />
-                    ))}
-                    <button disabled={!s.printing.sprueAt} onClick={() => setP({ sprueAt: null })}>{t("settings.sprueReset")}</button>
-                  </span>
-                </Field>
-              </fieldset>
-            </>
-          )}
+          <Section>{t("settings.hollowTitle")}</Section>
+          <CheckField control={control} name="printing.hollow.enabled" label={t("settings.hollowEnable")} />
+          <Enabled on={s.printing.hollow.enabled}>
+            <NumField control={control} name="printing.hollow.wall" label={t("settings.hollowWall")} unit="mm" />
+            <NumField control={control} name="printing.hollow.drain" label={t("settings.drain")} unit="mm" />
+          </Enabled>
+          <CheckField control={control} name="printing.sprue" label={t("settings.sprue")} />
+          <Enabled on={s.printing.sprue}>
+            <NumField control={control} name="printing.sprueDiameter" label={t("settings.sprueDiameter")} unit="mm" />
+            <NumField control={control} name="printing.sprueLength" label={t("settings.sprueLength")} step={0.5} unit="mm" />
+            <Field label={t("settings.spruePos")} hint={s.printing.sprueAt ? t("settings.sprueManual") : t("settings.sprueAuto")}>
+              {([0, 1, 2] as const).map((i) => (
+                <Num key={i} w={78} disabled={!spruePos} value={spruePos ? Number(spruePos[i].toFixed(2)) : 0} onChange={(v) => typeof v === "number" && setSpruePos(i, v)} />
+              ))}
+              <Button variant="default" size="xs" disabled={!s.printing.sprueAt} onClick={() => set("printing.sprueAt", null)}>{t("settings.sprueReset")}</Button>
+            </Field>
+          </Enabled>
+        </Tabs.Panel>
 
-          {tab === "optimization" && (
-            <>
-              <p className="muted">{t("settings.optimizeIntro")}</p>
-              <Check checked={s.optimization.simplify} onChange={(v) => onChange({ ...s, optimization: { ...s.optimization, simplify: v } })} label={t("settings.simplify")} />
-              <fieldset disabled={!s.optimization.simplify}>
-                <Field label={t("settings.keep")} hint={t("settings.keepHint")}>
-                  <span className="num">
-                    <input type="range" min={1} max={99} value={s.optimization.keepPercent} onChange={(e) => onChange({ ...s, optimization: { ...s.optimization, keepPercent: Number(e.currentTarget.value) } })} />
-                    <b>{s.optimization.keepPercent}%</b>
-                  </span>
-                </Field>
-                <Field label={t("settings.maxVolume")} hint={t("settings.maxVolumeHint")}>
-                  <Num value={s.optimization.maxVolumeChange} min={0.1} max={5} onChange={(v) => onChange({ ...s, optimization: { ...s.optimization, maxVolumeChange: v } })} unit="%" />
-                </Field>
-              </fieldset>
-              <div className="support-actions">
-                <button disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</button>
-              </div>
-              {reportError && <p className="bad" role="alert">{reportError}</p>}
-              {report && (
-                <div className="stat-row">
-                  <div><span className="muted">{t("settings.trisNow")}</span><b>{report.stats.triangles.toLocaleString()}</b></div>
-                  {report.simplify && (
-                    <div>
-                      <span className="muted">{t("settings.trisAfter")}</span>
-                      <b>{report.simplify.accepted ? report.simplify.after.toLocaleString() : "—"}</b>
-                      <span className="muted">
-                        {report.simplify.accepted
-                          ? t("settings.volumeChange", { pct: report.simplify.volumeChange.toFixed(3) })
-                          : t(`settings.rejected.${report.simplify.reason}`)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === "checks" && (
-            <>
-              <p className="muted">{t("settings.checksIntro")}</p>
-              <div className="support-actions">
-                <button disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</button>
-              </div>
-              {reportError && <p className="bad" role="alert">{reportError}</p>}
-              {report && (
+        <Tabs.Panel value="optimization" style={{ minWidth: 0 }}>
+          <Text c="dimmed" mb={6}>{t("settings.optimizeIntro")}</Text>
+          <CheckField control={control} name="optimization.simplify" label={t("settings.simplify")} />
+          <Enabled on={s.optimization.simplify}>
+            <Field label={t("settings.keep")} hint={t("settings.keepHint")}>
+              <Controller control={control} name="optimization.keepPercent" render={({ field }) => (
                 <>
-                  <ul className="findings">
-                    {report.findings.map((f, i) => (
-                      <li key={i} className={f.level}>
-                        <b>{t(`findings.level.${f.level}`)}</b> {t(`findings.${f.code}`, findingParams(f.detail))}
-                        {f.at && f.at.length > 0 && (
-                          <span className="muted at">
-                            {" "}
-                            {f.at.map((p) => `(${p.map((n) => n.toFixed(1)).join(", ")})`).join(" ")}
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  <h3>{t("settings.measure")}</h3>
-                  <div className="stat-row">
-                    <div><span className="muted">{t("preview.volume")}</span><b>{(report.stats.volume / 1000).toFixed(3)} cm³</b></div>
-                    <div><span className="muted">{t("settings.surface")}</span><b>{report.stats.area.toFixed(1)} mm²</b></div>
-                    <div><span className="muted">{t("preview.weight")} ({t(`metal.${s.material.metal}`)})</span><b>{((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(2)} g</b></div>
-                  </div>
+                  <Slider w={{ base: "100%", md: 180 }} size="sm" label={null} min={1} max={99} value={Number(field.value)} onChange={field.onChange} />
+                  <Text fw={700}>{field.value}%</Text>
                 </>
+              )} />
+            </Field>
+            <NumField control={control} name="optimization.maxVolumeChange" label={t("settings.maxVolume")} hint={t("settings.maxVolumeHint")} unit="%" />
+          </Enabled>
+          <Button variant="default" size="xs" mt={8} disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</Button>
+          {reportError && <Text c="var(--bad)" role="alert" mt={6}>{reportError}</Text>}
+          {report && (
+            <Group gap={14} mt={16} align="stretch" wrap="nowrap">
+              <Stat label={t("settings.trisNow")} value={report.stats.triangles.toLocaleString()} />
+              {report.simplify && (
+                <Stat
+                  label={t("settings.trisAfter")}
+                  value={report.simplify.accepted ? report.simplify.after.toLocaleString() : "—"}
+                  sub={report.simplify.accepted ? t("settings.volumeChange", { pct: report.simplify.volumeChange.toFixed(3) }) : t(`settings.rejected.${report.simplify.reason}`)}
+                />
               )}
+            </Group>
+          )}
+        </Tabs.Panel>
+
+        <Tabs.Panel value="checks" style={{ minWidth: 0 }}>
+          <Text c="dimmed" mb={6}>{t("settings.checksIntro")}</Text>
+          <Button variant="default" size="xs" disabled={analyzing} onClick={analyze}>{analyzing ? "…" : t("settings.analyze")}</Button>
+          {reportError && <Text c="var(--bad)" role="alert" mt={6}>{reportError}</Text>}
+          {report && (
+            <>
+              <List listStyleType="none" my={8} spacing={4} fz={13}>
+                {report.findings.map((f, i) => (
+                  <List.Item key={i}>
+                    <Text span inherit fw={700} c={f.level === "pass" ? "var(--ok)" : f.level === "fail" ? "var(--bad)" : f.level === "warn" ? "var(--warn)" : "dimmed"}>
+                      {t(`findings.level.${f.level}`)}
+                    </Text>{" "}
+                    {t(`findings.${f.code}`, findingParams(f.detail))}
+                    {f.at && f.at.length > 0 && (
+                      <Text span c="dimmed" fz={11.5}>
+                        {" "}
+                        {f.at.map((p) => `(${p.map((n) => n.toFixed(1)).join(", ")})`).join(" ")}
+                      </Text>
+                    )}
+                  </List.Item>
+                ))}
+              </List>
+              <Section>{t("settings.measure")}</Section>
+              <Group gap={14} align="stretch" wrap="nowrap">
+                <Stat label={t("preview.volume")} value={`${(report.stats.volume / 1000).toFixed(3)} cm³`} />
+                <Stat label={t("settings.surface")} value={`${report.stats.area.toFixed(1)} mm²`} />
+                <Stat label={`${t("preview.weight")} (${t(`metal.${s.material.metal}`)})`} value={`${((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(2)} g`} />
+              </Group>
             </>
           )}
-        </div>
-      </div>
+        </Tabs.Panel>
+      </Tabs>
     </Dialog>
   );
 }

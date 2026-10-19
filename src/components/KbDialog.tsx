@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { Box, Button, Code, Group, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { inTauri } from "../api";
 import { Dialog } from "./Dialog";
@@ -35,23 +36,23 @@ function parts(text: string): Part[] {
 function LoadButton({ code, onLoad }: { code: string; onLoad: ((code: string) => void) | null }) {
   const { t } = useTranslation();
   const [ask, setAsk] = useState(false);
-  if (!onLoad) return <span className="muted note">{t("kb.noProject")}</span>;
+  if (!onLoad) return <Text fz={12} c="dimmed">{t("kb.noProject")}</Text>;
   return ask ? (
-    <span className="kb-confirm">
+    <Group gap={8}>
       {t("kb.replace")}
-      <button
-        className="primary"
+      <Button
+        size="compact-sm"
         onClick={() => {
           setAsk(false);
           onLoad(code);
         }}
       >
         {t("kb.replaceYes")}
-      </button>
-      <button onClick={() => setAsk(false)}>{t("common.cancel")}</button>
-    </span>
+      </Button>
+      <Button size="compact-sm" variant="default" onClick={() => setAsk(false)}>{t("common.cancel")}</Button>
+    </Group>
   ) : (
-    <button onClick={() => setAsk(true)}>{t("kb.load")}</button>
+    <Button size="compact-sm" variant="default" onClick={() => setAsk(true)}>{t("kb.load")}</Button>
   );
 }
 
@@ -90,55 +91,57 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
   return (
     <Dialog wide title={t("kb.title")} onClose={onClose}>
       {!inTauri() ? (
-        <p className="muted note">{t("kb.desktopOnly")}</p>
+        <Text fz={12} c="dimmed">{t("kb.desktopOnly")}</Text>
       ) : open && doc ? (
         <>
-          <div className="kb-bar">
-            <button onClick={() => setOpen(null)}>← {t("kb.back")}</button>
-            <code className="kb-path">{open.path}</code>
-          </div>
+          <Group gap={10} mb={10}>
+            <Button variant="default" size="compact-sm" onClick={() => setOpen(null)}>← {t("kb.back")}</Button>
+            <Code fz={12} c="dimmed" style={{ overflowWrap: "anywhere" }}>{open.path}</Code>
+          </Group>
           {doc.map((p, i) =>
             p.code ? (
-              <div className="kb-block" key={i}>
-                <pre>{p.text}</pre>
+              <Box key={i} mt={8} mb={12}>
+                <Box component="pre" m={0} p={10} fz={12} bg="var(--code-bg)" bd="1px solid var(--border)" style={{ overflowX: "auto", borderRadius: 6 }}>{p.text}</Box>
                 {(SCAD_LANGS.has(p.lang) || open.path.toLowerCase().endsWith(".scad")) && (
-                  <div className="kb-actions">
+                  <Group gap={8} mt={6}>
                     <LoadButton code={p.text} onLoad={onLoad} />
-                  </div>
+                  </Group>
                 )}
-              </div>
+              </Box>
             ) : (
-              <p className="kb-prose" key={i}>{p.text}</p>
+              <Text key={i} mb={10} lh={1.5} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{p.text}</Text>
             ),
           )}
         </>
       ) : (
         <>
-          <input
+          <TextInput
             type="search"
-            className="kb-search"
-            autoFocus
+            data-autofocus
+            mb={10}
             value={query}
             placeholder={t("kb.placeholder")}
             onChange={(e) => setQuery(e.currentTarget.value)}
           />
-          {problem && <p className="note mcp-bad">{problem}</p>}
+          {problem && <Text fz={12} c="var(--bad)">{problem}</Text>}
           {hits ? (
             hits.length === 0 ? (
-              <p className="muted note">{t("kb.none")}</p>
+              <Text fz={12} c="dimmed">{t("kb.none")}</Text>
             ) : (
-              hits.map((h, i) => (
-                <button key={i} className="kb-hit" onClick={() => show(h.path)}>
-                  <span className="kb-hit-head">
-                    <code>{h.path}</code>
-                    {h.heading && <span className="muted"> · {h.heading}</span>}
-                  </span>
-                  <span className="kb-snippet">{h.snippet}</span>
-                </button>
-              ))
+              <Stack gap={6}>
+                {hits.map((h, i) => (
+                  <UnstyledButton key={i} onClick={() => show(h.path)} p="8px 10px" bd="1px solid var(--border)" style={{ borderRadius: 6, display: "block", width: "100%" }}>
+                    <Text fz={13} mb={4}>
+                      <Code>{h.path}</Code>
+                      {h.heading && <Text span inherit c="dimmed"> · {h.heading}</Text>}
+                    </Text>
+                    <Text fz={12} c="dimmed" mah="7.5em" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflow: "hidden" }}>{h.snippet}</Text>
+                  </UnstyledButton>
+                ))}
+              </Stack>
             )
           ) : (
-            <p className="muted note">{t("kb.hint")}</p>
+            <Text fz={12} c="dimmed">{t("kb.hint")}</Text>
           )}
         </>
       )}

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { ActionIcon, Box, Checkbox, Group, NumberInput, Slider, Stack, Text, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { humanize, parseParams, setParam, splitUnit } from "../params";
 import { getPref, setPref } from "../prefs";
@@ -35,53 +36,81 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
   };
 
   return (
-    <div className="params">
-      <button className="params-head" onClick={toggle} aria-expanded={open}>
-        <Icon name="chevron" size={14} />
-        {t("params.title")} <span className="muted">({params.length})</span>
-      </button>
+    <Stack gap={0} bg="var(--surface)" bd="0 solid var(--border)" style={{ flex: "0 1 auto", minHeight: 0, borderBottomWidth: 1 }}>
+      <UnstyledButton
+        onClick={toggle}
+        aria-expanded={open}
+        px={12}
+        py={7}
+        fz={12}
+        fw={600}
+        tt="uppercase"
+        lts="0.05em"
+        c="dimmed"
+        style={{ flex: "none", width: "100%" }}
+      >
+        <Group gap={6} wrap="nowrap">
+          <Box style={{ display: "flex", transform: open ? undefined : "rotate(-90deg)" }}>
+            <Icon name="chevron" size={14} />
+          </Box>
+          <span>
+            {t("params.title")} <Text span inherit c="dimmed">({params.length})</Text>
+          </span>
+        </Group>
+      </UnstyledButton>
       {open && (
-        <div className="params-body">
+        <Stack gap={6} px={12} pb={10} style={{ flex: "0 1 auto", minHeight: 0, maxHeight: 280, overflowY: "auto" }}>
           {params.map((p) => {
             const { base, unit } = splitUnit(p.name);
             const label = humanize(base);
             const was = initial.current.get(p.name);
             const changed = was !== undefined && was !== p.value;
             return (
-              <div className="param" key={p.name} title={p.note || p.name}>
-                <label htmlFor={`param-${p.name}`}>
+              <Box
+                key={p.name}
+                title={p.note || p.name}
+                fz={12.5}
+                style={{ flex: "none", display: "grid", gridTemplateColumns: "minmax(80px, 1.1fr) minmax(80px, 1.4fr) 96px 22px", alignItems: "center", gap: 8 }}
+              >
+                <Text component="label" htmlFor={`param-${p.name}`} inherit truncate>
                   {label}
-                  {p.note && <span className="muted"> {p.note}</span>}
-                </label>
+                  {p.note && <Text span inherit c="dimmed"> {p.note}</Text>}
+                </Text>
                 {p.kind === "bool" ? (
-                  <input id={`param-${p.name}`} type="checkbox" checked={p.value as boolean} onChange={(e) => onChange(setParam(source, p, e.currentTarget.checked))} />
+                  <>
+                    <Checkbox id={`param-${p.name}`} checked={p.value as boolean} onChange={(e) => onChange(setParam(source, p, e.currentTarget.checked))} />
+                    <span />
+                  </>
                 ) : (
                   <>
-                    <input
+                    <Slider
                       id={`param-${p.name}`}
-                      type="range"
+                      size="sm"
+                      label={null}
                       min={p.min}
                       max={p.max}
                       step={p.step}
                       value={p.value as number}
-                      onChange={(e) => onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
+                      onChange={(v) => onChange(setParam(source, p, v))}
                     />
-                    <span className="param-val">
-                      <input
-                        className="param-num"
-                        type="number"
+                    <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
+                      <NumberInput
+                        size="xs"
+                        hideControls
                         step={p.step}
                         value={p.value as number}
                         aria-label={label}
-                        onChange={(e) => Number.isFinite(e.currentTarget.valueAsNumber) && onChange(setParam(source, p, e.currentTarget.valueAsNumber))}
+                        style={{ flex: 1, width: 0 }}
+                        onChange={(v) => typeof v === "number" && Number.isFinite(v) && onChange(setParam(source, p, v))}
                       />
-                      <span className="param-unit muted">{unit}</span>
-                    </span>
+                      <Text c="dimmed" fz={12} w={24} style={{ flex: "none" }}>{unit}</Text>
+                    </Group>
                   </>
                 )}
-                <button
-                  type="button"
-                  className="icon-btn param-reset"
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size={22}
                   style={{ visibility: changed ? "visible" : "hidden" }}
                   tabIndex={changed ? 0 : -1}
                   title={t("params.reset", { value: String(was) })}
@@ -89,12 +118,12 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
                   onClick={() => was !== undefined && onChange(setParam(source, p, was))}
                 >
                   <Icon name="rotate" size={13} />
-                </button>
-              </div>
+                </ActionIcon>
+              </Box>
             );
           })}
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 }

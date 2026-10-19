@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
+import { Button, Indicator, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { inTauri } from "../api";
 
@@ -49,11 +50,22 @@ export function McpIndicator({ onClick }: { onClick: () => void }) {
     ? [t("mcp.offTitle"), s.error].filter(Boolean).join(" ")
     : [s.url, seen ? t("mcp.last", { name, calls: s.calls, secs: s.idleSecs }) : t("mcp.none")].join("\n");
   const title = `${t("mcp.about")}\n\n${detail}`;
+  const dot = state === "error" ? "var(--bad)" : state === "off" ? "var(--muted)" : "var(--ok)";
 
   return (
-    <button type="button" className={`mcp-pill ${state}`} title={title} onClick={onClick}>
-      <span className="mcp-dot" aria-hidden />
-      <span className="mcp-pill-text">{label}</span>
-    </button>
+    <Button
+      variant="default"
+      radius="xl"
+      size="compact-sm"
+      fw={400}
+      c={state === "error" ? "var(--bad)" : state === "active" ? "var(--text)" : "dimmed"}
+      bd={state === "error" ? "1px solid var(--bad)" : undefined}
+      title={title}
+      onClick={onClick}
+      style={{ flex: "none" }}
+      leftSection={<Indicator inline processing={state === "active"} size={8} color={dot} offset={0} position="middle-center" zIndex={1} withBorder={false}><span style={{ display: "block", width: 8, height: 8 }} /></Indicator>}
+    >
+      <Text span visibleFrom="md" inherit>{label}</Text>
+    </Button>
   );
 }

@@ -5,6 +5,18 @@ import type { ShadingMode } from "../../types";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { flatGeometry, indexedGeometry, meshVolume } from "./geometry";
 
+const AXIS_COLOR = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" };
+/** Full-size layer for the dimension labels and axis ticks drawn over the canvas. */
+const LAYER: Partial<CSSStyleDeclaration> = { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" };
+const LABEL: Partial<CSSStyleDeclaration> = {
+  position: "absolute", left: "0", top: "0", padding: "1px 6px", borderRadius: "4px", font: "600 11px ui-monospace, Menlo, monospace",
+  background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", whiteSpace: "nowrap",
+};
+const TICK: Partial<CSSStyleDeclaration> = {
+  position: "absolute", left: "0", top: "0", font: "600 10px ui-monospace, Menlo, monospace", color: "var(--text)", whiteSpace: "nowrap",
+  textShadow: "0 0 3px var(--vp-bg), 0 0 3px var(--vp-bg)",
+};
+
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 export interface ViewerStyle {
@@ -115,6 +127,7 @@ export class Viewer {
   private axesLines: THREE.LineSegments | null = null;
   private axesKey = "";
   private ticks: HTMLElement[] = [];
+  private labelLayer: HTMLElement;
   private tickLayer: HTMLElement;
   private box = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
   private center = new THREE.Vector3();
@@ -140,6 +153,7 @@ export class Viewer {
     this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    Object.assign(this.renderer.domElement.style, { display: "block", touchAction: "none" });
     host.prepend(this.renderer.domElement);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -162,16 +176,17 @@ export class Viewer {
     this.scene.add(this.boxHelper);
 
     const overlay = document.createElement("div");
-    overlay.className = "vp-labels";
-    for (const axis of ["x", "y", "z"]) {
+    Object.assign(overlay.style, LAYER);
+    for (const axis of ["x", "y", "z"] as const) {
       const l = document.createElement("span");
-      l.className = `vp-label ${axis}`;
+      Object.assign(l.style, LABEL, { borderColor: AXIS_COLOR[axis] });
       overlay.appendChild(l);
       this.labels.push(l);
     }
     host.appendChild(overlay);
+    this.labelLayer = overlay;
     this.tickLayer = document.createElement("div");
-    this.tickLayer.className = "vp-labels vp-ticks";
+    Object.assign(this.tickLayer.style, LAYER);
     host.appendChild(this.tickLayer);
 
     this.persp.up.set(0, 0, 1);
@@ -508,7 +523,8 @@ export class Viewer {
     this.edgeMat.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
-    this.host.querySelectorAll(".vp-labels").forEach((e) => e.remove());
+    this.labelLayer.remove();
+    this.tickLayer.remove();
     this.axesLines?.geometry.dispose();
     this.renderer.domElement.remove();
   }
@@ -690,7 +706,7 @@ export class Viewer {
     const dTarget = this.distance();
     while (this.ticks.length < items.length) {
       const l = document.createElement("span");
-      l.className = "vp-tick";
+      Object.assign(l.style, TICK);
       this.tickLayer.appendChild(l);
       this.ticks.push(l);
     }
@@ -699,14 +715,14 @@ export class Viewer {
       if (!it) return void (l.style.display = "none");
       const v = it.p.clone().project(this.camera);
       l.style.display = v.z > 1 ? "none" : "";
-      l.dataset.axis = it.axis;
+      l.style.color = AXIS_COLOR[it.axis];
       l.textContent = it.text;
       const depth = this.camera === this.persp ? this.camera.position.distanceTo(it.p) : dTarget;
       const px = THREE.MathUtils.clamp(13 * (dTarget / depth), 7, 22);
       l.style.fontSize = `${px.toFixed(1)}px`;
       l.style.transform = `translate(-50%, -50%) translate(${(v.x * 0.5 + 0.5) * w}px, ${(-v.y * 0.5 + 0.5) * h}px)`;
       if (this.marks && v.z <= 1) {
-        const color = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" }[it.axis];
+        const color = AXIS_COLOR[it.axis];
         this.marks.push({ x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, text: it.text, color, px });
       }
     });

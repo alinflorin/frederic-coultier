@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Affix, Box, Group, Paper, Text, UnstyledButton } from "@mantine/core";
+import { useHover, useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -45,7 +47,6 @@ import { useAgentBridge } from "./agent/useAgentBridge";
 import { listEngines, type EngineInfo } from "./chat/engines";
 import { useAgentChat } from "./chat/useAgentChat";
 import type { AgentApi } from "./agent/ops";
-import "./App.css";
 
 type PaneId = "source" | "chat" | "preview";
 const RELEASES_URL = "https://github.com/alinflorin/frederic-coultier/releases/latest";
@@ -55,22 +56,26 @@ type DialogId = "settings" | "export" | "history" | "prefs" | "kb" | "about" | n
 const IDLE: RenderState = { status: "idle", mesh: null, diagnostics: [], echoes: [] };
 const RENDER_DELAY_MS = 200;
 
-function useMediaQuery(query: string) {
-  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const on = () => setMatch(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, [query]);
-  return match;
+/** The draggable bar between two panes. */
+function Handle({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => void }) {
+  const { hovered, ref } = useHover<HTMLDivElement>();
+  return (
+    <Box
+      ref={ref}
+      role="separator"
+      aria-orientation="vertical"
+      onPointerDown={onPointerDown}
+      bg={hovered ? "var(--accent)" : "var(--border)"}
+      style={{ cursor: "col-resize", opacity: hovered ? 1 : 0.5, transition: "opacity 0.15s, background 0.15s", touchAction: "none" }}
+    />
+  );
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
 
 function App() {
   const { t } = useTranslation();
-  const compact = useMediaQuery("(max-width: 899px)");
+  const compact = useMediaQuery("(max-width: 899px)", false, { getInitialValueInEffect: false });
 
   // `project` is the in-memory content of the open .fc file, `path` where it lives on disk.
   const [project, setProject] = useState<FcProject | null>(null);
@@ -674,7 +679,7 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
       {onboarding && (
         <Onboarding
           chatAvailable={engines === null ? null : !!engine}
@@ -693,39 +698,41 @@ function App() {
         <Welcome recents={recents} onNew={newProject} onOpen={openDialog} onOpenRecent={openRecent} onSample={newSample} />
       ) : compact ? (
         <>
-          <div className="single">{panes![mobilePane]}</div>
-          <nav className="tabbar" aria-label={t("app.panes")}>
+          <Box style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>{panes![mobilePane]}</Box>
+          <Group component="nav" gap={0} wrap="nowrap" bg="var(--surface)" bd="0 solid var(--border)" aria-label={t("app.panes")} style={{ flex: "none", borderTopWidth: 1, paddingBottom: "env(safe-area-inset-bottom)" }}>
             {((chatEnabled ? ["source", "chat", "preview"] : ["source", "preview"]) as PaneId[]).map((id) => (
-              <button key={id} className={mobilePane === id ? "on" : ""} onClick={() => setMobilePane(id)}>
+              <UnstyledButton key={id} flex={1} py={8} px={2} fz={11} c={mobilePane === id ? "var(--accent)" : "dimmed"} onClick={() => setMobilePane(id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                 <Icon name={id === "source" ? "code" : id === "chat" ? "chat" : "cube"} size={20} />
                 {t(`${id}.title`)}
-              </button>
+              </UnstyledButton>
             ))}
-            <button onClick={() => setDialog("settings")}>
+            <UnstyledButton flex={1} py={8} px={2} fz={11} c="dimmed" onClick={() => setDialog("settings")} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
               <Icon name="gear" size={20} />
               {t("menu.settingsShort")}
-            </button>
-          </nav>
+            </UnstyledButton>
+          </Group>
         </>
       ) : (
-        <div
-          className="workspace"
+        <Box
           style={{
+            flex: 1,
+            minHeight: 0,
+            display: "grid",
             gridTemplateColumns: chatEnabled
               ? `${cols.source}px 6px minmax(260px, 1fr) 6px ${cols.preview}px`
               : `${cols.source}px 6px minmax(260px, 1fr)`,
           }}
         >
           {panes!.source}
-          <div className="splitter" onPointerDown={startDrag("source")} role="separator" aria-orientation="vertical" />
+          <Handle onPointerDown={startDrag("source")} />
           {chatEnabled && (
             <>
               {panes!.chat}
-              <div className="splitter" onPointerDown={startDrag("preview")} role="separator" aria-orientation="vertical" />
+              <Handle onPointerDown={startDrag("preview")} />
             </>
           )}
           {panes!.preview}
-        </div>
+        </Box>
       )}
 
       {dialog === "settings" && project && (
@@ -807,8 +814,14 @@ function App() {
         />
       )}
 
-      {toast && <div className="toast" role="status">{toast}</div>}
-    </div>
+      <Affix position={{ bottom: compact ? 78 : 74, left: 0, right: 0 }} zIndex={500} style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+        {toast && (
+          <Paper role="status" px={16} py={8} bg="var(--text)" c="var(--bg)" shadow="md" maw="calc(100% - 32px)" style={{ borderRadius: 999, pointerEvents: "auto" }}>
+            <Text inherit>{toast}</Text>
+          </Paper>
+        )}
+      </Affix>
+    </Box>
   );
 }
 
