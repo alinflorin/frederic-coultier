@@ -509,11 +509,13 @@ function App() {
         ],
       },
       {
-        id: "project",
-        label: t("menu.project"),
-        onSelect: () => open && setDialog("settings"),
+        id: "settings",
+        label: t("menu.settingsShort"),
+        items: [
+          { label: t("menu.project"), onSelect: () => setDialog("settings"), disabled: !open },
+          { label: t("menu.preferences"), shortcut: "Ctrl+,", onSelect: () => setDialog("prefs") },
+        ],
       },
-      { id: "prefs", label: t("menu.preferences"), onSelect: () => setDialog("prefs") },
       {
         id: "help",
         label: t("menu.help"),
