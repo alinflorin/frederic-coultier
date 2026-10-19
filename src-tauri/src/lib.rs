@@ -160,6 +160,23 @@ async fn mesh_health(
     .map_err(|e| e.to_string())?
 }
 
+/// Wall thickness and slope at the surface point nearest to `point` (model coordinates).
+#[tauri::command]
+async fn probe_point(
+    source: String,
+    point: [f64; 3],
+    tilt: f64,
+    cache: State<'_, RenderCache>,
+) -> Result<insight::SpotProbe, String> {
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+        insight::probe(&mesh, point, tilt).ok_or_else(|| "The model is empty.".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceLookup {
@@ -407,6 +424,7 @@ pub fn run() {
             print_layout,
             mesh_report,
             mesh_health,
+            probe_point,
             locate_source
         ])
         .run(tauri::generate_context!())

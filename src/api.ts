@@ -198,6 +198,18 @@ export interface Health {
   truncated: boolean;
 }
 
+/** What the surface is like at the point of it nearest to `point` (model coordinates). */
+export interface SpotProbe {
+  surface: [number, number, number];
+  offBy: number;
+  normal: [number, number, number];
+  thickness: number | null;
+  incline: number;
+}
+
+export const probePoint = (source: string, point: [number, number, number], tilt: number) =>
+  invoke<SpotProbe>("probe_point", { source, point, tilt });
+
 export const meshHealth = (source: string) => invoke<Health>("mesh_health", { source });
 
 /** A statement of the source that has a spot on its surface. */

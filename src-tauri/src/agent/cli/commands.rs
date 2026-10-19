@@ -91,6 +91,8 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "check" => check(c, args).await,
         "orient" => orient(c, args).await,
         "locate" => locate(c, args).await,
+        "measure" => measure(c, args).await,
+        "diff-shot" => shot_of(c, args, true).await,
         "supports ls" => supports_ls(c, args).await,
         "supports auto" => supports_auto(c, args).await,
         "supports add" => supports_add(c, args).await,
@@ -797,6 +799,23 @@ pub(super) const SHOT_FLAGS: &[Flag] = &[
     switch("annotate"),
     switch("overhang"),
     switch("health"),
+    switch("turnaround"),
+];
+
+pub(super) const DIFF_FLAGS: &[Flag] = &[
+    opt("view"),
+    opt("az"),
+    opt("el"),
+    opt("zoom"),
+    opt("at"),
+    switch("ortho"),
+    switch("persp"),
+    opt("shading"),
+    opt("scene"),
+    opt("cut"),
+    opt("metal"),
+    opt("bg"),
+    opt("size"),
 ];
 
 fn one_of(flag: &str, value: &str, allowed: &[&str]) -> Result<String, String> {
@@ -809,11 +828,24 @@ fn one_of(flag: &str, value: &str, allowed: &[&str]) -> Result<String, String> {
 }
 
 async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
-    let p = options(args, SHOT_FLAGS)?;
-    if !p.pos.is_empty() {
+    shot_of(c, args, false).await
+}
+
+/// `shot`, or with `diff` the same picture next to an earlier version (`diff-shot [ID]`).
+async fn shot_of(c: &Ctx<'_>, args: &[String], diff: bool) -> Result<Out, String> {
+    let p = options(args, if diff { DIFF_FLAGS } else { SHOT_FLAGS })?;
+    let mut a = Map::new();
+    if diff {
+        if p.pos.len() > 1 {
+            return Err(format!("unexpected argument {:?}", p.pos[1]));
+        }
+        a.insert(
+            "diff".into(),
+            p.pos.first().map_or(json!(true), |id| json!(id)),
+        );
+    } else if !p.pos.is_empty() {
         return Err(format!("unexpected argument {:?}", p.pos[0]));
     }
-    let mut a = Map::new();
     if let Some(v) = p.value("view") {
         a.insert(
             "view".into(),
@@ -906,7 +938,7 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         a.insert("width".into(), json!(w));
         a.insert("height".into(), json!(h));
     }
-    for flag in ["findings", "annotate", "overhang", "health"] {
+    for flag in ["findings", "annotate", "overhang", "health", "turnaround"] {
         if p.has(flag) {
             a.insert(flag.into(), json!(true));
         }
@@ -923,8 +955,11 @@ async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         .unwrap_or_default();
     // the picture comes first and is exactly what the preview renders; the annotated copy follows it
     let mut images = vec![(png, "image/png".to_string())];
-    if let Some(copy) = v["annotated"].as_str() {
-        images.push((copy.to_owned(), "image/png".into()));
+    // current, then what differs, then the earlier version
+    for key in ["annotated", "diff", "before"] {
+        if let Some(copy) = v[key].as_str() {
+            images.push((copy.to_owned(), "image/png".into()));
+        }
     }
     let mut text = format!("{}×{} px{note}", v["width"], v["height"]);
     if let Some(f) = v["findings"].as_object() {
@@ -1109,6 +1144,106 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
                 format!("rejected ({})", sm["reason"].as_str().unwrap_or("?"))
             }
         ));
+    }
+    say(l.join("\n"))
+}
+
+pub(super) const MEASURE_FLAGS: &[Flag] = &[opt("wall")];
+
+fn vsub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn vdot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn vcross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+fn vlen(a: [f64; 3]) -> f64 {
+    vdot(a, a).sqrt()
+}
+
+/// Distance, angle at the middle point and the circle through three points, as text.
+fn measure_points(pts: &[[f64; 3]]) -> Vec<String> {
+    let at = |p: &[f64; 3]| format!("({})", nums(&json!(p)));
+    let mut l = Vec::new();
+    for w in pts.windows(2) {
+        let d = vsub(w[1], w[0]);
+        l.push(format!(
+            "{} → {}: {} mm  (Δ {})",
+            at(&w[0]),
+            at(&w[1]),
+            n(vlen(d)),
+            nums(&json!(d))
+        ));
+    }
+    if let [a, b, c] = pts {
+        let (u, v) = (vsub(*a, *b), vsub(*c, *b));
+        let den = vlen(u) * vlen(v);
+        if den > 1e-12 {
+            let ang = (vdot(u, v) / den).clamp(-1.0, 1.0).acos().to_degrees();
+            l.push(format!("angle at the middle point: {}°", n(ang)));
+        }
+        let (ab, ac) = (vsub(*b, *a), vsub(*c, *a));
+        let cr = vcross(ab, ac);
+        let c2 = vdot(cr, cr);
+        if c2 > 1e-9 * (vdot(ab, ab) * vdot(ac, ac)).max(1.0) {
+            let (t1, t2) = (vcross(cr, ab), vcross(ac, cr));
+            let (k1, k2) = (vdot(ac, ac) / (2.0 * c2), vdot(ab, ab) / (2.0 * c2));
+            let off = [0, 1, 2].map(|i| t1[i] * k1 + t2[i] * k2);
+            let r = vlen(off);
+            let centre = [0, 1, 2].map(|i| a[i] + off[i]);
+            l.push(format!(
+                "circle through the three: Ø {} mm (R {}), centre {}; as a ring bore that is EU {} / US {}",
+                n(2.0 * r),
+                n(r),
+                at(&centre),
+                n(2.0 * r * std::f64::consts::PI),
+                n((2.0 * r - 11.63) / 0.8128)
+            ));
+        } else {
+            l.push("the three points are in a line: no circle".into());
+        }
+    }
+    l
+}
+
+async fn measure(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, MEASURE_FLAGS)?;
+    let mut l = Vec::new();
+    if let Some(w) = p.value("wall") {
+        let pt = parse::point(w)?;
+        let v = c.slow("analysis.probe", json!({ "point": pt })).await?;
+        let thick = v["thickness"]
+            .as_f64()
+            .map_or("none (the ray never leaves the piece)".to_string(), |t| {
+                format!("{} mm", n(t))
+            });
+        l.push(format!(
+            "nearest surface point ({}), {} mm from the point you gave",
+            nums(&v["surface"]),
+            n(v["offBy"].as_f64().unwrap_or(0.0))
+        ));
+        l.push(format!(
+            "wall thickness straight in: {thick}; normal ({}); {}° from the build direction (0 faces up, 90 is a wall, 180 a ceiling)",
+            nums(&v["normal"]),
+            n(v["incline"].as_f64().unwrap_or(0.0))
+        ));
+    }
+    match p.pos.len() {
+        0 if l.is_empty() => {
+            return Err("give 2 or 3 points (X,Y,Z each), or --wall X,Y,Z".into());
+        }
+        0 => {}
+        2 | 3 => {
+            let pts: Vec<[f64; 3]> = p.pos.iter().map(|s| parse::point(s)).collect::<Result<_, _>>()?;
+            l.extend(measure_points(&pts));
+        }
+        _ => return Err("give 2 or 3 points".into()),
     }
     say(l.join("\n"))
 }
@@ -1468,6 +1603,10 @@ mod tests {
                 if args["annotate"] == true {
                     v["annotated"] = json!("BBBB");
                 }
+                if !args["diff"].is_null() {
+                    v["diff"] = json!("DDDD");
+                    v["before"] = json!("EEEE");
+                }
                 if args["findings"] == true || args["annotate"] == true {
                     v["findings"] = json!({
                         "bbox": [20.5, 2.4, 20.5],
@@ -1479,6 +1618,9 @@ mod tests {
                 }
                 Ok(v)
             }
+            "analysis.probe" => Ok(json!({
+                "surface": [1.0, 2.0, 3.0], "offBy": 0.2, "normal": [0.0, 0.0, 1.0], "thickness": 1.6, "incline": 0.0
+            })),
             "analysis.locate" => Ok(json!({
                 "hits": [
                     { "line": 18, "text": "band();", "depth": 0, "leaf": false },
@@ -1817,6 +1959,40 @@ mod tests {
         assert_eq!(a.last("view.capture"), json!({ "findings": true }));
         assert_eq!(r.out.images.len(), 1);
         assert!(r.out.text.contains("ringFit"));
+    }
+
+    #[tokio::test]
+    async fn diff_shot_returns_current_difference_and_earlier() {
+        let a = app("");
+        let r = a.fc("diff-shot --view top").await;
+        assert!(r.error.is_none(), "{}", r.out.text);
+        assert_eq!(a.last("view.capture"), json!({ "diff": true, "view": "top" }));
+        let imgs: Vec<&str> = r.out.images.iter().map(|i| i.0.as_str()).collect();
+        assert_eq!(imgs, ["AAAA", "DDDD", "EEEE"]);
+        a.ok("diff-shot snap-3").await;
+        assert_eq!(a.last("view.capture"), json!({ "diff": "snap-3" }));
+        a.err("diff-shot a b").await;
+        a.err("diff-shot --annotate").await; // not an option of diff-shot
+        a.ok("shot --turnaround").await;
+        assert_eq!(a.last("view.capture"), json!({ "turnaround": true }));
+    }
+
+    #[tokio::test]
+    async fn measure_does_the_geometry_and_asks_the_app_for_walls() {
+        let a = app("");
+        let out = a.ok("measure 0,0,0 3,4,0").await;
+        assert!(out.contains("5 mm"), "{out}");
+        let out = a.ok("measure 10,0,0 0,10,0 -10,0,0").await;
+        assert!(out.contains("Ø 20 mm"), "{out}");
+        assert!(out.contains("angle at the middle point: 90°"), "{out}");
+        assert!(out.contains("EU 62.83"), "{out}");
+        let out = a.ok("measure 0,0,0 1,1,1 2,2,2").await;
+        assert!(out.contains("in a line"), "{out}");
+        let out = a.ok("measure --wall 1,2,3.2").await;
+        assert_eq!(a.last("analysis.probe"), json!({ "point": [1.0, 2.0, 3.2] }));
+        assert!(out.contains("wall thickness straight in: 1.6 mm"), "{out}");
+        a.err("measure").await;
+        a.err("measure 1,2,3").await;
     }
 
     #[tokio::test]

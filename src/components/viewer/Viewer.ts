@@ -29,6 +29,35 @@ const PIN: Partial<CSSStyleDeclaration> = {
   boxShadow: "0 1px 4px rgba(0,0,0,.45)", whiteSpace: "nowrap",
 };
 
+/** `a` with the pixels that differ from `b` in red and the rest faded, and the share that differs. */
+function diffCanvas(a: HTMLCanvasElement, b: HTMLCanvasElement): { canvas: HTMLCanvasElement; changed: number } {
+  const w = a.width;
+  const h = a.height;
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext("2d")!;
+  const pa = a.getContext("2d")!.getImageData(0, 0, w, h);
+  const pb = b.getContext("2d")!.getImageData(0, 0, w, h);
+  const o = ctx.createImageData(w, h);
+  let n = 0;
+  for (let i = 0; i < pa.data.length; i += 4) {
+    const d = Math.abs(pa.data[i] - pb.data[i]) + Math.abs(pa.data[i + 1] - pb.data[i + 1]) + Math.abs(pa.data[i + 2] - pb.data[i + 2]) + Math.abs(pa.data[i + 3] - pb.data[i + 3]);
+    if (d > 60) {
+      n++;
+      o.data[i] = 235;
+      o.data[i + 1] = 40;
+      o.data[i + 2] = 40;
+      o.data[i + 3] = 255;
+    } else {
+      for (let k = 0; k < 3; k++) o.data[i + k] = pa.data[i + k] * 0.4 + 255 * 0.6;
+      o.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(o, 0, 0);
+  return { canvas: out, changed: n / (w * h) };
+}
+
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
 
 export interface ViewerStyle {
@@ -119,6 +148,8 @@ export interface CaptureOptions {
   health?: Health;
   /** Drawn on a second copy of the picture, which is returned as `annotated`; the picture itself is untouched. */
   pins?: Pin[];
+  /** An earlier version of the piece (model coordinates) to render from the same camera, for `before` and `diff`. */
+  alt?: MeshBuf;
 }
 
 export interface Captured {
@@ -127,6 +158,11 @@ export interface Captured {
   height: number;
   /** The same picture with the pins drawn on it (only when `pins` were given). */
   annotated?: string;
+  /** With `alt`: the earlier version from the same camera, and the picture with what differs in red. */
+  before?: string;
+  diff?: string;
+  /** Share of the picture's pixels that differ. */
+  changed?: number;
 }
 
 /** A text label drawn on top of a captured picture (the on-screen ones are HTML). */
@@ -831,6 +867,32 @@ export class Viewer {
         ctx.fillText(m.text, m.x, m.y);
       }
       const png = out.toDataURL("image/png").split(",")[1];
+      let before: string | undefined;
+      let diff: string | undefined;
+      let changed: number | undefined;
+      const altModel = o.alt ? this.buildAlt(o.alt) : null;
+      if (altModel && this.model) {
+        // the earlier version in place of the current one, same camera and light
+        altModel.matrixAutoUpdate = false;
+        altModel.matrix.copy(this.frame);
+        const prev = document.createElement("canvas");
+        prev.width = w;
+        prev.height = h;
+        this.model.visible = false;
+        this.scene.add(altModel);
+        try {
+          this.renderer.render(this.scene, this.camera);
+          prev.getContext("2d")!.drawImage(this.renderer.domElement, 0, 0, w, h);
+        } finally {
+          this.scene.remove(altModel);
+          altModel.traverse((x) => (x as THREE.Mesh).geometry?.dispose());
+          this.model.visible = true;
+        }
+        before = prev.toDataURL("image/png").split(",")[1];
+        const d = diffCanvas(out, prev);
+        diff = d.canvas.toDataURL("image/png").split(",")[1];
+        changed = d.changed;
+      }
       let annotated: string | undefined;
       if (o.pins?.length) {
         // a copy: the picture above is already encoded and stays exactly as rendered
@@ -842,7 +904,7 @@ export class Viewer {
         this.drawPins(c2, o.pins, w, h);
         annotated = copy.toDataURL("image/png").split(",")[1];
       }
-      return { png, width: w, height: h, annotated };
+      return { png, width: w, height: h, annotated, before, diff, changed };
     } finally {
       if (extra) {
         this.scene.remove(extra);
@@ -874,6 +936,20 @@ export class Viewer {
       this.camera.updateMatrixWorld();
       this.dirty = true;
     }
+  }
+
+  /** A throwaway copy of the piece from `mesh`, in the current look (no BVH, no supports). */
+  private buildAlt(mesh: MeshBuf): THREE.Group | null {
+    const built = shadedMesh(mesh);
+    if (!built) return null;
+    const body = new THREE.Mesh(built.geometry, this.metalMat);
+    body.castShadow = true;
+    if (built.edges) {
+      const e = new THREE.LineSegments(built.edges, this.edgeMat);
+      e.visible = this.style?.display === "edges" || this.style?.display === "xray";
+      body.add(e);
+    }
+    return new THREE.Group().add(body);
   }
 
   dispose() {

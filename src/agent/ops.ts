@@ -6,6 +6,8 @@ import {
   meshHealth,
   meshReport,
   printLayout,
+  probePoint,
+  renderScad,
   printParams,
   suggestTilt,
   type PrintLayout,
@@ -269,6 +271,14 @@ const OPS: Record<string, Handler> = {
     return r;
   },
 
+  "analysis.probe": async (api, a) => {
+    const p = open(api);
+    if (!Array.isArray(a.point) || a.point.length !== 3) throw new Error("point must be [x, y, z]");
+    const point = a.point.map((v: unknown, i: number) => num(v, ["x", "y", "z"][i])) as [number, number, number];
+    const pr = p.settings.printing;
+    return probePoint(p.source, point, pr.supports.enabled ? pr.tilt : 0);
+  },
+
   "analysis.tilt": async (api) => {
     const p = open(api);
     const sup = p.settings.printing.supports;
@@ -388,6 +398,7 @@ const OPS: Record<string, Handler> = {
     if (!viewer) throw new Error("The 3D preview is not available (is the preview pane visible, and WebGL working?).");
     await settle(api);
     const r = api.render();
+    if (a.diff && !a.scene) a.scene = "model"; // the earlier version has no supports or sprue to show
     if (r.status === "error" && !r.mesh) throw new Error("The model does not render yet, so there is nothing to photograph. Fix the source error first.");
 
     // which scene: the piece as modelled, or as printed
@@ -447,7 +458,30 @@ const OPS: Record<string, Handler> = {
         report = await findingsFor(p);
         if (a.annotate) opts.pins = report.pins;
       }
+      // an earlier version, rendered from the same camera
+      let earlier: { label: string } | null = null;
+      if (a.diff) {
+        const snap =
+          a.diff === true
+            ? [...p.history].reverse().find((h) => h.source !== p.source)
+            : p.history.find((h) => h.id === a.diff);
+        if (!snap) throw new Error(a.diff === true ? "No earlier version differs from the current source; see history." : `no snapshot ${String(a.diff)}; see history`);
+        const old = await renderScad(snap.source).catch(() => null);
+        if (!old?.mesh) throw new Error("That version does not render (or is empty), so there is nothing to compare with.");
+        opts.alt = old.mesh;
+        opts.background = opts.background ?? "white"; // a transparent background cannot show a difference
+        earlier = { label: snap.label || snap.id };
+      }
+      if (a.turnaround) {
+        const sheet = await turnaround(viewer, opts);
+        notes.unshift(showingPrint ? "Scene: as printed." : "Scene: as modelled.");
+        notes.push("Views: front, right, back / left, top, iso.");
+        return { ...sheet, note: notes.join(" ") };
+      }
       const shot = viewer.capture(opts);
+      if (earlier) {
+        notes.push(`Compared with "${earlier.label}": ${((shot.changed ?? 0) * 100).toFixed(1)}% of the picture differs. Pictures: current, difference in red, earlier version.`);
+      }
       notes.unshift(showingPrint ? "Scene: as printed." : "Scene: as modelled.");
       if (a.annotate) {
         notes.push(report && report.pins.length ? "The second picture has numbered pins; the numbers are the findings' n." : "Nothing to pin: no finding has a place on the piece.");
@@ -458,6 +492,49 @@ const OPS: Record<string, Handler> = {
     }
   },
 };
+
+const SHEET_VIEWS = ["front", "right", "back", "left", "top", "iso"] as const;
+
+const loadImage = (b64: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("could not compose the picture"));
+    img.src = `data:image/png;base64,${b64}`;
+  });
+
+/** Six views of the piece on one sheet (3 × 2, labelled), so one picture shows it from all around. */
+export async function turnaround(viewer: Viewer, base: CaptureOptions) {
+  const tile = 400;
+  const aspect = base.width && base.height ? base.height / base.width : 1;
+  const tw = tile;
+  const th = Math.round(tile * Math.min(Math.max(aspect, 0.5), 2));
+  const shots = SHEET_VIEWS.map((view) =>
+    viewer.capture({ ...base, alt: undefined, pins: undefined, view, azimuth: undefined, elevation: undefined, width: tw, height: th, background: base.background ?? "white" }),
+  );
+  const imgs = await Promise.all(shots.map((s) => loadImage(s.png)));
+  const canvas = document.createElement("canvas");
+  canvas.width = tw * 3;
+  canvas.height = th * 2;
+  const ctx = canvas.getContext("2d")!;
+  const bg = base.background ?? "white";
+  if (bg !== "transparent") {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.font = "600 15px sans-serif";
+  ctx.textBaseline = "top";
+  imgs.forEach((img, i) => {
+    const x = (i % 3) * tw;
+    const y = Math.floor(i / 3) * th;
+    ctx.drawImage(img, x, y);
+    ctx.strokeStyle = "#00000022";
+    ctx.strokeRect(x + 0.5, y + 0.5, tw - 1, th - 1);
+    ctx.fillStyle = bg === "black" ? "#ffffffcc" : "#000000aa";
+    ctx.fillText(SHEET_VIEWS[i], x + 8, y + 6);
+  });
+  return { png: canvas.toDataURL("image/png").split(",")[1], width: canvas.width, height: canvas.height };
+}
 
 /** The findings of a deep check, as numbers the agent can use, and the pins that mark them on the piece. */
 async function findingsFor(p: FcProject) {

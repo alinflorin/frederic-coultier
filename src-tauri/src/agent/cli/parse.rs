@@ -292,7 +292,7 @@ pub fn options(words: &[String], specs: &[Flag]) -> Result<Parsed, String> {
     while i < words.len() {
         let w = &words[i];
         i += 1;
-        if only_positional || w == "-" || !w.starts_with('-') || w.parse::<f64>().is_ok() {
+        if only_positional || w == "-" || !w.starts_with('-') || w.parse::<f64>().is_ok() || looks_like_point(w) {
             p.pos.push(w.clone());
             continue;
         }
@@ -339,6 +339,11 @@ pub fn options(words: &[String], specs: &[Flag]) -> Result<Parsed, String> {
         }
     }
     Ok(p)
+}
+
+/// `-1,2.5,0` is a point, not an option.
+fn looks_like_point(w: &str) -> bool {
+    w.contains(',') && w.split(',').all(|t| t.trim().parse::<f64>().is_ok())
 }
 
 fn unknown(w: &str, specs: &[Flag]) -> String {

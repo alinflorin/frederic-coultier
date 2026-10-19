@@ -310,6 +310,67 @@ pub fn overhang(mesh: &Mesh, tilt: f64, angle: f64) -> (f64, f64, Vec<(V3, f64, 
     (over, total, regions)
 }
 
+// --- one spot ---
+
+/// What the surface is like at (the nearest point to) a spot.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpotProbe {
+    /// The point of the surface nearest to the one asked for.
+    pub surface: V3,
+    /// How far the asked-for point was from the surface, mm.
+    pub off_by: f64,
+    pub normal: V3,
+    /// Metal straight in from the surface to where it leaves the piece; `None` when it never does.
+    pub thickness: Option<f64>,
+    /// Degrees between the surface normal and the build direction: 0 faces up, 90 is a wall, 180 a ceiling.
+    pub incline: f64,
+}
+
+/// Wall thickness and slope at the surface point nearest to `point`, for a piece printed tilted by `tilt`.
+pub fn probe(mesh: &Mesh, point: V3, tilt: f64) -> Option<SpotProbe> {
+    let m = mesh.welded(WELD);
+    let mut best: Option<(f64, V3, usize)> = None;
+    for (i, t) in m.tris.iter().enumerate() {
+        let [a, b, c] = t.map(|k| m.verts[k as usize]);
+        let q = meshtools::closest_on_tri(point, a, b, c);
+        let d = dist(q, point);
+        if best.is_none_or(|x| d < x.0) {
+            best = Some((d, q, i));
+        }
+    }
+    let (off_by, surface, tri) = best?;
+    let [a, b, c] = m.tris[tri].map(|k| m.verts[k as usize]);
+    let (e1, e2) = (sub(b, a), sub(c, a));
+    let mut n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    let l = dot(n, n).sqrt();
+    if l < 1e-12 {
+        return None;
+    }
+    n = n.map(|x| x / l);
+    // the winding may point inwards (a mesh that is inside-out): make the normal face outwards
+    let mut w = m.clone();
+    if w.signed_volume() < 0.0 {
+        w.flip_winding();
+        n = n.map(|x| -x);
+    }
+    let bvh = Bvh::new(&w);
+    let thickness = bvh.ray(surface, n.map(|x| -x), Some(tri), false, 500.0);
+    let (s, cs) = (tilt * PI / 180.0).sin_cos();
+    let up = [0.0, s, cs];
+    Some(SpotProbe {
+        surface,
+        off_by,
+        normal: n,
+        thickness,
+        incline: dot(n, up).clamp(-1.0, 1.0).acos().to_degrees(),
+    })
+}
+
 // --- the extra findings of a report ---
 
 /// What the report needs besides the geometry.
@@ -861,6 +922,22 @@ mod tests {
         assert_eq!(r.axis, "z");
         assert!((r.inner_diameter - 17.0).abs() < 0.1, "{}", r.inner_diameter);
         assert!((r.eu - 17.0 * PI).abs() < 0.4);
+    }
+
+    #[test]
+    fn spot_probe_reads_wall_and_slope() {
+        let b = boxm([0.; 3], [10., 10., 3.]);
+        // on the top face: 3 mm of metal, facing up
+        let p = probe(&b, [5.0, 5.0, 3.2], 0.0).unwrap();
+        assert!((p.thickness.unwrap() - 3.0).abs() < 1e-6, "{p:?}");
+        assert!(p.incline < 1.0);
+        assert!((p.off_by - 0.2).abs() < 1e-9);
+        // on the underside: a ceiling
+        let p = probe(&b, [5.0, 5.0, -0.1], 0.0).unwrap();
+        assert!((p.incline - 180.0).abs() < 1.0, "{p:?}");
+        // on a side wall: 10 mm of metal, upright
+        let p = probe(&b, [10.1, 5.0, 1.5], 0.0).unwrap();
+        assert!((p.thickness.unwrap() - 10.0).abs() < 1e-6 && (p.incline - 90.0).abs() < 1.0, "{p:?}");
     }
 
     #[test]
