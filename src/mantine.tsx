@@ -229,6 +229,10 @@ const resolver: CSSVariablesResolver = () => ({
   },
 });
 
+/** Frosted-glass look on or off. Off: solid panes and menus, no backdrop blur, no gem shapes behind. */
+const GLASS = false;
+document.documentElement.dataset.glass = GLASS ? "on" : "off";
+
 /**
  * Crisp, flat gem shapes behind everything. No gradients: the panes above are frosted glass, and
  * it is their blur that softens these into light.

@@ -122,3 +122,19 @@ button:not(:disabled):active, [role="radio"]:active { transform: scale(0.975); }
 .mantine-Tabs-list::before { background: var(--hairline) !important; }
 .mantine-Input-input:focus, .mantine-Input-input:focus-within { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft) !important; }
 .tab-pill { justify-content: flex-start !important; } .tab-pill .mantine-Tabs-tabLabel { text-align: left; }
+
+/* glass off (see GLASS in mantine.tsx): the same panes as plain solid surfaces */
+html[data-glass="off"][data-mantine-color-scheme] {
+  --pane-bg: var(--surface);
+  --float-bg: var(--surface);
+  --glass: var(--surface);
+  --pane-border: var(--border);
+  --glass-border: var(--border);
+  --spec: transparent;
+  --vp-bg: var(--surface-2);
+  --chip: var(--surface-2);
+}
+html[data-glass="off"] .pane, html[data-glass="off"] .glass, html[data-glass="off"] .gl-float, html[data-glass="off"] .lift {
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+html[data-glass="off"] .scene { display: none; }
