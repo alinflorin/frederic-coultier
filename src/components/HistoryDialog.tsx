@@ -86,10 +86,9 @@ export function HistoryDialog({
               <UnstyledButton
                 key={s.id}
                 onClick={() => setSelected(s.id)}
-                p="8px 10px"
-                bg={s.id === selected ? "var(--accent-soft)" : "var(--surface-2)"}
-                bd={`1px solid ${s.id === selected ? "var(--accent)" : "var(--border)"}`}
-                style={{ borderRadius: 6, width: "100%" }}
+                className="choice"
+                data-on={s.id === selected}
+                style={{ padding: "8px 11px" }}
               >
                 <Text fw={700} inherit>{name(s)}</Text>
                 <Text c="dimmed" inherit>

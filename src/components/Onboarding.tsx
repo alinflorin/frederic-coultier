@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Box, Button, Code, Group, Image, List, Modal, SegmentedControl, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
+import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
@@ -38,9 +39,11 @@ export function Onboarding({
       centered
       size={640}
       zIndex={400}
-      overlayProps={{ backgroundOpacity: 1, color: "var(--bg)" }}
+      overlayProps={{ backgroundOpacity: 1, blur: 22, color: "var(--overlay)" }}
       aria-label={t("onboarding.title")}
     >
+      <AnimatePresence mode="wait" initial={false}>
+      <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}>
       {step === 0 ? (
         <Stack gap={0}>
           <Title order={2} fz={18} mb={4}>{t("onboarding.lookTitle")}</Title>
@@ -84,10 +87,10 @@ export function Onboarding({
                   aria-checked={on}
                   disabled={disabled}
                   onClick={() => setMode(id)}
-                  p={14}
-                  bg={on ? "var(--accent-soft)" : "var(--surface-2)"}
-                  bd={`1px solid ${on ? "var(--accent)" : "var(--border)"}`}
-                  style={{ borderRadius: 6, textAlign: "left", opacity: disabled ? 0.45 : 1 }}
+                  className="choice"
+                  data-on={on}
+                  p={16}
+                  style={{ opacity: disabled ? 0.45 : 1 }}
                 >
                   <Stack gap={8}>
                     <Group gap={8} c="var(--accent)">
@@ -125,10 +128,12 @@ export function Onboarding({
           <Text fz={12} c="dimmed">{t("onboarding.later")}</Text>
         </Stack>
       )}
+      </motion.div>
+      </AnimatePresence>
       <Group gap={8} mt="md" justify="flex-end" wrap="nowrap">
         <Group gap={6} mr="auto" aria-hidden>
           {[0, 1, 2].map((i) => (
-            <Box key={i} w={8} h={8} bg={step === i ? "var(--accent)" : "var(--border)"} style={{ borderRadius: "50%" }} />
+            <motion.div key={i} animate={{ width: step === i ? 22 : 8, background: step === i ? "var(--accent)" : "var(--border-strong)" }} transition={{ type: "spring", stiffness: 400, damping: 30 }} style={{ height: 8, borderRadius: 99 }} />
           ))}
         </Group>
         {step > 0 && <Button variant="default" onClick={() => setStep((step - 1) as 0 | 1)}>{t("onboarding.back")}</Button>}

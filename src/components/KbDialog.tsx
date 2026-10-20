@@ -130,7 +130,7 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
             ) : (
               <Stack gap={6}>
                 {hits.map((h, i) => (
-                  <UnstyledButton key={i} onClick={() => show(h.path)} p="8px 10px" bd="1px solid var(--border)" style={{ borderRadius: 6, display: "block", width: "100%" }}>
+                  <UnstyledButton key={i} onClick={() => show(h.path)} className="choice">
                     <Text fz={13} mb={4}>
                       <Code>{h.path}</Code>
                       {h.heading && <Text span inherit c="dimmed"> · {h.heading}</Text>}

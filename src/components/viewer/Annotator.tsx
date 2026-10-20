@@ -167,9 +167,8 @@ export function Annotator({
         top={10}
         left={12}
         right={56}
-        bg="var(--surface)"
-        bd="1px solid var(--border)"
-        style={{ borderRadius: 8, boxShadow: "var(--shadow)", zIndex: 6 }}
+        className="glass"
+        style={{ borderRadius: 12, zIndex: 6 }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <Group gap={4} wrap="nowrap" role="radiogroup" aria-label={t("annotate.color")}>

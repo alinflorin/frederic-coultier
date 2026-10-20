@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Box, Button, Checkbox, CloseButton, Collapse, Group, Image, Indicator, Loader, NativeSelect, Progress, Stack, Text, Textarea, Title, Typography, UnstyledButton, type BoxProps } from "@mantine/core";
+import { ActionIcon, Box, Button, Checkbox, CloseButton, Collapse, Group, Image, Indicator, Loader, Menu, NativeSelect, Popover, Progress, Stack, Text, Textarea, Title, Tooltip, UnstyledButton, type BoxProps } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,11 +13,11 @@ import { AUTO_COMPACT_AT } from "../chat/useAgentChat";
 /** The agent's words, with their Markdown shown; links open outside the app. */
 function Say({ text }: { text: string }) {
   return (
-    <Typography fz="inherit" style={{ overflowWrap: "anywhere", maxWidth: "100%" }}>
+    <Box className="md" fz="inherit" style={{ overflowWrap: "anywhere", maxWidth: "100%" }}>
       <Markdown remarkPlugins={[remarkGfm]} components={{ a: ({ node: _, ...p }) => <a {...p} target="_blank" rel="noreferrer" /> }}>
         {text}
       </Markdown>
-    </Typography>
+    </Box>
   );
 }
 
@@ -59,9 +59,9 @@ function Tools({ tools }: { tools: ToolCall[] }) {
       {tools.map((c, i) => (
         <Fold
           key={c.id || i}
-          bg="var(--surface)"
+          bg="var(--surface-2)"
           bd="1px solid var(--border)"
-          style={{ minWidth: 0, overflow: "hidden", borderRadius: 8 }}
+          style={{ minWidth: 0, overflow: "hidden", borderRadius: 10 }}
           head={
             <>
               <Text span inherit ff="monospace" fw={600} c={c.error ? "var(--bad)" : undefined} style={{ flex: "none" }}>{c.name}</Text>
@@ -81,6 +81,15 @@ function Tools({ tools }: { tools: ToolCall[] }) {
         </Fold>
       ))}
     </Stack>
+  );
+}
+
+/** The agent's mark next to its messages. */
+function Avatar({ busy }: { busy?: boolean }) {
+  return (
+    <Box c="var(--accent)" mt={1} style={{ display: "flex", flex: "none", width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 9, background: "var(--accent-soft)", opacity: busy ? 0.8 : 1 }}>
+      <Icon name="sparkle" size={14} />
+    </Box>
   );
 }
 
@@ -262,71 +271,87 @@ export function ChatPane({
   const shownLimits = limits.filter((l) => !l.resetsAt || l.resetsAt * 1000 > Date.now());
 
   const suggestions = [t("chat.s1"), t("chat.s2"), t("chat.s3")];
-
-  const pick = (value: string, onChange: (v: string) => void, data: { value: string; label: string; disabled?: boolean }[], label: string, extra: object = {}) => (
-    <NativeSelect size="xs" aria-label={label} title={label} value={value} disabled={busy} data={data} onChange={(e) => onChange(e.currentTarget.value)} style={{ maxWidth: 210, minWidth: 0 }} {...extra} />
-  );
   const stateColor = state === "error" || state === "unavailable" ? "var(--bad)" : state === "idle" ? "var(--ok)" : "var(--accent)";
-  const bar = { px: 10, py: 6, gap: 6, wrap: "nowrap", style: { flex: "none" } } as const;
-  const bubbleBase = { maw: "88%", px: 12, py: 9, style: { minWidth: 0, borderRadius: 14, overflowWrap: "anywhere", wordBreak: "break-word" } } as const;
+  const active = conversations.find((c) => c.id === activeId);
+  const select = (value: string, onChange: (v: string) => void, data: { value: string; label: string; disabled?: boolean }[], label: string) => (
+    <NativeSelect size="xs" label={label} value={value} disabled={busy} data={data} onChange={(e) => onChange(e.currentTarget.value)} styles={{ label: { fontSize: 11, color: "var(--muted)", marginBottom: 3 } }} />
+  );
+  const canSend = (draft.trim() || files.length > 0) && !unavailable;
 
   return (
-    <Stack component="section" gap={0} bg="var(--surface)" aria-label={t("chat.title")} style={{ minWidth: 0, minHeight: 0 }}>
-      <Box bd="0 solid var(--border)" style={{ flex: "none", borderBottomWidth: 1 }}>
-        <Group {...bar}>
-          <Group gap={6} wrap="nowrap" fz={12} c="dimmed">
-            <Icon name="sparkle" size={14} />
-            {engines.length > 1 && engineId
-              ? pick(engineId, onEngine, engines.map((e) => ({ value: e.id, label: e.label, disabled: !e.available })), t("chat.agent"))
-              : (agent ?? t("chat.title"))}
-          </Group>
-          <Group gap={5} wrap="nowrap" fz={12} c={state === "idle" ? "dimmed" : stateColor === "var(--accent)" ? "var(--text)" : stateColor} role="status" title={error ?? unavailable ?? undefined} style={{ whiteSpace: "nowrap" }}>
-            <Indicator inline size={8} color={stateColor} processing={state === "working" || state === "compacting"} offset={0} position="middle-center" withBorder={false}>
-              <span style={{ display: "block", width: 8, height: 8 }} />
-            </Indicator>
-            {t(`chat.state.${state}`)}
-          </Group>
-          <Box flex={1} />
-          {models.length > 0 &&
-            pick(model, onModel, [{ value: "", label: modelDefault ? t("chat.defaultNamed", { name: modelDefault }) : t("chat.default") }, ...models.map((m) => ({ value: m.id, label: m.label }))], t("chat.model"))}
-          {efforts.length > 0 &&
-            pick(effort, onEffort, [{ value: "", label: effortDefault ? t("chat.defaultNamed", { name: effortDefault }) : t("chat.effortDefault") }, ...efforts.map((l) => ({ value: l, label: l }))], t("chat.effort"))}
+    <Stack className="pane" component="section" gap={0} aria-label={t("chat.title")}>
+      <Group className="pane-head" gap={6} wrap="nowrap">
+        <Box c="var(--accent)" p={5} style={{ display: "flex", borderRadius: 8, background: "var(--accent-soft)", flex: "none" }}>
+          <Icon name="sparkle" size={14} />
+        </Box>
+        <Menu position="bottom-start" offset={6} width={280} disabled={busy}>
+          <Menu.Target>
+            <UnstyledButton px={6} py={4} fw={600} fz={13} style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6, borderRadius: 8 }} aria-label={t("chat.conversation")}>
+              <Text inherit truncate="end">{active?.title || t("chat.untitled")}</Text>
+              <Box c="dimmed" style={{ display: "flex", flex: "none" }}><Icon name="chevron" size={13} /></Box>
+            </UnstyledButton>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {conversations.map((c) => (
+              <Menu.Item key={c.id} onClick={() => onSelect(c.id)} c={c.id === activeId ? "var(--accent)" : undefined} bg={c.id === activeId ? "var(--accent-soft)" : undefined}>
+                <Text inherit truncate="end">{c.title || t("chat.untitled")}</Text>
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+        <Group gap={5} wrap="nowrap" fz={11.5} c="dimmed" role="status" title={error ?? unavailable ?? undefined} style={{ whiteSpace: "nowrap", flex: "none" }}>
+          <Indicator inline size={7} color={stateColor} processing={state === "working" || state === "compacting"} offset={0} position="middle-center" withBorder={false}>
+            <span style={{ display: "block", width: 7, height: 7 }} />
+          </Indicator>
+          <span className="hide-narrow">{t(`chat.state.${state}`)}</span>
         </Group>
-        <Group {...bar} pt={0}>
-          {pick(activeId, onSelect, conversations.map((c) => ({ value: c.id, label: c.title || t("chat.untitled") })), t("chat.conversation"), { style: { flex: "1 1 0", minWidth: 0 } })}
-          <Button size="compact-xs" variant="default" fw={400} disabled={busy || messages.length === 0} onClick={onNew} title={t("chat.new")}>
-            +
-          </Button>
-          <Button size="compact-xs" variant="default" fw={400} disabled={busy || !canCompact} onClick={onCompact} title={t("chat.compactHint")}>
-            {t("chat.compact")}
-          </Button>
-          <Checkbox
-            size="xs"
-            label={t("chat.autoCompact")}
-            title={t("chat.autoCompactHint", { percent: Math.round(AUTO_COMPACT_AT * 100) })}
-            checked={autoCompact}
-            onChange={(e) => onAutoCompact(e.currentTarget.checked)}
-            styles={{ label: { whiteSpace: "nowrap", color: "var(--muted)", fontSize: 12 } }}
-          />
-          <Button
-            size="compact-xs"
-            variant="default"
-            fw={400}
-            c={sure ? "var(--bad)" : undefined}
-            bd={sure ? "1px solid var(--bad)" : undefined}
-            disabled={busy || (messages.length === 0 && conversations.length === 1)}
-            onClick={() => {
-              if (!sure) return setSure(true);
-              setSure(false);
-              onDelete();
-            }}
-          >
-            {sure ? t("chat.deleteSure") : t("chat.delete")}
-          </Button>
-        </Group>
-      </Box>
+        <Box flex={1} />
+        <Tooltip label={t("chat.new")}>
+          <ActionIcon variant="subtle" color="gray" disabled={busy || messages.length === 0} onClick={onNew} aria-label={t("chat.new")}>
+            <Icon name="plus" size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Popover position="bottom-end" offset={6} width={300} trapFocus={false}>
+          <Popover.Target>
+            <ActionIcon variant="subtle" color="gray" aria-label={t("preview.display")}>
+              <Icon name="gear" size={16} />
+            </ActionIcon>
+          </Popover.Target>
+          <Popover.Dropdown p="md">
+            <Stack gap="sm">
+              {engines.length > 1 && engineId && select(engineId, onEngine, engines.map((e) => ({ value: e.id, label: e.label, disabled: !e.available })), t("chat.agent"))}
+              {models.length > 0 &&
+                select(model, onModel, [{ value: "", label: modelDefault ? t("chat.defaultNamed", { name: modelDefault }) : t("chat.default") }, ...models.map((m) => ({ value: m.id, label: m.label }))], t("chat.model"))}
+              {efforts.length > 0 &&
+                select(effort, onEffort, [{ value: "", label: effortDefault ? t("chat.defaultNamed", { name: effortDefault }) : t("chat.effortDefault") }, ...efforts.map((l) => ({ value: l, label: l }))], t("chat.effort"))}
+              <Checkbox size="xs" label={t("chat.autoCompact")} title={t("chat.autoCompactHint", { percent: Math.round(AUTO_COMPACT_AT * 100) })} checked={autoCompact} onChange={(e) => onAutoCompact(e.currentTarget.checked)} />
+              <Checkbox size="xs" label={t("chat.chime")} title={t("chat.chimeHint", { secs: chime.secs })} checked={chime.on} onChange={(e) => setChimeOn(e.currentTarget.checked)} />
+              <Group gap={6} grow>
+                <Button size="compact-sm" variant="default" fw={500} disabled={busy || !canCompact} onClick={onCompact} title={t("chat.compactHint")}>
+                  {t("chat.compact")}
+                </Button>
+                <Button
+                  size="compact-sm"
+                  variant="default"
+                  fw={500}
+                  c={sure ? "var(--bad)" : undefined}
+                  bd={sure ? "1px solid var(--bad)" : undefined}
+                  disabled={busy || (messages.length === 0 && conversations.length === 1)}
+                  onClick={() => {
+                    if (!sure) return setSure(true);
+                    setSure(false);
+                    onDelete();
+                  }}
+                >
+                  {sure ? t("chat.deleteSure") : t("chat.delete")}
+                </Button>
+              </Group>
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+      </Group>
       {(usedContext || shownLimits.length > 0) && (
-        <Group gap="4px 14px" px={10} py={5} fz={12} c="dimmed" bd="0 solid var(--border)" style={{ flex: "none", borderBottomWidth: 1 }}>
+        <Group gap="4px 14px" px={14} py={6} fz={11.5} c="dimmed" bd="0 solid var(--border)" style={{ flex: "none", borderBottomWidth: 1 }}>
           {usedContext && (
             <Meter
               label={t("chat.context")}
@@ -344,18 +369,31 @@ export function ChatPane({
           ))}
         </Group>
       )}
-      <Stack gap={10} p={14} role="log" aria-live="polite" style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+      <Stack gap={16} p={16} role="log" aria-live="polite" style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {messages.length === 0 && !live && (
-          <Stack align="center" gap="xs" m="auto" maw={360} ta="center" c="var(--accent)">
-            <Icon name="sparkle" size={28} />
-            <Title order={3} fz={17} c="var(--text)">{t("chat.emptyTitle")}</Title>
-            <Text c="dimmed">{t("chat.emptyHint")}</Text>
+          <Stack align="center" gap="xs" m="auto" maw={380} ta="center" className="fade-up">
+            <Box c="var(--accent)" p={12} mb={4} style={{ display: "flex", borderRadius: 16, background: "var(--accent-soft)" }}>
+              <Icon name="sparkle" size={26} />
+            </Box>
+            <Title order={3} fz={18} fw={650} lts="-0.01em" c="var(--text)">{t("chat.emptyTitle")}</Title>
+            <Text c="dimmed" fz={13} lh={1.5}>{t("chat.emptyHint")}</Text>
             {!unavailable && (
-              <Stack gap={6} mt={10} w="100%">
+              <Stack gap={8} mt={14} w="100%">
                 {suggestions.map((s) => (
-                  <Button key={s} variant="default" radius="xl" h="auto" py={6} styles={{ label: { whiteSpace: "normal" } }} onClick={() => onSend(s)} disabled={busy}>
+                  <UnstyledButton
+                    key={s}
+                    className="lift"
+                    onClick={() => !busy && onSend(s)}
+                    px={14}
+                    py={10}
+                    fz={13}
+                    ta="left"
+                    bd="1px solid var(--border)"
+                    style={{ borderRadius: 12, background: "var(--surface-2)", display: "flex", gap: 10, alignItems: "center", opacity: busy ? 0.5 : 1 }}
+                  >
+                    <Box c="var(--accent)" style={{ display: "flex", flex: "none" }}><Icon name="sparkle" size={13} /></Box>
                     {s}
-                  </Button>
+                  </UnstyledButton>
                 ))}
               </Stack>
             )}
@@ -363,23 +401,33 @@ export function ChatPane({
         )}
         {messages.map((m) =>
           m.role === "note" ? (
-            <Text key={m.id} fz={12} c="dimmed" px={10} py={2} bg="var(--surface-2)" style={{ alignSelf: "center", borderRadius: 999 }}>
+            <Text key={m.id} className="chip" style={{ alignSelf: "center" }}>
               {m.text === "compacted" ? t("chat.compacted") : m.text}
             </Text>
-          ) : (
-            <Group key={m.id} wrap="nowrap" justify={m.role === "user" ? "flex-end" : "flex-start"} style={{ minWidth: 0 }}>
+          ) : m.role === "user" ? (
+            <Group key={m.id} wrap="nowrap" justify="flex-end" style={{ minWidth: 0 }} className="fade-up">
               <Box
-                {...bubbleBase}
-                bg={m.role === "user" ? "var(--accent)" : "var(--surface-2)"}
-                c={m.role === "user" ? "var(--accent-text)" : undefined}
-                style={{ ...bubbleBase.style, whiteSpace: m.role === "user" ? "pre-wrap" : "normal", borderBottomRightRadius: m.role === "user" ? 4 : 14, borderBottomLeftRadius: m.role === "user" ? 14 : 4 }}
+                maw="88%"
+                px={14}
+                py={9}
+                fz={13.5}
+                lh={1.5}
+                c="var(--accent-text)"
+                style={{ minWidth: 0, borderRadius: 16, borderBottomRightRadius: 5, background: "var(--accent-grad)", boxShadow: "0 2px 10px color-mix(in srgb, var(--accent) 28%, transparent)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
               >
-                {m.files && m.files.length > 0 && <Box mb={6}><Files files={m.files} /></Box>}
+                {m.files && m.files.length > 0 && <Box mb={6} c="var(--text)"><Files files={m.files} /></Box>}
+                {m.text}
+              </Box>
+            </Group>
+          ) : (
+            <Group key={m.id} wrap="nowrap" align="flex-start" gap={10} style={{ minWidth: 0 }} className="fade-up">
+              <Avatar />
+              <Box fz={13.5} style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
                 {m.thinking && <Thought text={m.thinking} />}
-                {m.role === "assistant" ? m.text && <Say text={m.text} /> : m.text}
+                {m.text && <Say text={m.text} />}
                 {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                 {m.change && (
-                  <Group gap={6} mt={8} px={8} py={4} fz={12} ff="monospace" bg="var(--surface)" bd="1px solid var(--border)" w="fit-content" wrap="nowrap" style={{ borderRadius: 6 }}>
+                  <Group gap={6} mt={8} px={9} py={4} fz={12} ff="monospace" bg="var(--surface-2)" bd="1px solid var(--border)" w="fit-content" wrap="nowrap" style={{ borderRadius: 8 }}>
                     <Icon name="code" size={13} /> model.scad
                     <Text span inherit c="var(--ok)">+{m.change.added}</Text>
                     <Text span inherit c="var(--bad)">−{m.change.removed}</Text>
@@ -390,103 +438,111 @@ export function ChatPane({
           ),
         )}
         {live && (
-          <Group wrap="nowrap" style={{ minWidth: 0 }}>
+          <Group wrap="nowrap" align="flex-start" gap={10} style={{ minWidth: 0 }}>
             {working === "compact" ? (
-              <Text fz={12} c="dimmed" px={10} py={2} bg="var(--surface-2)" style={{ alignSelf: "center", borderRadius: 999 }}>{t("chat.compacting")}</Text>
+              <Text className="chip" style={{ alignSelf: "center", margin: "0 auto" }}>{t("chat.compacting")}</Text>
             ) : (
-              <Box {...bubbleBase} bg="var(--surface-2)" aria-label={t("chat.thinking")} style={{ ...bubbleBase.style, borderBottomLeftRadius: 4 }}>
-                {live.thinking.trim() && <Thought text={live.thinking} open={!live.text} />}
-                {live.text ? <Say text={live.text} /> : !live.thinking.trim() && <Loader type="dots" size="sm" color="dimmed" />}
-                {live.tools.length > 0 && <Tools tools={live.tools} />}
-              </Box>
+              <>
+                <Avatar busy />
+                <Box fz={13.5} aria-label={t("chat.thinking")} style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
+                  {live.thinking.trim() && <Thought text={live.thinking} open={!live.text} />}
+                  {live.text ? <Say text={live.text} /> : !live.thinking.trim() && <Loader type="dots" size="sm" color="dimmed" />}
+                  {live.tools.length > 0 && <Tools tools={live.tools} />}
+                </Box>
+              </>
             )}
           </Group>
         )}
-        {error && <Text role="alert" fz={13} c="var(--bad)" px={10} py={8} bg="var(--surface-2)" style={{ borderRadius: 8, overflowWrap: "anywhere" }}>{error}</Text>}
+        {error && <Text role="alert" fz={13} c="var(--bad)" px={12} py={9} bg="color-mix(in srgb, var(--bad) 10%, transparent)" bd="1px solid color-mix(in srgb, var(--bad) 35%, transparent)" style={{ borderRadius: 10, overflowWrap: "anywhere" }}>{error}</Text>}
         <div ref={endRef} />
       </Stack>
-      {unavailable && <Text fz={13} c="var(--bad)" mx={10} my={6} px={10} py={8} bg="var(--surface-2)" style={{ borderRadius: 8, overflowWrap: "anywhere" }}>{unavailable}</Text>}
-      <Stack
-        component="form"
-        gap={6}
-        p={10}
-        bd="0 solid var(--border)"
-        style={{ flex: "none", borderTopWidth: 1, outline: over ? "2px dashed var(--accent)" : undefined, outlineOffset: -4 }}
-        onDragOver={(e) => {
-          if (unavailable || !e.dataTransfer.types.includes("Files")) return;
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          setOver(false);
-          if (unavailable || e.dataTransfer.files.length === 0) return;
-          e.preventDefault();
-          attach([...e.dataTransfer.files]);
-        }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        {files.length > 0 && <Files files={files} onRemove={(i) => setFiles((cur) => cur.filter((_, j) => j !== i))} />}
-        {problem && <Text fz={13} c="var(--bad)" px={10} py={8} bg="var(--surface-2)" style={{ borderRadius: 8, overflowWrap: "anywhere" }}>{problem}</Text>}
-        <Checkbox
-          size="xs"
-          label={t("chat.chime")}
-          title={t("chat.chimeHint", { secs: chime.secs })}
-          checked={chime.on}
-          onChange={(e) => setChimeOn(e.currentTarget.checked)}
-          styles={{ label: { color: "var(--muted)", fontSize: 12 } }}
-        />
-        <Textarea
-          value={draft}
-          autosize
-          minRows={2}
-          maxRows={6}
-          disabled={!!unavailable}
-          placeholder={t("chat.placeholder")}
-          onChange={(e) => setDraft(e.currentTarget.value)}
-          onPaste={(e) => {
-            const pasted = [...e.clipboardData.files];
-            if (pasted.length === 0) return;
+      {unavailable && <Text fz={13} c="var(--bad)" mx={12} mb={8} px={12} py={9} bg="color-mix(in srgb, var(--bad) 10%, transparent)" style={{ borderRadius: 10, overflowWrap: "anywhere" }}>{unavailable}</Text>}
+      <Box p={12} pt={4} style={{ flex: "none" }}>
+        <Stack
+          component="form"
+          gap={4}
+          p={8}
+          bd="1px solid var(--border)"
+          style={{
+            borderRadius: 16,
+            background: "var(--surface-2)",
+            transition: "border-color .15s, box-shadow .15s",
+            ...(over ? { borderColor: "var(--accent)", borderStyle: "dashed" } : {}),
+          }}
+          onFocusCapture={(e) => ((e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px var(--accent-soft)")}
+          onBlurCapture={(e) => ((e.currentTarget as HTMLElement).style.boxShadow = "none")}
+          onDragOver={(e) => {
+            if (unavailable || !e.dataTransfer.types.includes("Files")) return;
             e.preventDefault();
-            attach(pasted);
+            setOver(true);
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            setOver(false);
+            if (unavailable || e.dataTransfer.files.length === 0) return;
+            e.preventDefault();
+            attach([...e.dataTransfer.files]);
+          }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          {files.length > 0 && <Box px={4} pt={2}><Files files={files} onRemove={(i) => setFiles((cur) => cur.filter((_, j) => j !== i))} /></Box>}
+          {problem && <Text fz={12.5} c="var(--bad)" px={6} style={{ overflowWrap: "anywhere" }}>{problem}</Text>}
+          <Textarea
+            variant="unstyled"
+            value={draft}
+            autosize
+            minRows={2}
+            maxRows={8}
+            disabled={!!unavailable}
+            placeholder={t("chat.placeholder")}
+            styles={{ input: { padding: "4px 8px", fontSize: 13.5 } }}
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onPaste={(e) => {
+              const pasted = [...e.clipboardData.files];
+              if (pasted.length === 0) return;
               e.preventDefault();
-              submit();
-            }
-          }}
-        />
-        <Group gap="xs" wrap="nowrap">
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              attach([...(e.currentTarget.files ?? [])]);
-              e.currentTarget.value = "";
+              attach(pasted);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
             }}
           />
-          <Button type="button" size="compact-sm" variant="default" fw={400} disabled={!!unavailable} title={t("chat.attach")} aria-label={t("chat.attach")} onClick={() => picker.current?.click()}>
-            +
-          </Button>
-          <Text visibleFrom="md" flex={1} fz={12} c="dimmed">{t("chat.hint")}</Text>
-          <Box flex={1} hiddenFrom="md" />
-          {busy ? (
-            <Button type="button" variant="default" onClick={onStop}>
-              {t("chat.stop")}
-            </Button>
-          ) : (
-            <Button type="submit" leftSection={<Icon name="send" />} disabled={(!draft.trim() && files.length === 0) || !!unavailable}>
-              {t("chat.send")}
-            </Button>
-          )}
-        </Group>
-      </Stack>
+          <Group gap={4} wrap="nowrap">
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                attach([...(e.currentTarget.files ?? [])]);
+                e.currentTarget.value = "";
+              }}
+            />
+            <Tooltip label={t("chat.attach")}>
+              <ActionIcon type="button" variant="subtle" color="gray" disabled={!!unavailable} aria-label={t("chat.attach")} onClick={() => picker.current?.click()}>
+                <Icon name="attach" size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Text visibleFrom="md" className="hide-narrow" flex={1} fz={11} c="dimmed" pl={4}>{t("chat.hint")}</Text>
+            <Box flex={1} hiddenFrom="md" />
+            {busy ? (
+              <Button type="button" size="compact-md" variant="default" radius="xl" onClick={onStop} leftSection={<Box w={9} h={9} bg="currentColor" style={{ borderRadius: 2 }} />}>
+                {t("chat.stop")}
+              </Button>
+            ) : (
+              <ActionIcon type="submit" size={34} radius="xl" disabled={!canSend} aria-label={t("chat.send")} title={t("chat.send")} style={canSend ? undefined : { background: "var(--surface-3)", border: "1px solid var(--border)", boxShadow: "none" }}>
+                <Icon name="send" size={16} />
+              </ActionIcon>
+            )}
+          </Group>
+        </Stack>
+      </Box>
     </Stack>
   );
 }

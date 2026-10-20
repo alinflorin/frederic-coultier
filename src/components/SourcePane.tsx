@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActionIcon, Box, Group, Stack } from "@mantine/core";
+import { ActionIcon, Box, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, keymap } from "@codemirror/view";
@@ -48,20 +48,22 @@ const hitField = StateField.define({
 });
 
 const theme = EditorView.theme({
-  "&": { height: "100%", background: "var(--code-bg)", color: "var(--text)", fontSize: "12.5px" },
+  "&": { height: "100%", background: "transparent", color: "var(--text)", fontSize: "12.5px" },
   ".cm-scroller": { fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace', lineHeight: "1.6" },
   ".cm-content": { caretColor: "var(--accent)" },
   ".cm-cursor": { borderLeftColor: "var(--accent)" },
-  ".cm-gutters": { background: "var(--code-bg)", color: "var(--muted)", border: "none" },
-  ".cm-activeLine": { background: "var(--accent-soft)" },
+  ".cm-gutters": { background: "transparent", color: "var(--muted)", border: "none", opacity: 0.7 },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 14px" },
+  ".cm-line": { padding: "0 14px 0 6px" },
+  ".cm-activeLine": { background: "color-mix(in srgb, var(--accent) 7%, transparent)" },
   ".cm-activeLineGutter": { background: "transparent", color: "var(--text)" },
   "&.cm-focused": { outline: "none" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { background: "var(--accent-soft)" },
   ".cm-selectionMatch": { background: "var(--accent-soft)" },
   ".cm-errorLine": { background: "color-mix(in srgb, var(--bad) 22%, transparent)", boxShadow: "inset 3px 0 0 var(--bad)" },
   ".cm-sourceHit": { background: "color-mix(in srgb, var(--accent) 28%, transparent)", borderBottom: "2px solid var(--accent)" },
-  ".cm-panels": { background: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" },
-  ".cm-tooltip": { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" },
+  ".cm-panels": { background: "var(--float-bg)", color: "var(--text)", borderColor: "var(--border)" },
+  ".cm-tooltip": { background: "var(--float-bg)", border: "1px solid var(--border)", color: "var(--text)" },
 });
 
 export function SourcePane({
@@ -142,14 +144,15 @@ export function SourcePane({
   }
 
   return (
-    <Stack component="section" gap={0} bg="var(--surface)" aria-label={t("source.title")} style={{ minWidth: 0, minHeight: 0 }}>
-      <Group component="header" gap="xs" px={10} py={6} mih={40} wrap="nowrap" bd="0 solid var(--border)" style={{ flex: "none", borderBottomWidth: 1 }}>
-        <Group gap={6} fw={600} fz={13} ff="monospace" wrap="nowrap">
-          <Icon name="code" /> model.scad
-        </Group>
-        <ActionIcon variant="subtle" color="gray" ml="auto" onClick={copy} title={t("source.copy")} aria-label={t("source.copy")}>
-          <Icon name={copied ? "check" : "copy"} />
-        </ActionIcon>
+    <Stack className="pane" component="section" gap={0} aria-label={t("source.title")}>
+      <Group component="header" className="pane-head" wrap="nowrap">
+        <Box c="var(--accent)" style={{ display: "flex" }}><Icon name="code" size={15} /></Box>
+        <Text fw={600} fz={12.5} ff="monospace">model.scad</Text>
+        <Tooltip label={t("source.copy")}>
+          <ActionIcon variant="subtle" color="gray" ml="auto" onClick={copy} aria-label={t("source.copy")}>
+            <Icon name={copied ? "check" : "copy"} size={15} />
+          </ActionIcon>
+        </Tooltip>
       </Group>
       <ParamsPanel source={source} onChange={onChange} />
       <Box ref={host} style={{ flex: 1, minHeight: 160, overflow: "hidden" }} />

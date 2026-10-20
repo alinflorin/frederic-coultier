@@ -5,7 +5,7 @@ import { Checkbox, ColorInput, Fieldset, Flex, NativeSelect, NumberInput, Paper,
 /** A small uppercase heading that starts a group of settings in a dialog. */
 export function Section({ children, first }: { children: ReactNode; first?: boolean }) {
   return (
-    <Title order={4} fz={12} fw={600} tt="uppercase" lts="0.06em" c="dimmed" mt={first ? 0 : 18} mb={8}>
+    <Title order={4} className="eyebrow" mt={first ? 0 : 20} mb={8}>
       {children}
     </Title>
   );
@@ -113,10 +113,10 @@ export function Enabled({ on, children }: { on: boolean; children: ReactNode }) 
 /** A figure with its caption, in a tinted box. */
 export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <Paper flex={1} px={12} py={10} bg="var(--surface-2)" radius="md">
+    <Paper flex={1} px={14} py={11} radius="md" bd="1px solid var(--hairline)" style={{ background: "var(--accent-soft)" }}>
       <Stack gap={0}>
         <Text c="dimmed" fz={12}>{label}</Text>
-        <Text fw={700} fz={18}>{value}</Text>
+        <Text fw={700} fz={20} lts="-0.02em">{value}</Text>
         {sub && <Text c="dimmed" fz={12}>{sub}</Text>}
       </Stack>
     </Paper>

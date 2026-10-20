@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Affix, Box, Group, Paper, Text, UnstyledButton } from "@mantine/core";
-import { useHover, useMediaQuery } from "@mantine/hooks";
+import { Affix, Box, Group, Text, UnstyledButton } from "@mantine/core";
+import { AnimatePresence, motion } from "motion/react";
+import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -58,17 +59,7 @@ const RENDER_DELAY_MS = 200;
 
 /** The draggable bar between two panes. */
 function Handle({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => void }) {
-  const { hovered, ref } = useHover<HTMLDivElement>();
-  return (
-    <Box
-      ref={ref}
-      role="separator"
-      aria-orientation="vertical"
-      onPointerDown={onPointerDown}
-      bg={hovered ? "var(--accent)" : "var(--border)"}
-      style={{ cursor: "col-resize", opacity: hovered ? 1 : 0.5, transition: "opacity 0.15s, background 0.15s", touchAction: "none" }}
-    />
-  );
+  return <div className="splitter" role="separator" aria-orientation="vertical" onPointerDown={onPointerDown} />;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
@@ -706,8 +697,8 @@ function App() {
         <Welcome recents={recents} onNew={newProject} onOpen={openDialog} onOpenRecent={openRecent} onSample={newSample} />
       ) : compact ? (
         <>
-          <Box style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>{panes![mobilePane]}</Box>
-          <Group component="nav" gap={0} wrap="nowrap" bg="var(--surface)" bd="0 solid var(--border)" aria-label={t("app.panes")} style={{ flex: "none", borderTopWidth: 1, paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <Box p={8} pb={0} style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>{panes![mobilePane]}</Box>
+          <Group component="nav" gap={0} wrap="nowrap" className="glass" aria-label={t("app.panes")} style={{ flex: "none", margin: "8px 8px 0", borderRadius: 20, overflow: "hidden", marginBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
             {((chatEnabled ? ["source", "chat", "preview"] : ["source", "preview"]) as PaneId[]).map((id) => (
               <UnstyledButton key={id} flex={1} py={8} px={2} fz={11} c={mobilePane === id ? "var(--accent)" : "dimmed"} onClick={() => setMobilePane(id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                 <Icon name={id === "source" ? "code" : id === "chat" ? "chat" : "cube"} size={20} />
@@ -722,13 +713,15 @@ function App() {
         </>
       ) : (
         <Box
+          px={8}
+          pb={8}
           style={{
             flex: 1,
             minHeight: 0,
             display: "grid",
             gridTemplateColumns: chatEnabled
-              ? `${cols.source}px 6px minmax(260px, 1fr) 6px ${cols.preview}px`
-              : `${cols.source}px 6px minmax(260px, 1fr)`,
+              ? `minmax(220px, ${cols.source}px) 10px minmax(250px, 1fr) 10px minmax(220px, ${cols.preview}px)`
+              : `minmax(220px, ${cols.source}px) 10px minmax(250px, 1fr)`,
           }}
         >
           {panes!.source}
@@ -823,11 +816,22 @@ function App() {
       )}
 
       <Affix position={{ bottom: compact ? 78 : 74, left: 0, right: 0 }} zIndex={500} style={{ display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-        {toast && (
-          <Paper role="status" px={16} py={8} bg="var(--text)" c="var(--bg)" shadow="md" maw="calc(100% - 32px)" style={{ borderRadius: 999, pointerEvents: "auto" }}>
-            <Text inherit>{toast}</Text>
-          </Paper>
-        )}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              key={toast}
+              role="status"
+              className="glass"
+              initial={{ opacity: 0, y: 18, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 420, damping: 30 }}
+              style={{ padding: "9px 18px", maxWidth: "calc(100% - 32px)", borderRadius: 999, pointerEvents: "auto", fontSize: 13, fontWeight: 500, color: "var(--text)" }}
+            >
+              <Text inherit>{toast}</Text>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Affix>
     </Box>
   );

@@ -18,26 +18,17 @@ export interface Menu {
 
 export function MenuBar({ menus, title, dirty, trailing }: { menus: Menu[]; title: string; dirty: boolean; trailing?: ReactNode }) {
   return (
-    <Group
-      component="header"
-      gap="xs"
-      wrap="nowrap"
-      h={38}
-      px={{ base: 8, md: 10 }}
-      bg="var(--surface)"
-      bd="0 solid var(--border)"
-      style={{ borderBottomWidth: 1, flex: "none" }}
-    >
-      <Group gap={6} wrap="nowrap" mr={6} c="var(--accent)" fw={650}>
-        <Image src="/logo.svg" w={20} h={20} alt="" />
-        <Text visibleFrom="md" inherit>Frederic Coultier</Text>
+    <Group component="header" gap="xs" wrap="nowrap" h={46} px={{ base: 10, md: 14 }} style={{ flex: "none" }}>
+      <Group gap={9} wrap="nowrap" mr={8}>
+        <Image src="/logo.svg" w={22} h={22} alt="" />
+        <Text visibleFrom="md" fw={650} fz={14} lts="-0.01em">Frederic Coultier</Text>
       </Group>
-      <Group component="nav" gap={0} wrap="nowrap" role="menubar" flex={{ base: 1, md: "none" }}>
+      <Group component="nav" gap={2} wrap="nowrap" role="menubar" flex={{ base: 1, md: "none" }}>
         {menus.map((m) =>
           m.items ? (
-            <MantineMenu key={m.id} trigger="click-hover" openDelay={0} closeDelay={80} position="bottom-start" shadow="md" width={230}>
+            <MantineMenu key={m.id} trigger="click-hover" openDelay={0} closeDelay={80} position="bottom-start" offset={6} width={240}>
               <MantineMenu.Target>
-                <Button variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={400}>
+                <Button variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={500} styles={{ root: { background: "transparent", border: "none", boxShadow: "none" } }}>
                   {m.label}
                 </Button>
               </MantineMenu.Target>
@@ -59,16 +50,20 @@ export function MenuBar({ menus, title, dirty, trailing }: { menus: Menu[]; titl
               </MantineMenu.Dropdown>
             </MantineMenu>
           ) : (
-            <Button key={m.id} variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={400} onClick={m.onSelect}>
+            <Button key={m.id} variant="subtle" color="gray" c="var(--text)" size="compact-md" fw={500} styles={{ root: { background: "transparent", border: "none", boxShadow: "none" } }} onClick={m.onSelect}>
               {m.label}
             </Button>
           ),
         )}
       </Group>
-      <Text visibleFrom="md" flex={1} ta="center" c="dimmed" truncate="end" title={title}>
-        {title}
-        {dirty && <Text span c="var(--accent)" fz={10} ml={6} aria-label="unsaved">●</Text>}
-      </Text>
+      <Group visibleFrom="md" flex={1} justify="center" gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+        {title && (
+          <Group gap={8} wrap="nowrap" px={14} h={28} className="chip" title={title} style={{ maxWidth: "100%", fontSize: 12.5 }}>
+            <Text inherit truncate="end" c="var(--text)" fw={550}>{title}</Text>
+            {dirty && <span aria-label="unsaved" style={{ width: 7, height: 7, borderRadius: 99, background: "var(--accent)", boxShadow: "0 0 8px var(--accent)", flex: "none" }} />}
+          </Group>
+        )}
+      </Group>
       {trailing}
     </Group>
   );

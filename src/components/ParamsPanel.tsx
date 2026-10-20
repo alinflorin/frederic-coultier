@@ -36,17 +36,13 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
   };
 
   return (
-    <Stack gap={0} bg="var(--surface)" bd="0 solid var(--border)" style={{ flex: "0 1 auto", minHeight: 0, borderBottomWidth: 1 }}>
+    <Stack gap={0} bd="0 solid var(--hairline)" style={{ flex: "0 1 auto", minHeight: 0, borderBottomWidth: 1 }}>
       <UnstyledButton
         onClick={toggle}
         aria-expanded={open}
-        px={12}
-        py={7}
-        fz={12}
-        fw={600}
-        tt="uppercase"
-        lts="0.05em"
-        c="dimmed"
+        px={14}
+        py={9}
+        className="eyebrow"
         style={{ flex: "none", width: "100%" }}
       >
         <Group gap={6} wrap="nowrap">
@@ -59,7 +55,7 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
         </Group>
       </UnstyledButton>
       {open && (
-        <Stack gap={6} px={12} pb={10} style={{ flex: "0 1 auto", minHeight: 0, maxHeight: 280, overflowY: "auto" }}>
+        <Stack gap={8} px={14} pb={12} style={{ flex: "0 1 auto", minHeight: 0, maxHeight: 280, overflowY: "auto" }}>
           {params.map((p) => {
             const { base, unit } = splitUnit(p.name);
             const label = humanize(base);
@@ -70,7 +66,7 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
                 key={p.name}
                 title={p.note || p.name}
                 fz={12.5}
-                style={{ flex: "none", display: "grid", gridTemplateColumns: "minmax(80px, 1.1fr) minmax(80px, 1.4fr) 96px 22px", alignItems: "center", gap: 8 }}
+                style={{ flex: "none", display: "grid", gridTemplateColumns: "minmax(80px, 1.1fr) minmax(80px, 1.4fr) 88px 22px", alignItems: "center", gap: 8 }}
               >
                 <Text component="label" htmlFor={`param-${p.name}`} inherit truncate>
                   {label}
@@ -96,7 +92,9 @@ export function ParamsPanel({ source, onChange }: { source: string; onChange: (s
                     <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
                       <NumberInput
                         size="xs"
+                        variant="filled"
                         hideControls
+                        styles={{ input: { background: "var(--surface-2)", border: "1px solid var(--border)", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 550 } }}
                         step={p.step}
                         value={p.value as number}
                         aria-label={label}

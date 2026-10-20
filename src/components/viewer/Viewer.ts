@@ -16,7 +16,7 @@ const AXIS_COLOR = { x: "#e0524d", y: "#52b86a", z: "#4b8fe0" };
 const LAYER: Partial<CSSStyleDeclaration> = { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" };
 const LABEL: Partial<CSSStyleDeclaration> = {
   position: "absolute", left: "0", top: "0", padding: "1px 6px", borderRadius: "4px", font: "600 11px ui-monospace, Menlo, monospace",
-  background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", whiteSpace: "nowrap",
+  background: "var(--float-bg)", backdropFilter: "blur(8px)", border: "1px solid var(--glass-border)", color: "var(--text)", whiteSpace: "nowrap",
 };
 const TICK: Partial<CSSStyleDeclaration> = {
   position: "absolute", left: "0", top: "0", font: "600 10px ui-monospace, Menlo, monospace", color: "var(--text)", whiteSpace: "nowrap",
@@ -344,7 +344,7 @@ export class Viewer {
       this.dirty = true;
     };
     this.themeObserver = new MutationObserver(retheme);
-    this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-mantine-color-scheme"] });
     this.scheme = window.matchMedia("(prefers-color-scheme: dark)");
     this.scheme.addEventListener("change", retheme);
     this.onRetheme = retheme;
@@ -734,6 +734,7 @@ export class Viewer {
     gm.transparent = true;
     gm.opacity = 0.35;
     this.scene.add(this.grid);
+    this.applyTheme();
 
     this.shadow.scale.set(span, span, 1);
     this.shadow.position.set(this.center.x, this.center.y, floor);
@@ -982,7 +983,8 @@ export class Viewer {
     const css = getComputedStyle(this.host);
     this.edgeMat.color.set(css.getPropertyValue("--text").trim() || "#888888");
     const grid = this.grid.material as THREE.LineBasicMaterial;
-    grid.color.set(css.getPropertyValue("--muted").trim() || "#888888");
+    grid.color.set(css.getPropertyValue("--grid").trim() || css.getPropertyValue("--muted").trim() || "#888888");
+    grid.opacity = parseFloat(css.getPropertyValue("--grid-opacity")) || 0.35;
   }
 
   private currentDir() {

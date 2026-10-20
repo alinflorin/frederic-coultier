@@ -69,12 +69,7 @@ export function ExportDialog({
     size = `~${bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e3)} kB`}`;
   }
 
-  const card = (on: boolean) => ({
-    p: "10px 12px",
-    bg: on ? "var(--accent-soft)" : "var(--surface-2)",
-    bd: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
-    style: { borderRadius: 6, textAlign: "left", display: "block", width: "100%" },
-  }) as const;
+  const card = (on: boolean) => ({ className: "choice", "data-on": on }) as const;
 
   return (
     <Dialog
@@ -93,7 +88,7 @@ export function ExportDialog({
       }
     >
       <Section first>{t("export.presetTitle")}</Section>
-      <SimpleGrid cols={2} spacing={8} role="radiogroup" aria-label={t("export.presetTitle")}>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} role="radiogroup" aria-label={t("export.presetTitle")}>
         {EXPORT_PRESETS.map((x) => (
           <UnstyledButton key={x.id} role="radio" aria-checked={presetId === x.id} {...card(presetId === x.id)} onClick={() => choosePreset(x.id)}>
             <Text fw={700} inherit>{t(`export.preset.${x.id}.name`)}</Text>
@@ -123,7 +118,7 @@ export function ExportDialog({
       )}
 
       <Section>{t("export.format")}</Section>
-      <SimpleGrid cols={2} spacing={8} role="radiogroup" aria-label={t("export.format")}>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} role="radiogroup" aria-label={t("export.format")}>
         {EXPORT_FORMATS.map((x) => (
           <UnstyledButton key={x.id} role="radio" aria-checked={format === x.id} {...card(format === x.id)} onClick={() => setFormat(x.id)}>
             <Text fw={700} inherit>{t(`export.fmt.${x.id}`)}</Text>

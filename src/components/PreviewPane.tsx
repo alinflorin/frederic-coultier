@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActionIcon, Anchor, Box, Button, Divider, Group, Menu, Slider, Stack, Text } from "@mantine/core";
+import { ActionIcon, Anchor, Box, Button, Divider, Group, Menu, Slider, Stack } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import type { Attached, FcProject, ShadingMode } from "../types";
@@ -12,6 +12,7 @@ import { Annotator } from "./viewer/Annotator";
 import { extraChecks, locateSource, meshHealth, meshReport, type Diagnostic, type Finding, type Health, type PrintLayout, type RenderError, type SourceHit } from "../api";
 import type { MeshBuf } from "./viewer/geometry";
 import { Icon } from "./Icon";
+import { NumberTween } from "./NumberTween";
 
 const MODES: ShadingMode[] = ["shaded", "edges", "wireframe", "xray"];
 
@@ -269,10 +270,10 @@ export function PreviewPane({
     size: compact ? 40 : 34,
     "aria-pressed": on,
   }) as const;
-  const floating = { bg: "var(--surface)", bd: "1px solid var(--border)", style: { borderRadius: 8, boxShadow: "var(--shadow)" } } as const;
+  const floating = { className: "glass", style: { borderRadius: 12 } } as const;
 
   return (
-    <Stack component="section" gap={0} pos="relative" bg="var(--surface)" aria-label={t("preview.title")} style={{ minWidth: 0, minHeight: 0 }}>
+    <Stack className="pane" component="section" gap={0} pos="relative" aria-label={t("preview.title")} style={{ minWidth: 0, minHeight: 0 }}>
       <Box
         pos="relative"
         tabIndex={0}
@@ -331,16 +332,53 @@ export function PreviewPane({
           <FindingsCard items={found.items} busy={found.busy} error={found.error} onFocus={(f) => f.at?.[0] && viewer?.focus(f.at[0])} onClose={() => setFindingsOn(false)} />
         )}
 
+        <Group
+          data-vp-ui
+          component="footer"
+          gap={6}
+          wrap="wrap"
+          pos="absolute"
+          left={12}
+          right={12}
+          bottom={12}
+          style={{ zIndex: 4, pointerEvents: "none" }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {render.status === "rendering" && <span className="chip glass" style={{ color: "var(--accent)" }}>{t("preview.rendering")}</span>}
+          {render.status === "error" && <span className="chip glass" style={{ color: "var(--bad)" }}><Icon name="warn" size={12} /> {t("preview.failed")}</span>}
+          {render.status === "ok" && <span className="chip glass" style={{ color: "var(--ok)" }}><Icon name="check" size={12} /> {t("preview.rendered", { ms: render.ms })}</span>}
+          {dims && <span className="chip glass"><b>{dims}</b> mm</span>}
+          {stats && <span className="chip glass"><b><NumberTween value={stats.tris} format={(n) => Math.round(n).toLocaleString()} /></b> {t("preview.tris")}</span>}
+          {stats && <span className="chip glass">{t("preview.volume")} <b><NumberTween value={stats.metalVolumeMm3 / 1000} format={(n) => n.toFixed(2)} /></b> cm³</span>}
+          {stats && <span className="chip glass">{t("preview.weight")} ≈ <b><NumberTween value={grams} format={(n) => n.toFixed(1)} /></b> g</span>}
+          {supOn && <span className="chip glass">{t("preview.supports", { count: supTotal })}</span>}
+          {healthOn && health && (() => {
+            const bad = health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length;
+            return (
+              <span className="chip glass" style={{ color: bad ? "var(--bad)" : "var(--ok)" }}>
+                <Icon name={bad ? "warn" : "check"} size={12} />
+                {bad ? t("analysis.healthBad", { open: health.open.length, shared: health.nonManifold.length, flipped: health.winding.length, empty: health.degenerate.length }) : t("analysis.healthOk")}
+              </span>
+            );
+          })()}
+          {showLayout && !layout.fits && <span className="chip glass" style={{ color: "var(--bad)" }}><Icon name="warn" size={12} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</span>}
+          {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
+            <Anchor component="button" type="button" fz={11.5} fw={550} ml="auto" c="var(--accent)" className="chip glass" aria-expanded={console_} style={{ pointerEvents: "auto", cursor: "pointer" }} onClick={() => setConsole((c) => !c)}>
+              {t("preview.messages", { count: render.diagnostics.length + render.echoes.length })}
+            </Anchor>
+          )}
+        </Group>
+
         <Stack
           data-vp-ui
-          gap={4}
-          p={4}
+          gap={3}
+          p={5}
           pos="absolute"
-          top={10}
-          right={10}
-          bd="1px solid var(--border)"
+          top={12}
+          right={12}
+          className="glass"
           onPointerDown={(e) => e.stopPropagation()}
-          style={{ zIndex: 5, borderRadius: 10, background: "color-mix(in srgb, var(--surface) 82%, transparent)", backdropFilter: "blur(8px)" }}
+          style={{ zIndex: 5, borderRadius: 14 }}
         >
           <ActionIcon variant="subtle" color="gray" size={compact ? 40 : 34} onClick={() => viewer?.fit()} title={t("preview.fit")} aria-label={t("preview.fit")}>
             <Icon name="fit" size={18} />
@@ -425,7 +463,7 @@ export function PreviewPane({
       </Box>
 
       {cut && (
-        <Group data-vp-ui gap={6} px={8} py={6} wrap="nowrap" pos="absolute" left={12} bottom={44} {...floating} style={{ ...floating.style, zIndex: 5 }} onPointerDown={(e) => e.stopPropagation()}>
+        <Group data-vp-ui gap={6} px={8} py={6} wrap="nowrap" pos="absolute" left={12} bottom={52} {...floating} style={{ ...floating.style, zIndex: 5 }} onPointerDown={(e) => e.stopPropagation()}>
           {(["x", "y", "z"] as const).map((a) => (
             <Button key={a} size="compact-xs" variant={section.axis === a ? "filled" : "default"} onClick={() => setSection({ ...section, axis: a })}>
               {a.toUpperCase()}
@@ -439,7 +477,7 @@ export function PreviewPane({
       )}
 
       {render.status === "error" && render.error && (
-        <Group role="alert" gap={8} wrap="nowrap" px={12} py={6} pos="absolute" top={12} left="50%" c="var(--bad)" fz={13} bg="var(--surface)" bd="1px solid var(--bad)" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
+        <Group role="alert" gap={8} wrap="nowrap" px={12} py={6} pos="absolute" top={12} left="50%" c="var(--bad)" fz={13} className="glass" bd="1px solid var(--bad)" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
           <Icon name="warn" size={15} />
           <span>
             {render.error.line ? t("preview.line", { line: render.error.line }) + ": " : ""}
@@ -448,7 +486,7 @@ export function PreviewPane({
         </Group>
       )}
       {render.status === "ok" && !render.mesh && (
-        <Group px={12} py={6} pos="absolute" top={12} left="50%" fz={13} bg="var(--surface)" bd="1px solid var(--border)" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
+        <Group px={12} py={6} pos="absolute" top={12} left="50%" fz={13} className="glass" style={{ transform: "translateX(-50%)", maxWidth: "calc(100% - 140px)", borderRadius: 8, zIndex: 4 }}>
           {t("preview.empty")}
         </Group>
       )}
@@ -467,32 +505,6 @@ export function PreviewPane({
         </Box>
       )}
 
-      <Group component="footer" gap="4px 16px" px={12} py={7} fz={12} c="dimmed" bd="0 solid var(--border)" style={{ flex: "none", borderTopWidth: 1 }}>
-        {render.status === "rendering" && <Text span inherit c="var(--accent)">{t("preview.rendering")}</Text>}
-        {render.status === "error" && <Group gap={4} c="var(--bad)"><Icon name="warn" size={13} /> {t("preview.failed")}</Group>}
-        {render.status === "ok" && (
-          <Group gap={4} c="var(--ok)"><Icon name="check" size={13} /> {t("preview.rendered", { ms: render.ms })}</Group>
-        )}
-        {dims && <span>{dims} mm</span>}
-        {stats && <span>{stats.tris.toLocaleString()} {t("preview.tris")}</span>}
-        {stats && <span>{t("preview.volume")} {(stats.metalVolumeMm3 / 1000).toFixed(2)} cm³</span>}
-        {stats && <span>{t("preview.weight")} ≈ {grams.toFixed(1)} g</span>}
-        {supOn && <span>{t("preview.supports", { count: supTotal })}</span>}
-        {healthOn && health && (
-          <Group gap={4} c={health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length ? "var(--bad)" : "var(--ok)"}>
-            <Icon name={health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length ? "warn" : "check"} size={13} />
-            {health.open.length + health.nonManifold.length + health.winding.length + health.degenerate.length
-              ? t("analysis.healthBad", { open: health.open.length, shared: health.nonManifold.length, flipped: health.winding.length, empty: health.degenerate.length })
-              : t("analysis.healthOk")}
-          </Group>
-        )}
-        {showLayout && !layout.fits && <Group gap={4} c="var(--bad)"><Icon name="warn" size={13} /> {t("preview.noFit", { size: layout.size.map((n) => n.toFixed(0)).join(" × ") })}</Group>}
-        {(render.diagnostics.length > 0 || render.echoes.length > 0) && (
-          <Anchor component="button" type="button" fz={12} ml="auto" c="var(--accent)" aria-expanded={console_} onClick={() => setConsole((c) => !c)}>
-            {t("preview.messages", { count: render.diagnostics.length + render.echoes.length })}
-          </Anchor>
-        )}
-      </Group>
     </Stack>
   );
 }

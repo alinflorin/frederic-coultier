@@ -6,7 +6,7 @@ import type { Measurement } from "./measure";
 import type { Probe } from "./Viewer";
 import { Icon } from "../Icon";
 
-const card = { bg: "var(--surface)", bd: "1px solid var(--border)", style: { borderRadius: 8, boxShadow: "var(--shadow)", zIndex: 5, pointerEvents: "auto" as const } };
+const card = { className: "glass", style: { borderRadius: 12, zIndex: 5, pointerEvents: "auto" as const } };
 const num = (n: number, d = 2) => n.toFixed(d);
 
 /** The numbers under the pointer: where, how much metal is behind, which way the surface faces. */
