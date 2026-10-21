@@ -1,5 +1,5 @@
 //! The reference for `fc`, rendered on the fly from the command catalog, so it can never
-//! disagree with the commands themselves. `read_instructions` puts the user's own notes
+//! disagree with the commands themselves. The agent's instructions put the user's own notes
 //! (`docs/fc-cli.md`) above it.
 
 use serde_json::Value;
@@ -127,7 +127,7 @@ fn entry(c: &Cmd) -> String {
 pub fn overview() -> String {
     let width = catalog::all().iter().map(|c| c.name.len()).max().unwrap_or(0);
     let mut out = String::from(
-        "fc commands (`help NAME` shows one in detail; read_instructions has the full reference)",
+        "fc commands (`help NAME` shows one in detail; your instructions have the full reference)",
     );
     let mut group = "";
     for c in catalog::all() {

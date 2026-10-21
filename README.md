@@ -23,14 +23,13 @@ Keep the document in **millimetres**. Only the plugin is needed: the Python MCP 
 The chat panel is always on. It uses Claude Code or Codex, with the account already signed in on the computer, and drives the app through
 `fc`, a command line that exists only inside the app (internal MCP server on loopback, on a port the system picks; nothing outside connects to it).
 
-It exposes two tools:
+It exposes one tool, `exec_fc`, and the chat panel's agent is given the user's own notes and the reference of `fc` up front:
 
-- `read_instructions` returns the user's own notes followed by the reference of `fc`, and `exec_fc` refuses to run until it has been read.
 - `exec_fc` runs `fc` commands (`args` is the command line without the leading `fc`), e.g. `src cat 1:40`, `shot --view top`, `check --deep`,
-  `get-document-info`, `create-objects`, `capture-view`.
+  `get-document-info`, `create-objects`, `capture-view`; `shot --rhino` returns Rhino's own viewport as a PNG.
 
 **The notes are [`src-tauri/docs/fc-cli.md`](src-tauri/docs/fc-cli.md)**: write whatever the agent should know or follow. They come
-first in `read_instructions`; `<!-- comments -->` are not sent. In debug builds the file is read from disk on every call, so changes
+first in the agent's instructions; `<!-- comments -->` are not sent. In debug builds the file is read from disk on every call, so changes
 show up without a rebuild; release builds embed it. The command reference below them is generated from the code
 (`src-tauri/src/agent/cli/catalog.rs`) and from the Rhino plugin's tool descriptions
 ([`src-tauri/docs/rhino-tools.json`](src-tauri/docs/rhino-tools.json), made from the tool definitions of the tectopus MCP layer,

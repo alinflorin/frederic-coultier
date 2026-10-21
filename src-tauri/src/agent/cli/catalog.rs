@@ -317,9 +317,14 @@ pub const COMMANDS: &[Cmd] = &[
         name: "shot",
         usage: "shot [OPTIONS]",
         summary: "picture of the 3D preview",
-        details: "A picture of the 3D preview, returned as an image. **Every option is optional: what you leave out stays as the user currently has it on screen**, so plain `shot` shows exactly the user's view. Options apply only to the picture; the user's view does not change.\nThe analysis overlays the user may have switched on in the app (overhang tint, mesh health, pins, measurements) are never in a picture unless you ask for them with `--overhang` or `--health`. `--findings` and `--annotate` leave the picture untouched: the numbers come as text, and the pins on a separate second image.\nNeeds the preview to be visible and the model to render without errors.",
+        details: "A picture of the 3D preview, returned as an image. **Every option is optional: what you leave out stays as the user currently has it on screen**, so plain `shot` shows exactly the user's view. Options apply only to the picture; the user's view does not change.\nThe analysis overlays the user may have switched on in the app (overhang tint, mesh health, pins, measurements) are never in a picture unless you ask for them with `--overhang` or `--health`. `--findings` and `--annotate` leave the picture untouched: the numbers come as text, and the pins on a separate second image.\nNeeds the preview to be visible and the model to render without errors.\n**`--rhino` takes the picture in Rhino instead**: Rhino's own viewport, as the PNG the plugin returns (Rhino's display modes and materials, whatever is in the document, no preview needed). With `--rhino` the other options are not the ones listed here but those of `capture-view` (`--view perspective|isometric|top|front|right`, `--display-mode Rendered`, `--resolution high`, `--width/--height`, `--ids`, …; see `help capture-view`).",
         flags: SHOT_FLAGS,
         opts: &[
+            o(
+                "rhino",
+                "",
+                "picture from Rhino's viewport (the plugin's PNG) instead of the app's preview; the remaining options are those of `capture-view`",
+            ),
             o(
                 "view",
                 "V",
@@ -399,6 +404,8 @@ pub const COMMANDS: &[Cmd] = &[
         ],
         examples: &[
             "shot",
+            "shot --rhino",
+            "shot --rhino --view isometric --display-mode Rendered --resolution high",
             "shot --turnaround",
             "shot --findings",
             "shot --annotate --view iso",
@@ -630,7 +637,7 @@ pub const COMMANDS: &[Cmd] = &[
         name: "help",
         usage: "help [NAME]",
         summary: "list the commands, or show one in detail",
-        details: "Lists the commands, or shows one in detail: `help shot`. A family works too: `help src`, `help supports`. `read_instructions` has everything at once.",
+        details: "Lists the commands, or shows one in detail: `help shot`. A family works too: `help src`, `help supports`. Your instructions have everything at once.",
         flags: NO_FLAGS,
         opts: &[],
         examples: &["help", "help src edit"],

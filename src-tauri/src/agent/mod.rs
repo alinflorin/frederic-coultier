@@ -90,7 +90,7 @@ impl Mcp {
         let mut status = McpStatus { running: false, url: None, error: None, client: None, idle_secs: None, calls: 0 };
         match server::serve(self.bridge.clone(), self.rhino.clone(), HOST, 0, true, self.gate.clone()).await {
             Ok(served) => {
-                status.url = Some(format!("http://{}:{}/mcp", served.addr.ip(), served.addr.port()));
+                status.url = Some(format!("http://{}:{}{}", served.addr.ip(), served.addr.port(), server::PATH));
                 status.running = true;
                 g.running = Some(served);
             }
@@ -182,8 +182,8 @@ mod tests {
         let s = m.start().await;
         assert!(s.running && s.error.is_none(), "{s:?}");
         let url = s.url.clone().unwrap();
-        assert!(url.starts_with("http://127.0.0.1:") && url.ends_with("/mcp"), "{url}");
-        let port: u16 = url["http://127.0.0.1:".len()..url.len() - 4].parse().unwrap();
+        assert!(url.starts_with("http://127.0.0.1:") && url.ends_with("/chat"), "{url}");
+        let port: u16 = url["http://127.0.0.1:".len()..url.len() - 5].parse().unwrap();
         assert!(tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_ok());
         assert_eq!(m.status().await, s);
     }
@@ -193,7 +193,7 @@ mod tests {
         let m = mcp();
         let a = m.start().await.url.unwrap();
         let b = m.start().await.url.unwrap();
-        let port = |u: &str| u["http://127.0.0.1:".len()..u.len() - 4].parse::<u16>().unwrap();
+        let port = |u: &str| u["http://127.0.0.1:".len()..u.len() - 5].parse::<u16>().unwrap();
         assert!(tokio::net::TcpStream::connect(("127.0.0.1", port(&b))).await.is_ok());
         if port(&a) != port(&b) {
             assert!(tokio::net::TcpStream::connect(("127.0.0.1", port(&a))).await.is_err());

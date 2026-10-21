@@ -1,6 +1,6 @@
 //! The Rhino plugin's tools as `fc` commands. The plugin (tectopus) has an MCP layer that tells an agent what each
 //! tool does and what it takes; those descriptions are kept word for word in `docs/rhino-tools.json` (made from its
-//! tool definitions) and are what `help NAME` and `read_instructions` show.
+//! tool definitions) and are what `help NAME` and the agent's instructions show.
 //!
 //! A command is named after its tool with dashes (`get_document_info` -> `get-document-info`), and a parameter
 //! `foo_bar` is the option `--foo-bar`. Lists of objects (`objects`) are JSON in a here-document.

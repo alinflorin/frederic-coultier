@@ -1,8 +1,8 @@
-//! The MCP surface: two tools. `read_instructions` returns the manual of `fc`, a command line
-//! that lives inside the app, and `exec_fc` runs it. Everything the app can do is a command, so
-//! the agent's tool list stays tiny whatever the app learns to do.
+//! The MCP surface of the chat panel's agent: one tool, `exec_fc`, which runs `fc`, a command line
+//! that lives inside the app. Everything the app can do is a command, so the agent's tool list
+//! stays tiny whatever the app learns to do. The agent is given the manual up front, in its
+//! instructions.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -20,39 +20,18 @@ use super::bridge::Bridge;
 use super::cli::Cli;
 use crate::rhino::Rhino;
 
-/// Shown to the agent when it connects, before anything else. The rule at the end is the one that matters.
+/// Shown to the agent when it connects; its context already holds the manual.
 const INSTRUCTIONS: &str = "\
-A desktop app for designing jewellery in Rhino. The user has a project open, and Rhino is running next to the app: through the `fc` command line you \
-write the design script that Rhino runs, use the Rhino plugin's tools (objects, layers, views, materials), look at the result, check it for printing, \
-manage supports and the casting sprue, and export it.
-
-IMPORTANT, BEFORE ANYTHING ELSE: call `read_instructions` and read the whole result. It holds the user's own \
-instructions and the full reference of `fc`. Do this before your first `exec_fc` call, even for a simple question; \
-`exec_fc` refuses to run until you have.
-
-When you finish a long piece of work, or need the user's answer and they may be looking elsewhere, run `chime` \
-(an `fc` command) once to play a short sound for them.";
-
-/// For the agent of the chat panel, whose context already holds the manual (there is no `read_instructions` for it).
-const EMBEDDED_INSTRUCTIONS: &str = "\
 A desktop app for designing jewellery in Rhino. The user has a project open, and Rhino is running next to the app: through the `fc` command line (the `exec_fc` tool) you \
 write the design script that Rhino runs, use the Rhino plugin's tools (objects, layers, views, materials), look at the result, check it for printing, \
 manage supports and the casting sprue, and export it. The complete manual is in your instructions; follow it. The app chimes by itself when a long reply ends; \
 run `chime` only to get the user's attention earlier, for instance when you need an answer.";
 
-const EMBEDDED_EXEC: &str = "Run fc commands, e.g. `status` or `src cat 1:40`, as described in your instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`.";
+const EXEC: &str = "Run fc commands, e.g. `status` or `src cat 1:40`, as described in your instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot` (`shot --rhino` is Rhino's own view).";
 
-/// What `exec_fc` says until the instructions have been read.
-const READ_FIRST: &str = "You have not read the instructions yet. Call read_instructions now and read the whole result: it holds the user's own instructions and the reference of every fc command. Then run this command again; nothing was done.";
-
-/// What agents have done since the app started. It is shared by all connections: a client that
-/// speaks the stateless protocol gets a fresh handler per request, so the server cannot tell its
-/// sessions apart. The first agent after the app starts is held to the read-first rule; the
-/// wording of the tools and of the server instructions has to do the rest.
+/// What agents have done since the app started, shared by all connections.
 #[derive(Default)]
 pub struct Gate {
-    /// Set once `read_instructions` has been called.
-    read: AtomicBool,
     seen: Mutex<Seen>,
 }
 
@@ -110,8 +89,6 @@ struct ExecArgs {
 pub struct AppTools {
     cli: Cli,
     gate: Arc<Gate>,
-    /// Serves the chat panel's own agent, which was given the manual up front.
-    embedded: bool,
     tool_router: ToolRouter<Self>,
 }
 
@@ -120,43 +97,18 @@ impl AppTools {
         Self {
             cli: Cli::new(bridge, rhino),
             gate,
-            embedded: false,
             tool_router: Self::tool_router(),
         }
-    }
-
-    /// The tools for the chat panel's agent: no `read_instructions`, and no need to have read it.
-    pub fn embedded(bridge: Arc<dyn Bridge>, rhino: Arc<Rhino>, gate: Arc<Gate>) -> Self {
-        let mut tools = Self::new(bridge, rhino, gate);
-        tools.embedded = true;
-        tools.tool_router.remove_route("read_instructions");
-        if let Some(route) = tools.tool_router.map.get_mut("exec_fc") {
-            route.attr.description = Some(EMBEDDED_EXEC.into());
-        }
-        tools
     }
 }
 
 #[tool_router]
 impl AppTools {
     #[tool(
-        description = "REQUIRED FIRST STEP, before anything else. Returns the user's own instructions and the complete reference of `fc`, the command line through which you read and edit the model and use every feature of this app. Read all of it. exec_fc refuses to run until you have."
-    )]
-    async fn read_instructions(&self) -> ToolResult {
-        let text = self.cli.instructions().await;
-        self.gate.called();
-        self.gate.read.store(true, Ordering::Relaxed);
-        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
-    }
-
-    #[tool(
-        description = "Run fc commands, e.g. `status` or `src cat 1:40`. Only after you have read read_instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`."
+        description = EXEC
     )]
     async fn exec_fc(&self, Parameters(a): Parameters<ExecArgs>) -> ToolResult {
         self.gate.called();
-        if !self.embedded && !self.gate.read.load(Ordering::Relaxed) {
-            return Ok(CallToolResult::error(vec![ContentBlock::text(READ_FIRST)]));
-        }
         let run = self.cli.run(&a.args).await;
         let mut content = Vec::new();
         if !run.out.text.is_empty() || run.out.images.is_empty() {
@@ -193,11 +145,7 @@ impl ServerHandler for AppTools {
 
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            if self.embedded {
-                EMBEDDED_INSTRUCTIONS
-            } else {
-                INSTRUCTIONS
-            },
+            INSTRUCTIONS,
         )
     }
 }

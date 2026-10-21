@@ -846,6 +846,7 @@ async fn render(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
 }
 
 pub(super) const SHOT_FLAGS: &[Flag] = &[
+    switch("rhino"),
     opt("view"),
     opt("az"),
     opt("el"),
@@ -898,6 +899,12 @@ fn one_of(flag: &str, value: &str, allowed: &[&str]) -> Result<String, String> {
 }
 
 async fn shot(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    // `--rhino`: the picture comes from Rhino's own viewport, with the options of `capture-view`
+    if args.iter().any(|a| a == "--rhino") {
+        let rest: Vec<String> = args.iter().filter(|a| *a != "--rhino").cloned().collect();
+        let t = super::rhino_tools::find("capture-view").ok_or("capture-view is not available")?;
+        return super::rhino_tools::run(c, t, &rest, None).await;
+    }
     shot_of(c, args, false).await
 }
 

@@ -1,4 +1,4 @@
-//! The local HTTP endpoint agents connect to: MCP over streamable HTTP.
+//! The local HTTP endpoint the chat panel's agents connect to: MCP over streamable HTTP, on loopback only.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,6 +12,9 @@ use super::bridge::Bridge;
 use crate::rhino::Rhino;
 use super::tools::{AppTools, Gate};
 
+/// Where the endpoint is served.
+pub const PATH: &str = "/chat";
+
 /// `loopback`: the server only accepts local `Host` names. Binding to another address turns that
 /// check off (clients then reach it by whatever name or address they like).
 pub fn router(
@@ -22,30 +25,19 @@ pub fn router(
     stop: &CancellationToken,
 ) -> axum::Router {
     // No request may carry an Origin header: browsers always send one, so a web page can't drive
-    // the app; MCP clients and the inspector's proxy don't. Cancelling `stop` ends open sessions.
+    // the app; the agents don't. Cancelling `stop` ends open sessions.
     let mut config = StreamableHttpServerConfig::default()
         .enforce_origin_validation()
         .with_cancellation_token(stop.child_token());
     if !loopback {
         config = config.disable_allowed_hosts();
     }
-    let outside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
-        {
-            let (bridge, rhino, gate) = (bridge.clone(), rhino.clone(), gate.clone());
-            move || Ok(AppTools::new(bridge.clone(), rhino.clone(), gate.clone()))
-        },
-        Default::default(),
-        config.clone(),
-    );
-    // the chat panel's own agent: same tools, but it gets the manual in its context instead
-    let inside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
-        move || Ok(AppTools::embedded(bridge.clone(), rhino.clone(), gate.clone())),
+    let service: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
+        move || Ok(AppTools::new(bridge.clone(), rhino.clone(), gate.clone())),
         Default::default(),
         config,
     );
-    axum::Router::new()
-        .nest_service("/mcp", outside)
-        .nest_service("/chat", inside)
+    axum::Router::new().nest_service(PATH, service)
 }
 
 /// A server that is up: where it listens, and how to stop it.
@@ -97,7 +89,7 @@ mod tests {
         origin: Option<&str>,
         body: Value,
     ) -> (StatusCode, Option<String>, Value) {
-        rpc_at("/mcp", app, session, origin, body).await
+        rpc_at(PATH, app, session, origin, body).await
     }
 
     async fn rpc_at(
@@ -168,119 +160,6 @@ mod tests {
             "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } })
     }
 
-    #[tokio::test]
-    async fn an_mcp_client_sees_two_tools_and_can_run_commands() {
-        let bridge = Mock::new(|op, _| match op {
-            "source.get" => Ok(json!({ "source": "cube(2);
-", "rev": 1 })),
-            "view.capture" => Ok(
-                json!({ "png": "iVBORw0KGgo=", "width": 64, "height": 48, "note": "Scene: as modelled." }),
-            ),
-            other => Err(format!("unexpected {other}")),
-        });
-        let app = test_router(bridge.clone());
-
-        let (_, sid, init) = rpc(&app, None, None, init()).await;
-        assert!(
-            init["result"]["capabilities"]["tools"].is_object(),
-            "{init}"
-        );
-        let sid = sid.expect("a session id");
-        rpc(
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-        )
-        .await;
-
-        let (_, _, list) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
-        )
-        .await;
-        let tools = list["result"]["tools"].as_array().expect("tools");
-        let mut names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        names.sort();
-        assert_eq!(names, ["exec_fc", "read_instructions"]);
-        let exec = tools.iter().find(|t| t["name"] == "exec_fc").unwrap();
-        assert_eq!(exec["inputSchema"]["required"], json!(["args"]));
-        // the whole tool list is small: that is the point
-        assert!(
-            list.to_string().len() < 2000,
-            "tool list is {} bytes",
-            list.to_string().len()
-        );
-
-        let call = |id: u64, name: &str, args: Value| json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": args } });
-
-        let (_, _, manual) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(3, "read_instructions", json!({})),
-        )
-        .await;
-        let text = manual["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(
-            text.contains("# fc reference") && text.contains("### `src edit`"),
-            "{manual}"
-        );
-
-        let (_, _, read) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(4, "exec_fc", json!({ "args": "src cat" })),
-        )
-        .await;
-        assert!(
-            read["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("1	cube(2);"),
-            "{read}"
-        );
-
-        let (_, _, shot) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(5, "exec_fc", json!({ "args": "shot --view top --zoom 2" })),
-        )
-        .await;
-        let content = shot["result"]["content"].as_array().unwrap();
-        assert_eq!(content[1]["type"], "image", "{shot}");
-        assert_eq!(content[1]["mimeType"], "image/png");
-        let sent = bridge
-            .calls
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|c| c.0 == "view.capture")
-            .unwrap()
-            .1
-            .clone();
-        assert_eq!(sent, json!({ "view": "top", "zoom": 2.0 }));
-
-        let (_, _, bad) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(6, "exec_fc", json!({ "args": "nonsense" })),
-        )
-        .await;
-        assert_eq!(bad["result"]["isError"], true, "{bad}");
-        assert!(
-            bad["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("unknown command")
-        );
-    }
-
     fn call(id: u64, name: &str, args: Value) -> Value {
         json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": args } })
     }
@@ -299,18 +178,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_server_tells_agents_to_read_the_instructions_first() {
-        let app = test_router(Mock::new(|_, _| Ok(json!({}))));
+    async fn the_agent_sees_one_tool_and_can_run_commands() {
+        let bridge = Mock::new(|op, _| match op {
+            "source.get" => Ok(json!({ "source": "rs.AddBox([0,0,0])\n", "rev": 1 })),
+            "view.capture" => Ok(
+                json!({ "png": "iVBORw0KGgo=", "width": 64, "height": 48, "note": "Scene: as modelled." }),
+            ),
+            other => Err(format!("unexpected {other}")),
+        });
+        let app = test_router(bridge.clone());
         let (sid, init) = session(&app).await;
-        let text = init["result"]["instructions"]
-            .as_str()
-            .expect("server instructions");
-        assert!(
-            text.contains("jewellery")
-                && text.contains("BEFORE ANYTHING ELSE")
-                && text.contains("read_instructions"),
-            "{text}"
-        );
+        assert!(init["result"]["capabilities"]["tools"].is_object(), "{init}");
+        let told = init["result"]["instructions"].as_str().unwrap_or_default();
+        assert!(told.contains("jewellery") && !told.contains("read_instructions"), "{told}");
+
         let (_, _, list) = rpc(
             &app,
             Some(&sid),
@@ -318,19 +199,38 @@ mod tests {
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
         )
         .await;
-        let desc = |name: &str| {
-            list["result"]["tools"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|t| t["name"] == name)
-                .unwrap()["description"]
-                .as_str()
-                .unwrap()
-                .to_string()
-        };
-        assert!(desc("read_instructions").contains("REQUIRED FIRST STEP"));
-        assert!(desc("exec_fc").contains("Only after you have read read_instructions"));
+        let tools = list["result"]["tools"].as_array().expect("tools");
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(names, ["exec_fc"]);
+        assert_eq!(tools[0]["inputSchema"]["required"], json!(["args"]));
+        assert!(!tools[0]["description"].as_str().unwrap().contains("read_instructions"));
+        // the whole tool list is small: that is the point
+        assert!(list.to_string().len() < 2000, "tool list is {} bytes", list.to_string().len());
+
+        // runs straight away, nothing has to be read first
+        let (_, _, read) = rpc(&app, Some(&sid), None, call(4, "exec_fc", json!({ "args": "src cat" }))).await;
+        assert_eq!(read["result"]["isError"], false, "{read}");
+        assert!(read["result"]["content"][0]["text"].as_str().unwrap().contains("1\trs.AddBox"), "{read}");
+
+        let (_, _, shot) = rpc(
+            &app,
+            Some(&sid),
+            None,
+            call(5, "exec_fc", json!({ "args": "shot --view top --zoom 2" })),
+        )
+        .await;
+        let content = shot["result"]["content"].as_array().unwrap();
+        assert_eq!(content[1]["type"], "image", "{shot}");
+        assert_eq!(content[1]["mimeType"], "image/png");
+        let sent = bridge.calls.lock().unwrap().iter().find(|c| c.0 == "view.capture").unwrap().1.clone();
+        assert_eq!(sent, json!({ "view": "top", "zoom": 2.0 }));
+
+        let (_, _, bad) = rpc(&app, Some(&sid), None, call(6, "exec_fc", json!({ "args": "nonsense" }))).await;
+        assert_eq!(bad["result"]["isError"], true, "{bad}");
+        assert!(bad["result"]["content"][0]["text"].as_str().unwrap().contains("unknown command"));
+
+        let (_, _, help) = rpc(&app, Some(&sid), None, call(7, "exec_fc", json!({ "args": "help" }))).await;
+        assert!(help["result"]["content"][0]["text"].as_str().unwrap().contains("fc commands"), "{help}");
     }
 
     #[tokio::test]
@@ -349,75 +249,10 @@ mod tests {
         let mid = gate.activity();
         assert_eq!(mid.client.as_deref(), Some("test"));
         assert_eq!(mid.calls, 0, "connecting is not a call");
-        rpc(
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "read_instructions", "arguments": {} } }),
-        )
-        .await;
+        rpc(&app, Some(&sid), None, call(3, "exec_fc", json!({ "args": "help" }))).await;
         let after = gate.activity();
         assert_eq!(after.calls, 1);
         assert!(after.idle_secs.unwrap() < 5);
-    }
-
-    #[tokio::test]
-    async fn exec_refuses_to_run_until_the_instructions_were_read() {
-        let bridge = Mock::new(|op, _| match op {
-            "source.get" => Ok(json!({ "source": "cube(1);\n", "rev": 1 })),
-            _ => Err("unexpected".into()),
-        });
-        let app = test_router(bridge.clone());
-        let (sid, _) = session(&app).await;
-
-        let (_, _, early) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(3, "exec_fc", json!({ "args": "src cat" })),
-        )
-        .await;
-        assert_eq!(early["result"]["isError"], true, "{early}");
-        assert!(
-            early["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("Call read_instructions"),
-            "{early}"
-        );
-        assert!(
-            bridge
-                .calls
-                .lock()
-                .unwrap()
-                .iter()
-                .all(|c| c.0 == "settings.schema"),
-            "nothing may run before the instructions were read: {:?}",
-            bridge.calls.lock().unwrap()
-        );
-
-        let (_, _, read) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(4, "read_instructions", json!({})),
-        )
-        .await;
-        assert_eq!(read["result"]["isError"], false, "{read}");
-        let (_, _, ok) = rpc(
-            &app,
-            Some(&sid),
-            None,
-            call(5, "exec_fc", json!({ "args": "src cat" })),
-        )
-        .await;
-        assert_eq!(ok["result"]["isError"], false, "{ok}");
-        assert!(
-            ok["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("cube(1);")
-        );
     }
 
     #[tokio::test]
@@ -440,7 +275,7 @@ mod tests {
         let app = test_router(Mock::new(|_, _| Ok(json!({}))));
         let req = Request::builder()
             .method("POST")
-            .uri("/mcp")
+            .uri(PATH)
             .header("host", "attacker.example")
             .header("content-type", "application/json")
             .header("accept", "application/json, text/event-stream")
@@ -455,54 +290,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_chat_door_has_no_read_instructions_and_needs_none() {
+    async fn the_old_public_door_is_gone() {
         let app = test_router(Mock::new(|_, _| Ok(json!({}))));
-        let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-            "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": { "name": "chat", "version": "1" } } });
-        let (_, sid, reply) = rpc_at("/chat", &app, None, None, init).await;
-        let sid = sid.expect("a session id");
-        let told = reply["result"]["instructions"].as_str().unwrap_or_default();
-        assert!(!told.contains("read_instructions"), "{told}");
-        rpc_at(
-            "/chat",
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-        )
-        .await;
-        let (_, _, list) = rpc_at(
-            "/chat",
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
-        )
-        .await;
-        let tools = list["result"]["tools"].as_array().expect("tools");
-        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert_eq!(names, ["exec_fc"]);
-        assert!(
-            !tools[0]["description"]
-                .as_str()
-                .unwrap()
-                .contains("read_instructions")
-        );
-        // runs straight away, without the instructions having been read
-        let (_, _, out) = rpc_at(
-            "/chat",
-            &app,
-            Some(&sid),
-            None,
-            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                "params": { "name": "exec_fc", "arguments": { "args": "help" } } }),
-        )
-        .await;
-        let text = out["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap_or_default();
-        assert!(text.contains("fc commands"), "{out}");
-        assert_ne!(out["result"]["isError"], json!(true), "{out}");
+        let (status, _, _) = rpc_at("/mcp", &app, None, None, init()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

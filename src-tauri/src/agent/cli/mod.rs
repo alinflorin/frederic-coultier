@@ -1,7 +1,7 @@
-//! `fc`, a command line that only exists inside the MCP server. The agent gets two tools
-//! (`read_instructions` and `exec_fc`) instead of dozens of tool definitions, which keeps the
-//! tool list tiny. `read_instructions` returns the user's own notes (`docs/fc-cli.md`) followed
-//! by a reference that is generated from the command catalog.
+//! `fc`, a command line that only exists inside the MCP server. The agent gets one tool
+//! (`exec_fc`) instead of dozens of tool definitions, which keeps the tool list tiny. Its
+//! instructions are the user's own notes (`docs/fc-cli.md`) followed by a reference that is
+//! generated from the command catalog.
 
 mod catalog;
 mod commands;
@@ -103,7 +103,7 @@ impl Cli {
         self
     }
 
-    /// What `read_instructions` returns: the user's notes, then the generated reference
+    /// What the agent is given up front: the user's notes, then the generated reference
     /// (with the settings list, which the app itself supplies).
     pub async fn instructions(&self) -> String {
         let settings = self

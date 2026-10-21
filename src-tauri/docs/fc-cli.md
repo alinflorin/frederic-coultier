@@ -1,7 +1,7 @@
 <!--
   Your own instructions for the agent.
 
-  read_instructions shows this text first, above the command reference, which the app
+  The agent reads this text first, above the command reference, which the app
   generates by itself from the commands (so there is no need to describe commands here).
   Comments like this one are not sent. Write what the agent should know or follow: your
   workflow, jewellery conventions, tone, what to check before exporting, and so on.
@@ -98,7 +98,8 @@ Draft the model, look at it, correct it, repeat.
    - `shot --turnaround` for one sheet with six labelled views (front, right, back, left, top, iso): the cheapest way to see the whole piece after a big change;
    - `diff-shot` to compare with the version before your edits, from exactly the same camera, with every changed pixel in red: use it to confirm that an edit changed what you meant and nothing else;
    - `shot --findings` for the measurements as numbers (ring bore against the requested size, thin walls with their thickness at each spot, overhangs, trapped voids, sprue reach), and `shot --annotate` for a second picture with those spots pinned and numbered. Prefer these numbers to judging thickness by eye;
-   - `shot --overhang` to tint the faces that would need support, `shot --health` to draw broken edges.
+   - `shot --overhang` to tint the faces that would need support, `shot --health` to draw broken edges;
+   - `shot --rhino` for the picture Rhino itself draws (its display modes and materials, e.g. `shot --rhino --view isometric --display-mode Rendered --resolution high`): use it to see the piece as it looks in Rhino, with the user's colours, materials and any objects the script did not make. The options are then those of `capture-view`.
    Decide what question the picture has to answer before you take it. Compare the result with the user's photos and the agreed measurements: proportion, symmetry, stone fit, edges, anything that looks wrong. Several views beat one.
    When you need a number rather than an impression, ask for it: `measure A B [C]` gives distances, the angle at the middle point and the circle through three points (three points on the inside of a band give its bore and ring size); `measure --wall X,Y,Z` gives the metal thickness and slope at a spot; `locate X,Y,Z` names the line of the source that makes a spot, so a wall flagged by `check --deep` at some location can be traced to the statement to change.
 4. **Tweak** the script and look again. After each significant change, say in one sentence what should now be different, then verify it (`diff-shot`, or `shot --turnaround` for the whole piece) instead of assuming it worked. When the user's photo is in the conversation, compare your picture with it point by point against the spec sheet (proportions, head height, band taper, prong count) and list what still differs before correcting.
@@ -134,7 +135,7 @@ The design script is the main way to make the piece, but Rhino has more to offer
 - **Plan placements.** When you create geometry at an arbitrary position or orientation, plan the creation, translation and rotation before you send the commands; after creating, verify size and position (`get-objects-info`, `shot`) and correct with a transform if needed.
 - **Deleting is not undoable from here.** Always confirm with the user before `delete-objects` on anything they might have made; `--confirm` is required.
 - **Do not make things up.** If a command or option is not in the reference, it does not exist. Read the answers of the commands; an `error` is not a result.
-- **Looking through Rhino.** `shot` shows the app's preview of the geometry. `capture-view` shows Rhino's own viewport (display modes such as Rendered or Technical, any camera), useful to see what the user sees in Rhino; it frames the targets and restores the view afterwards.
+- **Looking through Rhino.** `shot` shows the app's preview of the geometry. `shot --rhino` (the same as `capture-view`) returns Rhino's own viewport as a PNG (display modes such as Rendered or Technical, any camera, chosen objects with `--ids`), useful to see what the user sees in Rhino; it frames the targets and restores the view afterwards.
 - **Interactive commands block Rhino.** `run-rhino-command` must never start a command that opens a dialog or waits for a pick: Rhino then stops answering until the user presses Esc. Give such commands all their answers on the command line, or use the script.
 
 ### 3.5 Supports (only when explicitly asked)

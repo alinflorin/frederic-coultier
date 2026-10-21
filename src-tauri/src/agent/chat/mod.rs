@@ -575,8 +575,6 @@ pub async fn chat_send(
         .await
         .url
         .ok_or("The agent connection (MCP) is not running; see Preferences.")?;
-    // the chat's own door into the server: its agent is given the manual instead of reading it
-    let url = format!("{}/chat", url.trim_end_matches("/mcp"));
     let instructions = mcp.instructions().await;
     let paths = paths(&app)?;
     let cancel = CancellationToken::new();
@@ -720,8 +718,7 @@ mod tests {
             .start()
             .await
             .url
-            .unwrap()
-            .replace("/mcp", "/chat");
+            .unwrap();
         let dir = std::env::temp_dir().join("fc-real-agents");
         let paths = Paths {
             private: dir.clone(),
