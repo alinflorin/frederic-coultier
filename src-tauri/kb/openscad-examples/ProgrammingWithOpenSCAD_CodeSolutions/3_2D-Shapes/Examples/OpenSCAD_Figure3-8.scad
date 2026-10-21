@@ -1,1 +1,0 @@
-text("Hello, OpenSCAD", font="Courier");

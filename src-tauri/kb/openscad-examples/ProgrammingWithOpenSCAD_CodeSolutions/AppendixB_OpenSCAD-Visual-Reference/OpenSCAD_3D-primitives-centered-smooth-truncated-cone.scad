@@ -1,1 +1,0 @@
-cylinder(h=10, r1=3, r2=5, $fn=100, center=true);

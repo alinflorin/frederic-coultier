@@ -1,2 +1,0 @@
-echo("A continued \
-string");
