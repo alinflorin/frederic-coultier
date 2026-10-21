@@ -1,7 +1,7 @@
 //! Slower geometric print checks (thin walls, narrow gaps, self-intersections,
 //! casting fill). They are samples and screens, not proofs.
 
-use openrscad_geom::Mesh;
+use crate::mesh::Mesh;
 use serde::Deserialize;
 
 use crate::bvh::{Bvh, V3, shares_vertex};

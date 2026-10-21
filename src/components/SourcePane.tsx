@@ -5,7 +5,7 @@ import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { basicSetup } from "codemirror";
-import { openscadLanguage } from "./openscad";
+import { pythonLanguage } from "./python";
 import { Icon } from "./Icon";
 import { ParamsPanel } from "./ParamsPanel";
 
@@ -93,7 +93,7 @@ export function SourcePane({
         extensions: [
           basicSetup,
           keymap.of([indentWithTab]),
-          openscadLanguage,
+          pythonLanguage,
           EditorView.lineWrapping,
           errorLineField,
           hitField,
@@ -147,7 +147,7 @@ export function SourcePane({
     <Stack className="pane" component="section" gap={0} aria-label={t("source.title")}>
       <Group component="header" className="pane-head" wrap="nowrap">
         <Box c="var(--accent)" style={{ display: "flex" }}><Icon name="code" size={15} /></Box>
-        <Text fw={600} fz={12.5} ff="monospace">model.scad</Text>
+        <Text fw={600} fz={12.5} ff="monospace">model.py</Text>
         <Tooltip label={t("source.copy")}>
           <ActionIcon variant="subtle" color="gray" ml="auto" onClick={copy} aria-label={t("source.copy")}>
             <Icon name={copied ? "check" : "copy"} size={15} />

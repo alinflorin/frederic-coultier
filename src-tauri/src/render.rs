@@ -1,25 +1,17 @@
-//! OpenSCAD source -> mesh, using the embedded openrscad engine.
+//! Design script -> mesh, through Rhino: the script runs there (see `rhino`) and the geometry comes back as an STL.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
-use openrscad_eval::{NullResolver, eval_program_with_budget, register_system_fonts};
-use crate::shade;
-use openrscad_geom::{GeomCache, Mesh, render_cached_warns};
 use serde::Serialize;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub use openrscad_geom::ManifoldKernel as Kernel;
-#[cfg(any(target_os = "android", target_os = "ios"))]
-pub use openrscad_geom::RustManifoldKernel as Kernel;
+use crate::mesh::Mesh;
+use crate::rhino::{Rhino, RunError};
+use crate::shade;
 
-/// Evaluation fuel. Stops runaway scripts (an unbounded `for`, deep
-/// recursion) instead of hanging the app; generous for real jewelry models.
-const EVAL_BUDGET: u64 = 200_000_000;
-/// Recursive libraries nest the evaluator deeply, hence a big stack.
-const STACK_BYTES: usize = 256 * 1024 * 1024;
+/// Chordal tolerance (mm) when nothing says otherwise.
+pub const DEFAULT_TOLERANCE: f64 = 0.02;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Diagnostic {
@@ -29,12 +21,18 @@ pub struct Diagnostic {
     pub column: Option<usize>,
 }
 
-/// A render that produced no geometry because of an error in the source.
+/// A render that produced no geometry: the script failed, or Rhino could not be reached.
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderFailure {
     pub message: String,
     pub line: Option<usize>,
     pub column: Option<usize>,
+}
+
+impl RenderFailure {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self { message: message.into(), line: None, column: None }
+    }
 }
 
 pub struct Rendered {
@@ -44,11 +42,7 @@ pub struct Rendered {
     pub ms: u64,
 }
 
-/// Last rendered mesh, so exporting right after previewing doesn't evaluate twice.
-#[derive(Default, Clone)]
-pub struct RenderCache(Arc<Mutex<CachedMesh>>);
-
-/// The source hash and the mesh it produced.
+/// The source and tolerance (hashed) and the mesh they produced.
 type CachedMesh = Option<(u64, Arc<Mesh>)>;
 
 fn hash(source: &str) -> u64 {
@@ -57,126 +51,89 @@ fn hash(source: &str) -> u64 {
     h.finish()
 }
 
-/// 1-based line and column of a byte offset.
-pub(crate) fn line_col(source: &str, offset: usize) -> (usize, usize) {
-    let offset = offset.min(source.len());
-    let before = source.get(..offset).unwrap_or_else(|| {
-        // offset fell inside a multi-byte character; back up to a boundary
-        let mut o = offset;
-        while !source.is_char_boundary(o) {
-            o -= 1;
-        }
-        &source[..o]
-    });
-    let line = before.matches('\n').count() + 1;
-    let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
-    (line, col)
+/// Renders through Rhino and remembers the last mesh, so that checking or exporting right after previewing does
+/// not run the script a second time.
+#[derive(Clone)]
+pub struct Engine {
+    pub rhino: Arc<Rhino>,
+    cache: Arc<Mutex<CachedMesh>>,
+    tol: Arc<Mutex<f64>>,
+    /// The fingerprint of the Rhino document when the preview was last made (see `changed`).
+    seen: Arc<Mutex<Option<u64>>>,
 }
 
-fn failure(source: &str, message: String, span: Option<std::ops::Range<usize>>) -> RenderFailure {
-    let (line, column) = match span {
-        Some(r) => {
-            let (l, c) = line_col(source, r.start);
-            (Some(l), Some(c))
-        }
-        None => (None, None),
-    };
-    RenderFailure {
-        message,
-        line,
-        column,
-    }
-}
-
-fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
-    let started = Instant::now();
-    if source.contains("text(") {
-        register_system_fonts();
+impl Engine {
+    pub fn new(rhino: Arc<Rhino>) -> Self {
+        Self { rhino, cache: Arc::default(), tol: Arc::new(Mutex::new(DEFAULT_TOLERANCE)), seen: Arc::default() }
     }
 
-    let program =
-        openrscad_syntax::parse(source).map_err(|e| failure(source, e.message, Some(e.span)))?;
-    // Projects are self-contained: no file system access for include/use/import.
-    let out = eval_program_with_budget(&program, &NullResolver, ".", EVAL_BUDGET)
-        .map_err(|e| failure(source, e.message, e.span))?;
+    fn tolerance(&self) -> f64 {
+        *self.tol.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 
-    let mut diagnostics: Vec<Diagnostic> = out
-        .warnings
-        .iter()
-        .map(|w| {
-            let (line, column) = match &w.span {
-                Some(r) => {
-                    let (l, c) = line_col(source, r.start);
-                    (Some(l), Some(c))
-                }
-                None => (None, None),
-            };
-            Diagnostic {
-                severity: "warning",
-                message: w.message.clone(),
-                line,
-                column,
+    async fn remember(&self) {
+        let sig = self.rhino.signature().await.ok();
+        *self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = sig;
+    }
+
+    /// Whether the document in Rhino is different from what the preview shows (the user worked in Rhino).
+    pub async fn changed(&self) -> bool {
+        let Some(seen) = *self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner) else {
+            return false;
+        };
+        self.rhino.signature().await.is_ok_and(|now| now != seen)
+    }
+
+    /// Runs the script in Rhino and returns what it made. Always runs: the document may have changed since.
+    pub async fn render(&self, source: &str, tol: Option<f64>) -> Result<Rendered, RenderFailure> {
+        let tol = tol.unwrap_or_else(|| self.tolerance()).clamp(0.001, 1.0);
+        *self.tol.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = tol;
+        let key = hash(source);
+        match self.rhino.run_design(source, tol).await {
+            Ok(d) => {
+                let mesh = Arc::new(d.mesh);
+                *self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, mesh.clone()));
+                self.remember().await;
+                Ok(Rendered {
+                    mesh,
+                    echoes: d.echoes,
+                    diagnostics: d
+                        .warnings
+                        .into_iter()
+                        .map(|message| Diagnostic { severity: "warning", message, line: None, column: None })
+                        .collect(),
+                    ms: d.ms,
+                })
             }
-        })
-        .collect();
+            Err(RunError::Script(e)) => Err(RenderFailure::new(e.message)),
+            Err(RunError::Other(m)) => Err(RenderFailure::new(m)),
+        }
+    }
 
-    let mut cache = GeomCache::new();
-    let (mesh, geom_warnings) = render_cached_warns(&out.node, &Kernel::new(), &mut cache)
-        .map_err(|e| RenderFailure {
-            message: e.to_string(),
-            line: None,
-            column: None,
-        })?;
-    diagnostics.extend(geom_warnings.into_iter().map(|message| Diagnostic {
-        severity: "warning",
-        message,
-        line: None,
-        column: None,
-    }));
+    /// The model as it is in Rhino now, without running the script again: after a command or the user changed the
+    /// document directly.
+    pub async fn refresh(&self, source: &str) -> Result<Rendered, RenderFailure> {
+        let started = std::time::Instant::now();
+        let status = self.rhino.status(true).await;
+        if !status.connected {
+            return Err(RenderFailure::new(status.error.unwrap_or_else(|| "Rhino is not reachable".into())));
+        }
+        let mesh = self.rhino.fetch_mesh(self.tolerance(), status.unit_mm.unwrap_or(1.0)).await.map_err(RenderFailure::new)?;
+        let mesh = Arc::new(mesh);
+        *self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((hash(source), mesh.clone()));
+        self.remember().await;
+        Ok(Rendered { mesh, echoes: Vec::new(), diagnostics: Vec::new(), ms: started.elapsed().as_millis() as u64 })
+    }
 
-    Ok(Rendered {
-        mesh: Arc::new(mesh),
-        echoes: out.echoes,
-        diagnostics,
-        ms: started.elapsed().as_millis() as u64,
-    })
-}
-
-/// Runs the render on a thread with a large stack; a panic in the engine
-/// becomes an error instead of taking the app down. Nothing is cached.
-pub fn render_plain(source: String) -> Result<Rendered, RenderFailure> {
-    let handle = std::thread::Builder::new()
-        .stack_size(STACK_BYTES)
-        .spawn(move || render_now(&source))
-        .map_err(|e| RenderFailure {
-            message: e.to_string(),
-            line: None,
-            column: None,
-        })?;
-    handle.join().unwrap_or_else(|_| {
-        Err(RenderFailure {
-            message: "the renderer crashed on this model".into(),
-            line: None,
-            column: None,
-        })
-    })
-}
-
-/// [`render_plain`], remembering the mesh so an export right after doesn't evaluate twice.
-pub fn render_on_big_stack(source: String, cache: &RenderCache) -> Result<Rendered, RenderFailure> {
-    let key = hash(&source);
-    let rendered = render_plain(source)?;
-    *cache.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, rendered.mesh.clone()));
-    Ok(rendered)
-}
-
-/// The mesh for `source`, from the cache if it is the model last rendered.
-pub fn mesh_for(source: &str, cache: &RenderCache) -> Result<Arc<Mesh>, RenderFailure> {
-    if let Some((key, mesh)) = cache.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref()
-        && *key == hash(source) {
+    /// The mesh for `source`: the one rendered last if that was this source, else render it now.
+    pub async fn mesh_for(&self, source: &str) -> Result<Arc<Mesh>, RenderFailure> {
+        if let Some((key, mesh)) = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref()
+            && *key == hash(source)
+        {
             return Ok(mesh.clone());
         }
-    render_on_big_stack(source.to_owned(), cache).map(|r| r.mesh)
+        self.render(source, None).await.map(|r| r.mesh)
+    }
 }
 
 /// Preview payload of a model: smooth normals and feature edges precomputed (see `shade`).
@@ -206,8 +163,6 @@ pub fn encode(format: &str, mesh: &Mesh, name: &str) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    const RING: &str = include_str!("../../src/sample.scad");
-
     #[test]
     fn model_encoding_has_the_documented_layout() {
         let mesh = Mesh {
@@ -224,119 +179,99 @@ mod tests {
     }
 
     #[test]
-    fn renders_the_sample_ring() {
-        let r = render_on_big_stack(RING.into(), &RenderCache::default()).expect("render");
-        let (min, max) = r.mesh.bbox().expect("non-empty");
-        let size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
-        // 17.3 mm inner diameter + 2 * 1.6 band, 2.4 wide band, stone on top
-        assert!((size[0] - 20.5).abs() < 0.3, "x {size:?}");
-        assert!(size[1] > 2.0 && size[1] < 6.0, "y {size:?}");
-        assert!(size[2] > 20.0, "z {size:?}");
-        assert!(r.mesh.volume() > 50.0);
-        assert!(r.mesh.to_binary_stl().len() > 84);
-    }
-
-    #[test]
-    fn sample_ring_survives_the_whole_pipeline() {
-        use crate::{hollow, meshtools, supports};
-        let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
-        let t = std::time::Instant::now();
-        let spec = hollow::HollowSpec {
-            wall: 0.8,
-            drain: 1.0,
-            tilt: 30.0,
-        };
-        let hollowed = hollow::hollow(&r.mesh, &spec).expect("hollow ok");
-        eprintln!(
-            "hollow: {:?} in {:?}",
-            hollowed.as_ref().map(|h| &h.1),
-            t.elapsed()
-        );
-        let base = hollowed.map_or((*r.mesh).clone(), |h| h.0);
-        assert!(base.volume() <= r.mesh.volume());
-        let (_, rep) = meshtools::simplify(
-            &base,
-            &meshtools::SimplifySpec {
-                keep_percent: 60.0,
-                max_volume_change: 1.0,
-            },
-        );
-        eprintln!("simplify: {rep:?}");
-        let p = supports::PrintParams {
-            tilt: 30.0,
-            lift: 3.0,
-            tip: 0.2,
-            base: 0.8,
-            raft: 1.0,
-            raft_radius: 3.0,
-        };
-        let auto = supports::AutoParams {
-            angle: 45.0,
-            spacing: 4.0,
-            step: 1.0,
-            bias: 3.0,
-        };
-        let sup = supports::auto_supports(&base, &p, &auto, &[], 1).unwrap();
-        let baked = supports::bake(&base, &sup.supports, &p).unwrap();
-        eprintln!(
-            "supports {} baked tris {} total {:?}",
-            sup.supports.len(),
-            baked.tris.len(),
-            t.elapsed()
-        );
-        assert!(baked.tris.len() > base.tris.len());
-    }
-
-    #[test]
-    fn sprue_on_the_sample_ring() {
-        let r = render_on_big_stack(RING.into(), &RenderCache::default()).unwrap();
-        let spec = crate::meshtools::SprueSpec {
-            diameter: 2.0,
-            length: 5.0,
-            at: None,
-        };
-        let t = std::time::Instant::now();
-        let got = crate::meshtools::plan_sprue(&r.mesh, &spec);
-        eprintln!(
-            "sprue: {:?} in {:?}",
-            got.as_ref().map(|g| (g.0.tris.len(), g.1, g.0.bbox())),
-            t.elapsed()
-        );
-        assert!(got.is_some());
-    }
-
-    #[test]
-    fn syntax_error_has_position() {
-        let e = render_on_big_stack("cube(1);\ncube(;".into(), &RenderCache::default())
-            .err()
-            .expect("should fail");
-        assert_eq!(e.line, Some(2), "{e:?}");
-    }
-
-    #[test]
-    fn empty_model_renders_empty() {
-        let r = render_on_big_stack("$fn = 64;".into(), &RenderCache::default()).unwrap();
-        assert!(r.mesh.is_empty());
-    }
-
-    #[test]
-    fn runaway_script_is_stopped() {
-        let src = "for (i = [0 : 1e12]) translate([i, 0, 0]) cube(0.1);";
-        assert!(render_on_big_stack(src.into(), &RenderCache::default()).is_err());
-    }
-
-    #[test]
     fn export_formats_encode() {
-        let r = render_on_big_stack("cube(2);".into(), &RenderCache::default()).unwrap();
+        let m = crate::mesh::tests::cube(0.0, 2.0);
         for f in ["stl-bin", "stl-ascii", "obj", "3mf"] {
-            assert!(!encode(f, &r.mesh, "t").unwrap().is_empty(), "{f}");
+            assert!(!encode(f, &m, "t").unwrap().is_empty(), "{f}");
         }
-        assert!(encode("nope", &r.mesh, "t").is_none());
-        assert!((r.mesh.volume() - 8.0).abs() < 1e-6);
+        assert!(encode("nope", &m, "t").is_none());
     }
 
-    #[test]
-    fn line_col_handles_unicode() {
-        assert_eq!(line_col("é\nab", 4), (2, 2));
+    /// Against a Rhino that is running with the plugin: `cargo test live_rhino -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_rhino() {
+        let home = std::env::var("HOME").unwrap();
+        let dir = std::path::PathBuf::from(home).join(".cache/fc-live-exchange");
+        let _ = std::fs::remove_dir_all(&dir);
+        let e = Engine::new(Arc::new(Rhino::new("127.0.0.1", 1999, dir)));
+        let src = include_str!("../../src/sample.py");
+        let t = std::time::Instant::now();
+        let r = e.render(src, Some(0.02)).await.map_err(|f| f.message).expect("render");
+        let (lo, hi) = r.mesh.bbox().expect("geometry");
+        eprintln!("{} tris, {} verts, volume {:.1} mm3, bbox {lo:?} {hi:?}, {:?}, echoes {:?}, warnings {:?}", r.mesh.tris.len(), r.mesh.verts.len(), r.mesh.volume(), t.elapsed(), r.echoes, r.diagnostics);
+        let again = e.render(src, Some(0.02)).await.map_err(|f| f.message).expect("second render");
+        assert_eq!(again.mesh.tris.len(), r.mesh.tris.len(), "the second run replaces the first, it does not add to it");
+        let bad = e.render("x = 1/0", None).await.err().expect("fails");
+        eprintln!("error: {}", bad.message);
+        // a script that makes something and then fails must leave nothing behind
+        let partial = "import rhinoscriptsyntax as rs\nrs.AddSphere((0, 0, 30), 3)\nx = 1/0";
+        assert!(e.render(partial, None).await.is_err());
+        assert_eq!(e.refresh(src).await.map_err(|f| f.message).expect("refresh").mesh.tris.len(), r.mesh.tris.len(), "the half-made sphere is gone");
+        let still = e.render(src, None).await.map_err(|f| f.message).expect("third render");
+        assert_eq!(still.mesh.tris.len(), r.mesh.tris.len());
+        let st = e.rhino.status(true).await;
+        eprintln!("{st:?}");
+    }
+
+    #[tokio::test]
+    async fn a_change_made_in_rhino_is_noticed() {
+        use serde_json::json;
+        let objects = Arc::new(Mutex::new(vec![json!({ "id": "a", "bbox": [[0, 0, 0], [1, 1, 1]] })]));
+        let o = objects.clone();
+        let (port, _) = crate::rhino::fake::serve(move |kind, _| match kind {
+            "get_document_info" => Ok(json!({ "meta_data": { "units": "Millimeters" }, "objects": *o.lock().unwrap(), "objects_truncated": false })),
+            _ => Ok(json!({ "success": true, "result": "" })),
+        })
+        .await;
+        let dir = std::env::temp_dir().join(format!("fc-changed-test-{}", std::process::id()));
+        let e = Engine::new(Arc::new(Rhino::new("127.0.0.1", port, dir)));
+        assert!(!e.changed().await, "nothing to compare with before the first render");
+        e.refresh("s").await.ok();
+        assert!(!e.changed().await, "the preview shows what is there");
+        objects.lock().unwrap()[0] = json!({ "id": "a", "bbox": [[0, 0, 0], [2, 1, 1]] });
+        assert!(e.changed().await, "an object was resized in Rhino");
+        e.refresh("s").await.ok();
+        assert!(!e.changed().await, "refreshing takes the new state as the shown one");
+    }
+
+    #[tokio::test]
+    async fn the_cache_serves_the_mesh_of_the_last_render() {
+        use serde_json::json;
+        let stl = crate::mesh::tests::cube(0.0, 2.0).to_binary_stl();
+        let dir = std::env::temp_dir().join(format!("fc-render-test-{}", std::process::id()));
+        let calls = Arc::new(Mutex::new(0u32));
+        let c = calls.clone();
+        let d2 = dir.clone();
+        let (port, _) = crate::rhino::fake::serve(move |kind, p| match kind {
+            "get_document_info" => Ok(json!({ "meta_data": { "units": "Millimeters" }, "objects": [], "objects_truncated": false })),
+            "get_or_set_current_layer" => Ok(json!({ "name": "Default" })),
+            "create_layer" => Ok(json!({})),
+            "create_objects" => Ok(json!({ "__fc_guard": { "id": "g" } })),
+            "execute_rhinoscript_python_code" => {
+                *c.lock().unwrap() += 1;
+                Ok(json!({ "success": true, "result": "ok" }))
+            }
+            "run_command" => {
+                let cmd = p["command"].as_str().unwrap();
+                if cmd.starts_with("-Export") {
+                    let path = cmd.split('"').nth(1).unwrap();
+                    let path = path.strip_prefix("Z:").map_or(path.to_string(), |p| p.replace('\\', "/"));
+                    std::fs::write(path, &stl).unwrap();
+                }
+                Ok(json!({ "success": true }))
+            }
+            _ => Ok(json!({})),
+        })
+        .await;
+        let _ = d2;
+        let e = Engine::new(Arc::new(Rhino::new("127.0.0.1", port, dir)));
+        let r = e.render("a", Some(0.05)).await.ok().unwrap();
+        assert!((r.mesh.volume() - 8.0).abs() < 1e-6);
+        assert!(e.mesh_for("a").await.is_ok());
+        assert_eq!(*calls.lock().unwrap(), 1, "the cache answers for the same source");
+        e.mesh_for("b").await.ok().unwrap();
+        assert_eq!(*calls.lock().unwrap(), 2);
+        assert!((e.tolerance() - 0.05).abs() < 1e-12, "{}", e.tolerance());
     }
 }

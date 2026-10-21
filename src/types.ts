@@ -27,7 +27,7 @@ export interface ProjectSettings {
     finish: Finish;
     shading: ShadingMode;
     orthographic: boolean;
-    previewQuality: number; // $fn used while sketching
+    meshTolerance: number; // mm: the largest distance between the preview mesh and the true surface
   };
   printing: {
     printer: string;
@@ -160,7 +160,7 @@ export interface Snapshot {
 export interface FcProject {
   formatVersion: 1;
   settings: ProjectSettings;
-  source: string; // model.scad
+  source: string; // model.py: the design script, run by Rhino
   supports: SupportsData;
   /** Saved whole in the file, attachments and tool results included. */
   chats: ChatBook;

@@ -14,6 +14,11 @@ const WAIT_DOC: Opt = o(
     "do not wait for the render result (default: wait up to 20 s and report it)",
 );
 
+/// Every command: the app's own, then the Rhino plugin's tools.
+pub fn all() -> Vec<&'static Cmd> {
+    COMMANDS.iter().chain(super::rhino_tools::tools().iter().map(|t| &t.cmd)).collect()
+}
+
 pub const COMMANDS: &[Cmd] = &[
     // ---- Knowledge base ----
     Cmd {
@@ -21,7 +26,7 @@ pub const COMMANDS: &[Cmd] = &[
         name: "kb search",
         usage: "kb search WORDS... [--top N] [--dir SUB] [--per-file N] [--lines N] [--full] [--files] [--ext LIST]",
         summary: "search the user's reference notes",
-        details: "Searches the user's knowledge base: a folder of reference files (jewelry, casting and OpenSCAD notes, examples) in subfolders. Look things up here **before** relying on memory or guessing, and prefer it to the web: it is the user's curated material.\nPassages are ranked by relevance and printed as `path:lines  # heading` followed by the numbered lines. It matches words, not meaning (stone/stones and setting/settings match), so rephrase with other keywords when the first results are weak. A passage that is cut off says how to read the rest with `kb cat`.",
+        details: "Searches the user's knowledge base: a folder of reference files (jewelry and casting notes, and the rhinoscriptsyntax reference) in subfolders. Look things up here **before** relying on memory or guessing, and prefer it to the web: it is the user's curated material.\nPassages are ranked by relevance and printed as `path:lines  # heading` followed by the numbered lines. It matches words, not meaning (stone/stones and setting/settings match), so rephrase with other keywords when the first results are weak. A passage that is cut off says how to read the rest with `kb cat`.",
         flags: KB_SEARCH_FLAGS,
         opts: &[
             o(
@@ -49,7 +54,7 @@ pub const COMMANDS: &[Cmd] = &[
             o(
                 "ext",
                 "LIST",
-                "only these extensions, comma separated, e.g. md,scad",
+                "only these extensions, comma separated, e.g. md,py",
             ),
         ],
         examples: &[
@@ -70,6 +75,26 @@ pub const COMMANDS: &[Cmd] = &[
     },
     Cmd {
         group: "Knowledge base",
+        name: "kb functions",
+        usage: "kb functions [CATEGORY...]",
+        summary: "the rhinoscriptsyntax function names of one or more categories",
+        details: "Return the RhinoScriptsyntax Function Names for specified categories. Without a category, lists the categories.\n\nGives a list of the function names that are available in the specified categories. The categories are: application, block, compat, curve, dimension, document, geometry, grips, group, hatch, layer, light, line, linetype, material, mesh, object, plane, pointvector, selection, surface, toolbar, transformation, userdata, userinterface, utility, view.\n\nUse it before writing a script that creates geometry: get the names of the categories you need, then read the details of a function with `kb function NAME`. Example: you want a loft surface between two curves: `kb functions surface curve`, then `kb function AddLoftSrf`. Do not hallucinate: only use the syntax that is supported by rhinoscriptsyntax or Rhino.Geometry.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["kb functions", "kb functions surface curve"],
+    },
+    Cmd {
+        group: "Knowledge base",
+        name: "kb function",
+        usage: "kb function NAME",
+        summary: "the details of one rhinoscriptsyntax function",
+        details: "Return the RhinoScriptsyntax details for a specific function: its signature, what the arguments are, what it returns and an example.\n\nYou should get the function names first with `kb functions CATEGORY`. The whole reference is also searchable with `kb search`, which finds functions by what they do (`kb search --dir rhinoscriptsyntax boolean union`).",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["kb function AddLoftSrf"],
+    },
+    Cmd {
+        group: "Knowledge base",
         name: "kb ls",
         usage: "kb ls",
         summary: "the subfolders of the knowledge base",
@@ -83,8 +108,8 @@ pub const COMMANDS: &[Cmd] = &[
         group: "Project",
         name: "status",
         usage: "status",
-        summary: "the open project: file, unsaved changes, preview state, supports, sprue",
-        details: "The open project: name and file, unsaved changes, number of source lines, preview state, material, tilt, supports, sprue, hollowing, notes.\nRun it first. If it says no project is open, start one with `new-project` or `open-project`.",
+        summary: "the open project, and whether Rhino is reachable",
+        details: "The open project: name and file, unsaved changes, number of script lines, preview state, material, tilt, supports, sprue, hollowing, notes; and under it Rhino: whether the plugin answers, the open document, its units, how many objects it holds.\nRun it first. If it says no project is open, start one with `new-project` or `open-project`.",
         flags: NO_FLAGS,
         opts: &[],
         examples: &[],
@@ -182,8 +207,8 @@ pub const COMMANDS: &[Cmd] = &[
         group: "Source",
         name: "src cat",
         usage: "src cat [RANGE]",
-        summary: "show the model source with line numbers",
-        details: "Prints the source with line numbers, 2000 lines at most. RANGE is `N`, `N:M`, `N:` or `:M` (1-based, inclusive).",
+        summary: "show the design script with line numbers",
+        details: "Prints the design script (the Source pane: RhinoScript, Python) with line numbers, 2000 lines at most. RANGE is `N`, `N:M`, `N:` or `:M` (1-based, inclusive).",
         flags: NO_FLAGS,
         opts: &[],
         examples: &["src cat", "src cat 20:45"],
@@ -204,22 +229,22 @@ pub const COMMANDS: &[Cmd] = &[
                 "show N lines around each match (at most 20)",
             ),
         ],
-        examples: &["src grep cylinder", "src grep -E -i -C 2 'ring_(r|d)'"],
+        examples: &["src grep AddCylinder", "src grep -E -i -C 2 'ring_(size|d)'"],
     },
     Cmd {
         group: "Source",
         name: "src edit",
         usage: "src edit OLD NEW [--all] [--no-wait]\nsrc edit [--all] [--no-wait] <<EOF   (SEARCH/REPLACE blocks)",
         summary: "replace exact text",
-        details: "Replaces exact text. OLD must match **exactly once**, indentation included; if it matches more than once the error lists the line numbers, so add surrounding text to make it unique.\nEvery edit prints how many lines changed, the changed lines with their numbers, and whether the model still renders (`render: ok, 12340 triangles, 18.2×18.2×9.4 mm` or `render: FAILED at line 13, column 5: ...`). Fix a failure before doing anything else.\n\nFor several changes at once, or text with quotes and newlines, give SEARCH/REPLACE blocks in a here-document. Blocks apply in order; if one fails **nothing** is changed and the error names the block. To delete text leave the part after `=======` empty. If the user types at the same moment, `src edit` retries by itself.",
+        details: "Replaces exact text. OLD must match **exactly once**, indentation included; if it matches more than once the error lists the line numbers, so add surrounding text to make it unique.\nEvery edit prints how many lines changed, the changed lines with their numbers, and whether the script still runs in Rhino and what it made (`render: ok, 12340 triangles, 18.2×18.2×9.4 mm` or `render: FAILED: ZeroDivisionError: ...`). The error names the exception but not the line (Rhino does not report it): `print` markers in the script, or `src edit` in small steps, locate it. Fix a failure before doing anything else; a failed run changes nothing in Rhino.\n\nFor several changes at once, or text with quotes and newlines, give SEARCH/REPLACE blocks in a here-document. Blocks apply in order; if one fails **nothing** is changed and the error names the block. To delete text leave the part after `=======` empty. If the user types at the same moment, `src edit` retries by itself.",
         flags: EDIT_FLAGS,
         opts: &[
             o("all", "", "replace every match, not just a unique one"),
             WAIT_DOC,
         ],
         examples: &[
-            "src edit 'radius = 5;' 'radius = 6;'",
-            "src edit <<EOF\n<<<<<<< SEARCH\nring_r = 8.5;\n=======\nring_r = 9;\n>>>>>>> REPLACE\n<<<<<<< SEARCH\n  cylinder(r = ring_r, h = 2);\n=======\n  cylinder(r = ring_r, h = 2.5);\n>>>>>>> REPLACE\nEOF",
+            "src edit 'band_width = 2.4' 'band_width = 3'",
+            "src edit <<EOF\n<<<<<<< SEARCH\nring_size_mm = 17.3\n=======\nring_size_mm = 18.1\n>>>>>>> REPLACE\n<<<<<<< SEARCH\nband_width = 2.4\n=======\nband_width = 3.0\n>>>>>>> REPLACE\nEOF",
         ],
     },
     Cmd {
@@ -230,7 +255,7 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Inserts text after line LINE: `0` puts it at the start, the last line number appends. The text is TEXT or a here-document.",
         flags: WAIT,
         opts: &[WAIT_DOC],
-        examples: &["src insert 0 '$fn = 64;'"],
+        examples: &["src insert 0 '# ring for a client'"],
     },
     Cmd {
         group: "Source",
@@ -240,7 +265,7 @@ pub const COMMANDS: &[Cmd] = &[
         details: "Replaces the lines in RANGE with the text (TEXT or a here-document). Line numbers shift after every edit, so read again before the next one.",
         flags: WAIT,
         opts: &[WAIT_DOC],
-        examples: &["src replace 12:14 'cube(2);'"],
+        examples: &["src replace 12:14 'band_width = 3.0'"],
     },
     Cmd {
         group: "Source",
@@ -265,10 +290,20 @@ pub const COMMANDS: &[Cmd] = &[
     // ---- Looking ----
     Cmd {
         group: "Looking",
+        name: "refresh",
+        usage: "refresh",
+        summary: "show what is in Rhino now (without running the script again)",
+        details: "Reads the geometry that is in the Rhino document right now into the preview, without running the design script. The Rhino commands that change the document do this by themselves; use it after the user says they changed something in Rhino. Note that the next run of the script replaces the objects the previous run made.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &[],
+    },
+    Cmd {
+        group: "Looking",
         name: "render",
         usage: "render [--no-wait]",
-        summary: "does the model render? size, errors, warnings, echo output",
-        details: "Waits for the preview to catch up with the source, then prints the render result: triangles and size, or the error with line and column, plus warnings and `echo()` output.",
+        summary: "does the script run? size, errors, warnings, printed output",
+        details: "Waits for the preview to catch up with the script (which Rhino runs), then prints the result: triangles and size, or the error, plus warnings and what the script `print`ed.",
         flags: WAIT,
         opts: &[o(
             "no-wait",
@@ -469,8 +504,8 @@ pub const COMMANDS: &[Cmd] = &[
         group: "Checking",
         name: "locate",
         usage: "locate X,Y,Z",
-        summary: "which line of the source makes a spot of the piece",
-        details: "Takes a point on the surface of the piece (model coordinates, mm: the locations `check` prints, or any point you read off the model) and prints the statements of the source whose own shape has that point on its surface, outermost first; `→` marks the innermost one, where the spot comes from. Each candidate is evaluated alone inside the transforms around it, and calls of your own modules are followed into their bodies. Use it to find which line to change for a thin wall or an overhang reported at a location. A spot made by `hull()`, `minkowski()` or an intersection may belong to no single statement; the outer ones are still listed.",
+        summary: "which Rhino objects have a spot of the piece inside their bounding box",
+        details: "Takes a point of the piece (model coordinates, mm: the locations `check` prints, or any point you read off the model) and lists the objects of the Rhino document whose bounding box contains it, with their names, types, layers and ids. Give your objects meaningful names in the script (`rs.ObjectName(id, \"band\")`): then `src grep NAME` finds the lines that make the spot, so you know what to change for a thin wall or an overhang reported at a location. Several objects can match where their boxes overlap; the surface point belongs to the one it touches.",
         flags: NO_FLAGS,
         opts: &[],
         examples: &["locate 3.2,-1.4,7"],

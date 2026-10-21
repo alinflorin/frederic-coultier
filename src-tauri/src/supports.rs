@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use openrscad_geom::Mesh;
+use crate::mesh::Mesh;
 use serde::{Deserialize, Serialize};
 
 /// Build volume of the target printer (Elegoo Mars 5), mm.

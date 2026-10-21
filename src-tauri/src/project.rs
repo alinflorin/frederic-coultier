@@ -5,7 +5,7 @@
 //! | entry           | content                                              |
 //! |-----------------|------------------------------------------------------|
 //! | `manifest.json` | `{ format, version, app }`, checked on open          |
-//! | `model.scad`    | the OpenSCAD source                                  |
+//! | `model.py`      | the design script (RhinoScript, run by Rhino)        |
 //! | `settings.json` | project settings (material, render, printing, ...)   |
 //! | `chat.json`     | the design conversation                              |
 //! | `supports.json` | print supports                                       |
@@ -109,9 +109,10 @@ pub fn read_project(path: &Path) -> Result<Project, ProjectError> {
         return Err(ProjectError::TooNew(manifest.version));
     }
 
-    let source = read_entry(&mut zip, "model.scad")?.ok_or(ProjectError::Missing("model.scad"))?;
+    let source = read_entry(&mut zip, "model.py")?.ok_or(ProjectError::Missing("model.py"))?;
+    let source = String::from_utf8_lossy(&source).into_owned();
     Ok(Project {
-        source: String::from_utf8_lossy(&source).into_owned(),
+        source,
         settings: read_json(&mut zip, "settings.json", json!({}))?,
         chat: read_json(&mut zip, "chat.json", json!([]))?,
         supports: read_json(&mut zip, "supports.json", json!({}))?,
@@ -145,7 +146,7 @@ pub fn write_project(path: &Path, project: &Project) -> Result<PathBuf, ProjectE
         };
         let entries: [(&str, Vec<u8>); 6] = [
             ("manifest.json", serde_json::to_vec_pretty(&manifest)?),
-            ("model.scad", project.source.clone().into_bytes()),
+            ("model.py", project.source.clone().into_bytes()),
             (
                 "settings.json",
                 serde_json::to_vec_pretty(&project.settings)?,
@@ -239,6 +240,20 @@ mod tests {
     }
 
     #[test]
+    fn an_openscad_project_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.fc");
+        let mut zip = ZipWriter::new(File::create(&path).unwrap());
+        let o = SimpleFileOptions::default();
+        zip.start_file("manifest.json", o).unwrap();
+        zip.write_all(br#"{"format":"frederic-coultier-project","version":1,"app":"0"}"#).unwrap();
+        zip.start_file("model.scad", o).unwrap();
+        zip.write_all(b"cube(1);").unwrap();
+        zip.finish().unwrap();
+        assert!(matches!(read_project(&path), Err(ProjectError::Missing("model.py"))));
+    }
+
+    #[test]
     fn missing_optional_entries_get_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("min.fc");
@@ -247,11 +262,11 @@ mod tests {
         zip.start_file("manifest.json", o).unwrap();
         zip.write_all(br#"{"format":"frederic-coultier-project","version":1,"app":"0"}"#)
             .unwrap();
-        zip.start_file("model.scad", o).unwrap();
-        zip.write_all(b"cube(1);").unwrap();
+        zip.start_file("model.py", o).unwrap();
+        zip.write_all(b"import rhinoscriptsyntax as rs").unwrap();
         zip.finish().unwrap();
         let p = read_project(&path).unwrap();
-        assert_eq!(p.source, "cube(1);");
+        assert_eq!(p.source, "import rhinoscriptsyntax as rs");
         assert_eq!(p.chat, json!([]));
         assert_eq!(p.settings, json!({}));
         assert_eq!(p.history, json!([]));

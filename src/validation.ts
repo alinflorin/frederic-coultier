@@ -22,7 +22,7 @@ const loose = z.looseObject;
 export function settingsSchema(t: TFunction) {
   const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, { error: t("validation.color") });
   return loose({
-    render: loose({ metalColor: hex, previewQuality: range(t, 12, 256, { int: true }) }),
+    render: loose({ metalColor: hex, meshTolerance: range(t, 0.001, 0.5) }),
     printing: loose({
       minWall: range(t, 0.2, 3),
       tilt: range(t, 0, 60),
@@ -47,16 +47,16 @@ export function settingsSchema(t: TFunction) {
   });
 }
 
-/** Host and port of the MCP server. */
-export function mcpSchema(t: TFunction) {
+/** Host and port of the Rhino plugin. */
+export function rhinoSchema(t: TFunction) {
   return z.object({
-    host: z.string().trim().min(1, { error: t("validation.required") }).regex(/^[A-Za-z0-9.:-]+$/, { error: t("prefs.mcp.badHost") }),
+    host: z.string().trim().min(1, { error: t("validation.required") }).regex(/^[A-Za-z0-9.:-]+$/, { error: t("prefs.rhino.badHost") }),
     port: z
       .string()
       .trim()
       .min(1, { error: t("validation.required") })
-      .regex(/^\d+$/, { error: t("prefs.mcp.badPort") })
-      .refine((v) => Number(v) >= 1 && Number(v) <= 65535, { error: t("prefs.mcp.badPort") }),
+      .regex(/^\d+$/, { error: t("prefs.rhino.badPort") })
+      .refine((v) => Number(v) >= 1 && Number(v) <= 65535, { error: t("prefs.rhino.badPort") }),
   });
 }
 

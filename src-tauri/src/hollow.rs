@@ -7,12 +7,11 @@
 
 use std::collections::HashMap;
 
-use openrscad_geom::{Kernel as KernelTrait, Mesh};
 use serde::{Deserialize, Serialize};
 
 use crate::bvh::{Bvh, V3};
 use crate::meshtools::tube;
-use crate::render::Kernel;
+use crate::mesh::{self, Mesh};
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,7 +41,7 @@ const MIN_CAVITY: f64 = 0.5;
 /// kernel rejects an operand (overlapping shells still print fine).
 pub fn fuse(parts: Vec<Mesh>) -> Mesh {
     let parts: Vec<Mesh> = parts.into_iter().map(|p| p.welded(1e-6)).collect();
-    match Kernel::new().union(parts.clone()) {
+    match mesh::union(&parts) {
         Ok(m) if !m.is_empty() => m,
         _ => {
             let mut out = Mesh::new();
@@ -455,9 +454,7 @@ pub fn hollow(mesh: &Mesh, spec: &HollowSpec) -> Result<Option<(Mesh, HollowRepo
     let drains = tools.len() - 1;
 
     let tools: Vec<Mesh> = tools.into_iter().map(|t| t.welded(1e-6)).collect();
-    let result = Kernel::new()
-        .difference(outer.clone(), tools)
-        .map_err(|e| e.to_string())?;
+    let result = mesh::difference(&outer, &tools)?;
     if result.is_empty() {
         return Err("hollowing removed the whole piece".into());
     }

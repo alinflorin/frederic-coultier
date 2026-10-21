@@ -5,7 +5,7 @@
 //! `u32 vertices | u32 triangles | u32 indexed (0 or 1) | u32 edge vertices | f32 volume |`
 //! `f32 xyz positions | f32 xyz normals | u32 abc indices (only when indexed) | f32 xyz edge segments`.
 
-use openrscad_geom::Mesh;
+use crate::mesh::Mesh;
 
 /// Size of the fixed header; a payload no longer than this holds no geometry.
 pub const HEADER: usize = 20;

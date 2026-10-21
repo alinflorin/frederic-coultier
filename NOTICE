@@ -1,0 +1,11 @@
+Frederic Coultier
+
+This application talks to the Rhino plugin of tectopus (https://github.com/Creative-Data-Critical-Design/tectopus),
+developed by the Creative Data Critical Design (CDCD) Lab and the Chair of Circular Engineering for Architecture (CEA),
+which is a derivative work of RhinoMCP (https://github.com/jingcheng-chen/rhinomcp). Both are licensed under the
+Apache License 2.0.
+
+The descriptions of the Rhino tools in src-tauri/docs/rhino-tools.json are taken, unchanged, from the tool definitions of
+the tectopus MCP layer (rhino_mcp_server), Copyright 2026 Mikhael Johanes. The rhinoscriptsyntax reference in
+src-tauri/kb/rhinoscriptsyntax/ is generated from the function documentation shipped with the same project
+(rhinoscriptsyntax is part of Rhino, by McNeel).

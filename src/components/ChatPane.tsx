@@ -428,7 +428,7 @@ export function ChatPane({
                 {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                 {m.change && (
                   <Group gap={6} mt={8} px={9} py={4} fz={12} ff="monospace" bg="var(--surface-2)" bd="1px solid var(--border)" w="fit-content" wrap="nowrap" style={{ borderRadius: 8 }}>
-                    <Icon name="code" size={13} /> model.scad
+                    <Icon name="code" size={13} /> model.py
                     <Text span inherit c="var(--ok)">+{m.change.added}</Text>
                     <Text span inherit c="var(--bad)">−{m.change.removed}</Text>
                   </Group>

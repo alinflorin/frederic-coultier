@@ -4,7 +4,8 @@
 
 use serde_json::Value;
 
-use super::catalog::COMMANDS;
+use super::catalog;
+use super::rhino_tools;
 use super::parse::Flag;
 
 /// One documented option. `name` may list alternatives (`grid|no-grid`); each must be a real flag
@@ -43,21 +44,21 @@ const CONCEPTS: &str = "\
 
 ```
 src insert 12 <<EOF
-module bezel(r) {
-  difference() { cylinder(r = r, h = 2); cylinder(r = r - 0.4, h = 3); }
-}
+ring = rs.AddTorus((0, 0, 0), 9, 1.2)
+rs.ObjectName(ring, \"band\")
 EOF
 ```
 
 ## The model
 
-- The model is OpenSCAD source (`model.scad`), in millimetres, **Z up**. The app renders it live and the user watches every change.
-- Views: *front* looks from −Y towards +Y; *right* from +X; *top* from +Z.
+- The design lives in **Rhino**, which runs next to the app and which the user watches. The app shows the same geometry in its own preview (`shot`), and runs the checks, supports, sprue and export on it.
+- The **design script** (the Source pane, `src ...`) is RhinoScript: Python (IronPython 2.7, so no f-strings; `print(\"x\")` takes one argument) with `import rhinoscriptsyntax as rs`. Every run in Rhino **replaces what the previous run made** with what the script makes now, on the layer `FC`. Objects you or the user make some other way (the Rhino commands below, or by hand in Rhino) stay until you delete them. Look functions up with `kb functions` and `kb function`.
+- The unit is the millimetre (the Rhino document must be in Millimeters: `status` says), **Z up**. Views: *front* looks from −Y towards +Y; *right* from +X; *top* from +Z.
 - A project also has settings (material, printing, supports, sprue, hollowing) and a list of supports.
-- **Model coordinates** are the coordinates in the source, before the piece is tilted for printing. Support and sprue positions are always in model coordinates.
+- **Model coordinates** are Rhino's world coordinates, before the piece is tilted for printing. Support and sprue positions are always in model coordinates.
 - The **print scene** is the piece as it will be printed: tilted about X by `printing.tilt` degrees, lifted off the plate, with supports, raft and sprue. The **model scene** is the piece as modelled.
 
-A normal loop: `src cat`, `src edit`, read the render result the edit prints, `shot` to look, repeat.";
+A normal loop: `src cat`, `src edit`, read the result the edit prints (what ran in Rhino, and the preview's triangles and size), `shot` to look, `check`, repeat.";
 
 fn flag_label(c: &Cmd, part: &str, arg: &str) -> String {
     let short = c
@@ -79,7 +80,11 @@ fn flag_label(c: &Cmd, part: &str, arg: &str) -> String {
 
 fn opt_line(c: &Cmd, o: &Opt) -> String {
     let labels: Vec<String> = o.name.split('|').map(|p| flag_label(c, p, o.arg)).collect();
-    format!("- {} — {}", labels.join(" / "), o.text)
+    if o.text.is_empty() {
+        format!("- {}", labels.join(" / "))
+    } else {
+        format!("- {} — {}", labels.join(" / "), o.text)
+    }
 }
 
 /// One command in full: synopsis, what it does, options, examples.
@@ -120,12 +125,12 @@ fn entry(c: &Cmd) -> String {
 
 /// `help`: every command in one line, by group.
 pub fn overview() -> String {
-    let width = COMMANDS.iter().map(|c| c.name.len()).max().unwrap_or(0);
+    let width = catalog::all().iter().map(|c| c.name.len()).max().unwrap_or(0);
     let mut out = String::from(
         "fc commands (`help NAME` shows one in detail; read_instructions has the full reference)",
     );
     let mut group = "";
-    for c in COMMANDS {
+    for c in catalog::all() {
         if c.group != group {
             group = c.group;
             out.push_str(&format!("\n\n{group}"));
@@ -138,10 +143,10 @@ pub fn overview() -> String {
 /// `help NAME`: one command in detail, or all commands of a family (`help src`, `help supports`).
 pub fn entries(query: &str) -> Result<String, String> {
     let q = query.trim().trim_start_matches("fc ").to_ascii_lowercase();
-    let exact: Vec<&Cmd> = COMMANDS.iter().filter(|c| c.name == q).collect();
+    let exact: Vec<&Cmd> = catalog::all().into_iter().filter(|c| c.name == q).collect();
     let hits: Vec<&Cmd> = if exact.is_empty() {
-        COMMANDS
-            .iter()
+        catalog::all()
+            .into_iter()
             .filter(|c| {
                 c.name.split(' ').next() == Some(q.as_str()) || c.group.to_ascii_lowercase() == q
             })
@@ -182,10 +187,15 @@ fn settings_section(rows: &Value) -> String {
 pub fn full(settings: Option<&Value>) -> String {
     let mut s = format!("# fc reference\n\n{CONCEPTS}");
     let mut group = "";
-    for c in COMMANDS {
+    let mut intro = false;
+    for c in catalog::all() {
         if c.group != group {
             group = c.group;
             s.push_str(&format!("\n\n## {group}"));
+            if group.starts_with("Rhino:") && !intro {
+                intro = true;
+                s.push_str(&format!("\n\n{}", rhino_tools::INTRO));
+            }
         }
         s.push_str(&format!("\n\n{}", entry(c)));
     }
@@ -205,7 +215,7 @@ mod tests {
 
     #[test]
     fn every_flag_is_documented_and_every_doc_names_a_flag() {
-        for c in COMMANDS {
+        for c in catalog::all() {
             for f in c.flags {
                 assert!(
                     c.opts
@@ -235,7 +245,7 @@ mod tests {
     #[test]
     fn every_command_is_described_once() {
         let mut seen = std::collections::HashSet::new();
-        for c in COMMANDS {
+        for c in catalog::all() {
             assert!(seen.insert(c.name), "{} is listed twice", c.name);
             assert!(
                 !c.summary.is_empty() && !c.usage.is_empty() && !c.group.is_empty(),
@@ -254,7 +264,7 @@ mod tests {
     fn full_reference_has_everything() {
         let rows = json!([{ "path": "printing.tilt", "values": "0–60", "now": "30", "text": "tilt about X" }]);
         let text = full(Some(&rows));
-        for c in COMMANDS {
+        for c in catalog::all() {
             assert!(
                 text.contains(&format!("### `{}`", c.name)),
                 "{} missing",
@@ -286,7 +296,7 @@ mod tests {
     #[test]
     fn help_overview_groups_commands() {
         let o = overview();
-        for c in COMMANDS {
+        for c in catalog::all() {
             assert!(o.contains(c.name));
         }
         assert!(
@@ -294,7 +304,7 @@ mod tests {
             "{o}"
         );
         // the overview is a map, not the manual
-        assert!(o.len() < 3000, "{} bytes", o.len());
+        assert!(o.len() < 9000, "{} bytes", o.len());
     }
 
     #[test]

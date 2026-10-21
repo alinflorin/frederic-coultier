@@ -2,12 +2,11 @@ import {
   autoSupports,
   exportModel,
   extraChecks,
-  locateSource,
   meshHealth,
   meshReport,
   printLayout,
   probePoint,
-  renderScad,
+  renderModel,
   printParams,
   suggestTilt,
   type PrintLayout,
@@ -32,6 +31,10 @@ export interface AgentApi {
   rev(): number;
   render(): RenderState;
   layout(): PrintLayout | null;
+  /** The mesh tolerance (mm) the preview is made with. */
+  tolerance(): number;
+  /** Reads the model from Rhino as it is now (the script is not run) and shows it. */
+  refresh(): Promise<void>;
   /** True while the print layout is being recomputed. */
   layoutPending(): boolean;
   printView(): boolean;
@@ -229,6 +232,14 @@ const OPS: Record<string, Handler> = {
     return { rev: api.rev() };
   },
 
+  // the document in Rhino changed (by a Rhino command, or by hand): show what is there now
+  "model.refresh": async (api) => {
+    open(api);
+    await api.refresh();
+    const r = api.render();
+    return renderReply(r, r.status);
+  },
+
   "render.wait": (api, a) => waitRender(api, Math.max(0, Math.min(Number(a.timeoutMs) || 0, 120000))),
 
   "settings.get": (api) => open(api).settings,
@@ -261,14 +272,6 @@ const OPS: Record<string, Handler> = {
       metalGrams: +((report.stats.volume / 1000) * DENSITY[s.material.metal]).toFixed(3),
       metal: s.material.metal,
     };
-  },
-
-  "analysis.locate": async (api, a) => {
-    const p = open(api);
-    if (!Array.isArray(a.point) || a.point.length !== 3) throw new Error("point must be [x, y, z]");
-    const point = a.point.map((v: unknown, i: number) => num(v, ["x", "y", "z"][i])) as [number, number, number];
-    const r = await locateSource(p.source, point, a.tol === undefined ? undefined : num(a.tol, "tol"));
-    return r;
   },
 
   "analysis.probe": async (api, a) => {
@@ -466,7 +469,9 @@ const OPS: Record<string, Handler> = {
             ? [...p.history].reverse().find((h) => h.source !== p.source)
             : p.history.find((h) => h.id === a.diff);
         if (!snap) throw new Error(a.diff === true ? "No earlier version differs from the current source; see history." : `no snapshot ${String(a.diff)}; see history`);
-        const old = await renderScad(snap.source).catch(() => null);
+        // the old script has to run in Rhino to be seen, which replaces the current objects: run the current one again after
+        const old = await renderModel(snap.source, api.tolerance()).catch(() => null);
+        await renderModel(p.source, api.tolerance()).catch(() => null);
         if (!old?.mesh) throw new Error("That version does not render (or is empty), so there is nothing to compare with.");
         opts.alt = old.mesh;
         opts.background = opts.background ?? "white"; // a transparent background cannot show a difference

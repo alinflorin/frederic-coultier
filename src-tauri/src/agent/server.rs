@@ -9,12 +9,14 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use super::bridge::Bridge;
+use crate::rhino::Rhino;
 use super::tools::{AppTools, Gate};
 
 /// `loopback`: the server only accepts local `Host` names. Binding to another address turns that
 /// check off (clients then reach it by whatever name or address they like).
 pub fn router(
     bridge: Arc<dyn Bridge>,
+    rhino: Arc<Rhino>,
     loopback: bool,
     gate: Arc<Gate>,
     stop: &CancellationToken,
@@ -29,15 +31,15 @@ pub fn router(
     }
     let outside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
         {
-            let (bridge, gate) = (bridge.clone(), gate.clone());
-            move || Ok(AppTools::new(bridge.clone(), gate.clone()))
+            let (bridge, rhino, gate) = (bridge.clone(), rhino.clone(), gate.clone());
+            move || Ok(AppTools::new(bridge.clone(), rhino.clone(), gate.clone()))
         },
         Default::default(),
         config.clone(),
     );
     // the chat panel's own agent: same tools, but it gets the manual in its context instead
     let inside: StreamableHttpService<AppTools, LocalSessionManager> = StreamableHttpService::new(
-        move || Ok(AppTools::embedded(bridge.clone(), gate.clone())),
+        move || Ok(AppTools::embedded(bridge.clone(), rhino.clone(), gate.clone())),
         Default::default(),
         config,
     );
@@ -56,6 +58,7 @@ pub struct Served {
 /// Binds exactly `host:port` (no fallback to another port) and serves in the background.
 pub async fn serve(
     bridge: Arc<dyn Bridge>,
+    rhino: Arc<Rhino>,
     host: &str,
     port: u16,
     loopback: bool,
@@ -64,7 +67,7 @@ pub async fn serve(
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     let addr = listener.local_addr()?;
     let stop = CancellationToken::new();
-    let app = router(bridge, loopback, gate, &stop);
+    let app = router(bridge, rhino, loopback, gate, &stop);
     let signal = stop.clone();
     let task = tauri::async_runtime::spawn(async move {
         if let Err(e) = axum::serve(listener, app)
@@ -146,9 +149,14 @@ mod tests {
         )
     }
 
+    fn test_rhino() -> Arc<crate::rhino::Rhino> {
+        Arc::new(crate::rhino::Rhino::new("127.0.0.1", 1, std::env::temp_dir()))
+    }
+
     fn test_router(bridge: Arc<Mock>) -> axum::Router {
         router(
             bridge,
+            test_rhino(),
             true,
             Arc::new(Gate::default()),
             &CancellationToken::new(),
@@ -330,6 +338,7 @@ mod tests {
         let gate = Arc::new(Gate::default());
         let app = router(
             Mock::new(|_, _| Ok(json!({}))),
+            test_rhino(),
             true,
             gate.clone(),
             &CancellationToken::new(),

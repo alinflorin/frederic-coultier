@@ -3,7 +3,7 @@ import type { ProjectSettings } from "../types";
 
 /** Allowed values, mirroring the inputs in the settings dialog. */
 const RANGES: Record<string, [number, number]> = {
-  "render.previewQuality": [12, 256],
+  "render.meshTolerance": [0.001, 0.5],
   "printing.minWall": [0.2, 3],
   "printing.tilt": [0, 60],
   "printing.supports.tipRadius": [0.1, 1],
@@ -108,7 +108,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "render.finish": "surface finish; changes how shiny the preview is",
   "render.shading": "how the preview is drawn",
   "render.orthographic": "orthographic instead of perspective camera",
-  "render.previewQuality": "the `$fn` used while sketching: curve smoothness of the preview",
+  "render.meshTolerance": "largest distance (mm) between the mesh of the preview and the true surface: smaller is smoother and slower (the export uses it too)",
   "printing.printer": "printer name",
   "printing.minWall": "thinnest wall the checks accept (mm)",
   "printing.tilt": "tilt of the piece about X when printing (degrees)",

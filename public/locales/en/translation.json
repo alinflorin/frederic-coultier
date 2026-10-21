@@ -40,7 +40,11 @@
     "settingsShort": "Settings",
     "kb": "Knowledge base…",
     "about": "About…",
-    "preferences": "App settings"
+    "preferences": "App settings",
+    "rhino": "Rhino",
+    "rerun": "Run the script again",
+    "pull": "Refresh from Rhino",
+    "rhinoSettings": "Rhino connection…"
   },
   "file": {
     "untitled": "Untitled",
@@ -54,15 +58,15 @@
     "exportFailed": "Export failed: {{error}}"
   },
   "welcome": {
-    "tagline": "Design jewelry by chatting. Projects are saved as .fc files.",
+    "tagline": "Design jewelry in Rhino by chatting. Projects are saved as .fc files.",
     "new": "New project",
     "open": "Open project…",
     "recent": "Recent",
     "sample": "Open example"
   },
   "source": {
-    "title": "Source",
-    "copy": "Copy source"
+    "title": "Script",
+    "copy": "Copy script"
   },
   "chat": {
     "title": "Chat",
@@ -188,8 +192,6 @@
     "direct": "Printed directly",
     "metalColor": "Metal colour",
     "finish": "Finish",
-    "previewQuality": "Sketch quality",
-    "previewQualityHint": "Facets used in fast previews; exports always use full quality.",
     "printer": "Printer",
     "minWall": "Minimum wall",
     "minWallHint": "Resin jewelry is typically 0.5–0.8 mm.",
@@ -254,7 +256,9 @@
     "source": {
       "auto": "auto",
       "manual": "manual"
-    }
+    },
+    "meshTolerance": "Mesh tolerance",
+    "meshToleranceHint": "Largest distance between the preview mesh and the true surface. Smaller is smoother and slower; exports use it too."
   },
   "metal": {
     "silver925": "Silver 925",
@@ -283,9 +287,9 @@
     "rename": "Name",
     "delete": "Delete",
     "same": "Identical to the current design.",
-    "changes": "Compared with now: +{{added}} / −{{removed}} source lines",
-    "settingsOnly": "The source is the same; settings or supports differ.",
-    "diff": "Source changes",
+    "changes": "Compared with now: +{{added}} / −{{removed}} script lines",
+    "settingsOnly": "The script is the same; settings or supports differ.",
+    "diff": "Script changes",
     "restored": "Restored “{{name}}”. The previous state is in the history.",
     "taken": "Snapshot taken.",
     "kind": {
@@ -364,21 +368,10 @@
       "sprue": "Add sprue"
     }
   },
-  "mcp": {
-    "agent": "Agent",
-    "off": "MCP off",
-    "error": "MCP error",
-    "ready": "MCP · on",
-    "idle": "MCP · {{name}}",
-    "active": "MCP · {{name}} working",
-    "about": "MCP server: lets outside agents (like Claude Code) control this app. The agent in the chat panel is separate.",
-    "offTitle": "The MCP server is not running.",
-    "last": "{{name}}: {{calls}} calls, last {{secs}} s ago",
-    "none": "No agent has connected yet."
-  },
   "about": {
     "title": "About",
-    "version": "Version {{version}}"
+    "version": "Version {{version}}",
+    "credits": "Rhino integration based on tectopus (CDCD Lab and CEA), a derivative of RhinoMCP, Apache License 2.0."
   },
   "annotate": {
     "title": "Draw on the view",
@@ -402,8 +395,8 @@
     "probeHint": "Show position, wall thickness and slope under the pointer",
     "measure": "Measure",
     "measureHint": "Click points on the piece: distance, angle, circle",
-    "locate": "Find in source",
-    "locateHint": "Click the piece to find the line that made that spot",
+    "locate": "Find in script",
+    "locateHint": "Click the piece to find the objects, and the script lines, that made that spot",
     "flatUp": "faces up",
     "flatDown": "ceiling",
     "wall": "vertical wall",
@@ -421,9 +414,9 @@
     "ringSize": "as a ring: EU size {{eu}}",
     "checking": "Checking…",
     "nothing": "Nothing to pin.",
-    "searching": "Searching the source…",
-    "locateStart": "Click the piece to find where that spot comes from.",
-    "noSource": "No single statement makes this spot (it comes from a combined or hulled shape).",
+    "searching": "Looking in Rhino…",
+    "locateStart": "Click the piece to find the object that spot comes from.",
+    "noSource": "No object named in the script has this spot in its bounding box (name objects with rs.ObjectName to make them findable).",
     "truncated": "The search stopped early; the list may be incomplete.",
     "healthOk": "Mesh is sound",
     "healthBad": "Mesh: {{open}} open, {{shared}} shared, {{flipped}} flipped edges, {{empty}} empty triangles"
@@ -460,37 +453,30 @@
       "chimeAfter": "Minimum time (seconds)",
       "chimePlay": "Play",
       "allToolsHint": "Off: the agent may use web search, read files and use FC. On: also its shell, file changes and any other tool it has.",
-      "enabled": "Enabled",
-      "hint": "Shows a chat panel next to the editor, where Claude or Codex designs with you. It uses the account you are already signed in with on this computer.",
+      "hint": "The chat panel next to the editor, where Claude or Codex designs with you in Rhino. It uses the account you are already signed in with on this computer.",
       "agent": "Agent",
-      "none": "Neither Claude Code nor Codex is signed in on this computer, so the chat cannot be turned on.",
+      "none": "Neither Claude Code nor Codex is signed in on this computer, so the chat cannot answer yet.",
       "refresh": "Check again",
       "unavailable": "unavailable",
       "model": "Default model",
       "effort": "Default thinking level",
       "own": "The agent's own choice"
     },
-    "mcp": {
-      "title": "Agent connection (MCP)",
-      "intro": "An AI agent such as Claude Code can connect to this app and work on the open project. It connects to this address:",
+    "rhino": {
+      "title": "Rhino",
+      "intro": "The app designs in Rhino: it runs the design script there and reads the geometry back. It talks to the tectopus plugin, which listens on this address when Rhino is running (command mcpmodstart).",
       "host": "Host",
       "port": "Port",
       "badHost": "The host must be a name or an address, such as 127.0.0.1.",
       "badPort": "The port must be a number between 1 and 65535.",
-      "exposed": "Anyone who can reach this address can control the app: there is no password. Use 127.0.0.1 unless you know you need something else.",
       "apply": "Apply",
       "applying": "Applying…",
+      "check": "Check again",
       "defaults": "Defaults",
-      "running": "Running",
-      "stopped": "Not running.",
-      "copy": "Copy",
-      "agents": "Connect an agent",
-      "connect": "Press play to set the agent up with this server. Running it again after a port change updates the entry.",
-      "run": "Run for {{name}}",
-      "needsServer": "Start the server first.",
-      "running_cmd": "Running…",
-      "local": "There is no password: only programs on this computer can connect.",
-      "desktopOnly": "The agent connection is only available in the desktop app."
+      "plugin": "Needs Rhino 8 with the rhinomcp-mod (tectopus) plugin installed. Keep the document in millimetres.",
+      "desktopOnly": "The Rhino connection is only available in the desktop app.",
+      "follow": "Follow edits made in Rhino",
+      "followHint": "Looks at the Rhino document once a second and shows what you changed there (objects added, moved, resized, renamed or removed) in the preview, without running the script again. Rhino's command history logs each look."
     }
   },
   "findings": {
@@ -542,32 +528,36 @@
   },
   "onboarding": {
     "title": "Welcome to Frederic Coultier",
-    "about1": "A jewelry design studio driven by an AI agent. Describe a ring, a pendant or earrings; the agent writes the model, you watch it appear in 3D.",
+    "about1": "A jewelry design studio driven by an AI agent. Describe a ring, a pendant or earrings; the agent designs it in Rhino, you watch it appear in 3D.",
     "about2": "It checks the piece for casting and printing, adds supports and a sprue, and exports files ready to produce. Projects are saved as .fc files.",
     "next": "Next",
     "back": "Back",
     "start": "Get started",
-    "modeTitle": "How do you want to work with the agent?",
-    "modeHint": "Both use the same tools. The difference is where you talk to the agent.",
-    "recommended": "Recommended",
     "later": "You can change this any time in Preferences.",
-    "chat": {
-      "name": "Agent chat",
-      "what": "Type your prompts directly in the app. A chat panel opens next to the editor and the preview.",
-      "how": "Uses Claude Code or Codex, with the account you are already signed in with on this computer. The agent sees and edits the open project, and you see every change as it happens."
-    },
-    "mcp": {
-      "name": "MCP only",
-      "what": "No chat panel. The app only offers its tools, and you talk to your own agent somewhere else.",
-      "how": "While the app runs it serves a local MCP endpoint. Connect Claude Code, Codex or any MCP client to it (Preferences → Agent connection) and work from its terminal or editor. Changes show up live in the app."
-    },
     "lookTitle": "Look and language",
     "signin": {
       "title": "Sign in to an agent first",
       "step1": "Install Claude Code or Codex if you have not yet.",
       "or": "or",
-      "step3": "Then check again. Until then you can continue with MCP only.",
+      "step3": "Then check again.",
       "check": "Check again"
-    }
+    },
+    "agentTitle": "Your design agent",
+    "agentWhat": "Type your prompts in the chat panel next to the editor. The agent writes the design script, Rhino runs it, and you see every change in the 3D preview as it happens.",
+    "agentHow": "It uses Claude Code or Codex, with the account you are already signed in with on this computer.",
+    "rhinoTitle": "Rhino",
+    "rhinoHow": "Start Rhino 8 with the rhinomcp-mod (tectopus) plugin and run mcpmodstart. The indicator in the top bar shows whether the app can reach it."
+  },
+  "rhino": {
+    "name": "Rhino",
+    "off": "not found",
+    "untitled": "untitled",
+    "connected": "Connected to Rhino at {{host}}:{{port}}",
+    "document": "Document",
+    "units": "Units",
+    "objects_one": "{{count}} object",
+    "objects_other": "{{count}} objects",
+    "notMm": "the app expects Millimeters: change the document units in Rhino",
+    "offTitle": "Rhino is not reachable at {{host}}:{{port}}. Start Rhino and run mcpmodstart."
   }
 }

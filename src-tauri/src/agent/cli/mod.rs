@@ -8,6 +8,7 @@ mod commands;
 pub mod kb;
 pub mod parse;
 mod reference;
+mod rhino_tools;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +16,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::bridge::Bridge;
+use crate::rhino::Rhino;
 
 /// Said to every agent, in the manual both ways of reading it share.
 const OTHER_TOOLS: &str = "# Other tools\n\nIf you have tools besides `exec_fc` (a shell, web search, file access, a calculator, …), you may use them whenever they help the design: to research real dimensions and standards, to calculate or check numbers, to read or convert files, or to test an idea with a script. `fc` stays the only way to change or look at the model.";
@@ -75,15 +77,23 @@ fn fail(message: String) -> Run {
 #[derive(Clone)]
 pub struct Cli {
     bridge: Arc<dyn Bridge>,
+    rhino: Arc<Rhino>,
     kb: kb::Source,
 }
 
 impl Cli {
-    pub fn new(bridge: Arc<dyn Bridge>) -> Self {
+    pub fn new(bridge: Arc<dyn Bridge>, rhino: Arc<Rhino>) -> Self {
         Self {
             bridge,
+            rhino,
             kb: kb::baked(),
         }
+    }
+
+    /// A command line with no Rhino behind it (tests).
+    #[cfg(test)]
+    pub fn for_test(bridge: Arc<dyn Bridge>) -> Self {
+        Self::new(bridge, Arc::new(Rhino::new("127.0.0.1", 1, std::env::temp_dir())))
     }
 
     /// Reads the knowledge base from somewhere else than the program (tests).
@@ -121,6 +131,7 @@ impl Cli {
         }
         let ctx = commands::Ctx {
             bridge: self.bridge.as_ref(),
+            rhino: self.rhino.as_ref(),
             kb: &self.kb,
         };
         let several = commands.len() > 1;
@@ -190,7 +201,7 @@ mod tests {
     async fn instructions_put_the_notes_above_the_reference() {
         let rows =
             json!([{ "path": "printing.tilt", "values": "0–60", "now": "30", "text": "tilt" }]);
-        let cli = Cli::new(Mock::new(move |op, _| {
+        let cli = Cli::for_test(Mock::new(move |op, _| {
             if op == "settings.schema" {
                 Ok(rows.clone())
             } else {
@@ -214,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn instructions_survive_an_app_that_does_not_answer() {
-        let cli = Cli::new(Mock::new(|_, _| Err("no window".into())));
+        let cli = Cli::for_test(Mock::new(|_, _| Err("no window".into())));
         let text = cli.instructions().await;
         assert!(
             text.contains("### `src edit`") && text.contains("settings list is unavailable"),

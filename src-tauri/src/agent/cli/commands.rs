@@ -20,6 +20,7 @@ const RENDER_WAIT_MS: u64 = 20_000;
 
 pub struct Ctx<'a> {
     pub bridge: &'a dyn Bridge,
+    pub rhino: &'a crate::rhino::Rhino,
     pub kb: &'a super::kb::Source,
 }
 
@@ -30,6 +31,11 @@ impl Ctx<'_> {
 
     async fn slow(&self, op: &'static str, args: Value) -> Result<Value, String> {
         self.bridge.call(op, args, SLOW).await
+    }
+
+    /// Has the preview show what is in Rhino now, after a command that changed the document.
+    pub async fn refresh(&self) -> Result<Value, String> {
+        self.slow("model.refresh", json!({})).await
     }
 }
 
@@ -57,6 +63,9 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         other => (other.to_string(), &words[1..]),
     };
     let stdin = inv.stdin.as_deref();
+    if let Some(tool) = super::rhino_tools::find(&name) {
+        return super::rhino_tools::run(c, tool, args, stdin).await.map_err(|e| format!("{e}\nusage: {}", tool.cmd.usage));
+    }
     // a stray here-document is an easy mistake: say so before changing anything
     if stdin.is_some()
         && !matches!(
@@ -69,7 +78,8 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         ));
     }
     let result = match name.as_str() {
-        "status" => status(c, args).await,
+        "status" => status_with_rhino(c, args).await,
+        "refresh" => refresh(c, args).await,
         "get-project-notes" => get_project_notes(c, args).await,
         "new-project" => new_project(c, args).await,
         "open-project" => open_project(c, args).await,
@@ -102,6 +112,8 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "kb search" => kb_search(c, args).await,
         "kb cat" => kb_cat(c, args).await,
         "kb ls" => kb_ls(c, args).await,
+        "kb functions" => kb_functions(c, args).await,
+        "kb function" => kb_function(c, args).await,
         "chime" => chime(c, args).await,
         "help" => help(args),
         other => return Err(format!("unknown command {other:?}; try: help")),
@@ -212,15 +224,41 @@ pub fn render_summary(r: &Value) -> String {
         .filter_map(|e| e.as_str())
         .collect();
     for e in echoes.iter().take(10) {
-        lines.push(format!("echo: {e}"));
+        lines.push(format!("print: {e}"));
     }
     if echoes.len() > 10 {
-        lines.push(format!("… {} more echo lines", echoes.len() - 10));
+        lines.push(format!("… {} more lines printed", echoes.len() - 10));
     }
     lines.join("\n")
 }
 
 // ---- project ----
+
+/// `status`, and under it what Rhino is doing.
+async fn status_with_rhino(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let mut out = status(c, args).await?;
+    let r = c.rhino.status(true).await;
+    out.text.push_str(&if r.connected {
+        format!(
+            "\nrhino: connected at {}:{}, {}, units {}{}, {} objects",
+            r.host,
+            r.port,
+            r.document.as_deref().map_or("untitled document".to_string(), |d| format!("document {d}")),
+            r.units.as_deref().unwrap_or("?"),
+            if r.unit_mm == Some(1.0) { "" } else { " (the app expects Millimeters: say so to the user)" },
+            r.objects.unwrap_or(0)
+        )
+    } else {
+        format!("\nrhino: NOT reachable at {}:{} ({}). Ask the user to start Rhino and run `mcpmodstart`.", r.host, r.port, r.error.as_deref().unwrap_or("no answer"))
+    });
+    Ok(out)
+}
+
+async fn refresh(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    expect_no_args(args)?;
+    let v = c.refresh().await?;
+    say(format!("preview refreshed from Rhino: {}", render_summary(&v)))
+}
 
 async fn status(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     expect_no_args(args)?;
@@ -527,6 +565,38 @@ async fn kb_cat(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         None => (None, None),
     };
     say(text::read(&doc.lines.join("\n"), offset, limit)?)
+}
+
+async fn kb_functions(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let cats = super::kb::rs_categories(&(c.kb)().docs);
+    if cats.is_empty() {
+        return Err("the knowledge base has no rhinoscriptsyntax reference".into());
+    }
+    if p.pos.is_empty() {
+        let width = cats.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+        let lines: Vec<String> = cats.iter().map(|(n, f)| format!("{n:<width$}  {} functions", f.len())).collect();
+        return say(format!("categories (give one or more to list their functions):\n{}", lines.join("\n")));
+    }
+    let mut out = Vec::new();
+    for want in &p.pos {
+        match cats.iter().find(|(n, _)| n.eq_ignore_ascii_case(want)) {
+            Some((n, f)) => out.push(format!("{n}: {}", f.join(", "))),
+            None => return Err(format!("no category {want:?}; the categories are: {}", cats.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", "))),
+        }
+    }
+    say(out.join("\n"))
+}
+
+async fn kb_function(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let [name] = p.pos.as_slice() else {
+        return Err("give exactly one function name, e.g. AddLoftSrf".into());
+    };
+    match super::kb::rs_function(&(c.kb)().docs, name) {
+        Some(t) => say(t),
+        None => Err(format!("no function {name:?} in the rhinoscriptsyntax reference; `kb functions CATEGORY` lists the names")),
+    }
 }
 
 async fn kb_ls(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
@@ -1254,33 +1324,39 @@ async fn locate(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
         return Err("give one point: X,Y,Z in model coordinates (mm)".into());
     };
     let point = parse::point(at)?;
+    const TOL: f64 = 0.1;
+    let lo: Vec<f64> = point.iter().map(|v| v - TOL).collect();
+    let hi: Vec<f64> = point.iter().map(|v| v + TOL).collect();
     let v = c
-        .slow("analysis.locate", json!({ "point": point }))
+        .rhino
+        .fast(
+            "get_document_info",
+            json!({ "detail": "inventory", "limit": 50, "bbox": [lo, hi], "bbox_mode": "intersects", "include_bbox": true }),
+        )
         .await?;
-    let hits: Vec<&Value> = v["hits"].as_array().into_iter().flatten().collect();
+    let hits: Vec<&Value> = v["objects"].as_array().into_iter().flatten().collect();
     if hits.is_empty() {
         return say(format!(
-            "no statement of the source has ({}) on its surface. Check the point is on the piece's surface (model coordinates, as in `check` locations); a spot made by hull(), minkowski() or a boolean of several parts may belong to none of them alone.",
+            "no object of the Rhino document has ({}) inside its bounding box. Check the point is on the piece (model coordinates, as in `check` locations).",
             nums(&json!(point))
         ));
     }
-    let mut l = vec![format!(
-        "({}) comes from, outermost first (→ marks where it is made):",
-        nums(&json!(point))
-    )];
-    for h in &hits {
-        let depth = h["depth"].as_u64().unwrap_or(0) as usize;
+    let mut l = vec![format!("({}) is inside the bounding box of:", nums(&json!(point)))];
+    for h in hits.iter().take(20) {
+        let name = h["name"].as_str().filter(|n| !n.is_empty()).unwrap_or("(unnamed)");
         l.push(format!(
-            "{}{}line {}: {}",
-            "  ".repeat(depth.min(8)),
-            if h["leaf"] == true { "→ " } else { "" },
-            h["line"],
-            h["text"].as_str().unwrap_or("")
+            "- {name}  {} on layer {}  id {}  box {} to {}",
+            h["type"].as_str().unwrap_or("?"),
+            h["layer"].as_str().unwrap_or("?"),
+            h["id"].as_str().unwrap_or("?"),
+            nums(&h["bbox"][0]),
+            nums(&h["bbox"][1]),
         ));
     }
-    if v["truncated"] == true {
-        l.push("(the search stopped early; the list may be incomplete)".into());
+    if hits.len() > 20 || v["objects_truncated"] == true {
+        l.push("(more objects match; the list is cut)".into());
     }
+    l.push("A name is what `rs.ObjectName(...)` gave it in the script: `src grep` for it to find the lines that make it. Several matches mean a box overlap; the surface point itself belongs to the one it touches.".into());
     say(l.join("\n"))
 }
 
@@ -1621,13 +1697,6 @@ mod tests {
             "analysis.probe" => Ok(json!({
                 "surface": [1.0, 2.0, 3.0], "offBy": 0.2, "normal": [0.0, 0.0, 1.0], "thickness": 1.6, "incline": 0.0
             })),
-            "analysis.locate" => Ok(json!({
-                "hits": [
-                    { "line": 18, "text": "band();", "depth": 0, "leaf": false },
-                    { "line": 13, "text": "cylinder(d = 20);", "depth": 2, "leaf": true }
-                ],
-                "truncated": false
-            })),
             "supports.add" => Ok(json!({ "added": [5, 6], "enabled": true })),
             "supports.remove" => Ok(json!({ "removed": [5], "remaining": 3 })),
             "supports.auto" => {
@@ -1644,7 +1713,7 @@ mod tests {
 
     impl App {
         async fn fc(&self, input: &str) -> Run {
-            Cli::new(self.mock.clone()).run(input).await
+            Cli::for_test(self.mock.clone()).run(input).await
         }
 
         async fn ok(&self, input: &str) -> String {
@@ -1781,7 +1850,7 @@ mod tests {
             }
             _ => Ok(json!({})),
         });
-        let r = Cli::new(stale).run("src insert 1 x").await;
+        let r = Cli::for_test(stale).run("src insert 1 x").await;
         assert!(r.out.text.contains("read it again"), "{}", r.out.text);
     }
 
@@ -1996,14 +2065,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn locate_prints_the_chain_and_marks_the_leaf() {
+    async fn locate_without_rhino_says_so() {
         let a = app("");
-        let out = a.ok("locate 3.2,-1.4,7").await;
-        assert_eq!(a.last("analysis.locate"), json!({ "point": [3.2, -1.4, 7.0] }));
-        assert!(out.contains("line 18: band();"), "{out}");
-        assert!(out.contains("→ line 13: cylinder(d = 20);"), "{out}");
         a.err("locate 1,2").await;
         a.err("locate").await;
+        assert!(a.err("locate 3.2,-1.4,7").await.contains("cannot reach Rhino"));
     }
 
     #[tokio::test]
@@ -2179,7 +2245,7 @@ mod tests {
             })
         };
         let cli = |input: &'static str, dir: Option<std::path::PathBuf>| async move {
-            super::super::Cli::new(Mock::new(|_, _| Ok(json!({}))))
+            super::super::Cli::for_test(Mock::new(|_, _| Ok(json!({}))))
                 .with_kb(source(dir))
                 .run(input)
                 .await

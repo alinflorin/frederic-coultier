@@ -17,6 +17,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
         <Image src="/logo.svg" alt="" w={64} h={64} />
         <Title order={3} mt="xs">Frederic Coultier</Title>
         <Text c="dimmed">{t("about.version", { version: version || "—" })}</Text>
+        <Text c="dimmed" fz={12} ta="center" mt="xs">{t("about.credits")}</Text>
       </Stack>
     </Dialog>
   );

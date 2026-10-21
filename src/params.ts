@@ -1,9 +1,9 @@
-// Parameter sliders: the top-level `name = number;` (or `true`/`false`) lines of the OpenSCAD
-// source, with an optional Customizer-style range in the trailing comment:
+// Parameter sliders: the top-level `name = number` (or `True`/`False`) lines of the design script
+// (RhinoScript, Python), with an optional range in the trailing comment:
 //
-//   band_width = 2.4;   // width of the band [1:0.1:6]
-//   prongs     = 4;     // [3:8]
-//   pave       = true;
+//   band_width = 2.4   # width of the band [1:0.1:6]
+//   prongs     = 4     # [3:8]
+//   pave       = True
 
 export interface Param {
   name: string;
@@ -23,7 +23,7 @@ export interface Param {
   hinted: boolean;
 }
 
-const ASSIGN = /^(\s*)([A-Za-z_]\w*)(\s*=\s*)(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|true|false)(\s*;)(.*)$/;
+const ASSIGN = /^()([A-Za-z_]\w*)(\s*=\s*)(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|True|False)(\s*;?)(.*)$/;
 const RANGE = /\[\s*(-?[\d.]+)\s*:\s*(?:(-?[\d.]+)\s*:\s*)?(-?[\d.]+)\s*\]/;
 
 const decimalsOf = (text: string) => {
@@ -31,24 +31,27 @@ const decimalsOf = (text: string) => {
   return m ? m[1].length : 0;
 };
 
-/** Strips comments and strings from one line, tracking `/* ... *\/` across lines. */
-function code(line: string, state: { block: boolean }): string {
+/** Strips comments and strings from one line of Python, tracking triple-quoted strings across lines. */
+function code(line: string, state: { triple: string | null }): string {
   let out = "";
   for (let i = 0; i < line.length; i++) {
-    if (state.block) {
-      if (line[i] === "*" && line[i + 1] === "/") (state.block = false), i++;
+    if (state.triple) {
+      const at = line.indexOf(state.triple, i);
+      if (at < 0) break;
+      i = at + 2;
+      state.triple = null;
       continue;
     }
     const c = line[i];
-    if (c === "/" && line[i + 1] === "/") break;
-    if (c === "/" && line[i + 1] === "*") {
-      state.block = true;
+    if (c === "#") break;
+    if (c === '"' || c === "'") {
+      if (line.startsWith(c.repeat(3), i)) {
+        state.triple = c.repeat(3);
+        i += 2;
+        continue;
+      }
       i++;
-      continue;
-    }
-    if (c === '"') {
-      i++;
-      while (i < line.length && line[i] !== '"') i += line[i] === "\\" ? 2 : 1;
+      while (i < line.length && line[i] !== c) i += line[i] === "\\" ? 2 : 1;
       continue;
     }
     out += c;
@@ -61,11 +64,11 @@ function fromLine(m: RegExpExecArray, offset: number): Param | null {
   const [, indent, name, eq, literal, , rest] = m;
   const start = offset + indent.length + name.length + eq.length;
   const end = start + literal.length;
-  const comment = /\/\/(.*)$/.exec(rest)?.[1] ?? "";
+  const comment = /#(.*)$/.exec(rest)?.[1] ?? "";
   const range = RANGE.exec(comment);
   const note = comment.replace(RANGE, "").trim();
-  if (literal === "true" || literal === "false") {
-    return { name, kind: "bool", value: literal === "true", min: 0, max: 1, step: 1, note, start, end, decimals: 0, hinted: true };
+  if (literal === "True" || literal === "False") {
+    return { name, kind: "bool", value: literal === "True", min: 0, max: 1, step: 1, note, start, end, decimals: 0, hinted: true };
   }
   const value = Number(literal);
   const own = decimalsOf(literal);
@@ -89,14 +92,15 @@ function fromLine(m: RegExpExecArray, offset: number): Param | null {
 
 export function parseParams(source: string): Param[] {
   const found = new Map<string, Param>();
-  const state = { block: false };
+  const state: { triple: string | null } = { triple: null };
   let depth = 0;
   let offset = 0;
   for (const line of source.split("\n")) {
+    const inString = state.triple !== null; // the line starts inside a triple-quoted string
     const plain = code(line, state);
-    const m = depth === 0 ? ASSIGN.exec(line) : null;
-    // the statement must be the whole code of the line (nothing but a comment after the `;`)
-    if (m && code(m[6], { block: false }).trim() === "" && plain.trim().endsWith(";")) {
+    const m = depth === 0 && !inString ? ASSIGN.exec(line) : null;
+    // the statement must be the whole code of the line (nothing but a comment after the value)
+    if (m && code(m[6], { triple: null }).trim() === "") {
       const p = fromLine(m, offset);
       if (p) found.set(p.name, p);
     }
@@ -118,7 +122,7 @@ function nextDepth(depth: number, plain: string) {
 export function setParam(source: string, p: Param, value: number | boolean): string {
   const text =
     typeof value === "boolean"
-      ? String(value)
+      ? value ? "True" : "False"
       : (() => {
           const s = value.toFixed(p.decimals);
           return Object.is(Number(s), -0) ? "0" : s;

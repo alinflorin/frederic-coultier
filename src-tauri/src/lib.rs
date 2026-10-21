@@ -3,9 +3,11 @@ mod bvh;
 mod checks;
 mod hollow;
 mod insight;
+mod mesh;
 mod meshtools;
 mod project;
 mod render;
+mod rhino;
 mod shade;
 mod supports;
 
@@ -17,7 +19,7 @@ use tauri::ipc::Response;
 
 use meshtools::{Finding, MeshStats, SimplifyReport, SimplifySpec, SprueSpec};
 use project::Project;
-use render::{RenderCache, RenderFailure};
+use render::{Engine, RenderFailure};
 use supports::{AutoParams, AutoResult, PrintParams, Support, TiltRow};
 
 /// Whether the updater can replace this installation. On Linux only an AppImage can;
@@ -49,45 +51,45 @@ struct RenderInfo {
     empty: bool,
 }
 
-/// Renders OpenSCAD source. The reply is binary, to avoid pushing megabytes of
-/// mesh through JSON: `u32 LE JSON length | RenderInfo JSON (padded to 4 bytes) | indexed mesh`
-/// (see `shade`).
-#[tauri::command]
-async fn render_scad(
-    source: String,
-    cache: State<'_, RenderCache>,
-) -> Result<Response, RenderFailure> {
-    let cache = cache.inner().clone();
-    let rendered = tauri::async_runtime::spawn_blocking(move || {
-        render::render_on_big_stack(source, &cache)
+/// The reply of a render: binary, to avoid pushing megabytes of mesh through JSON:
+/// `u32 LE JSON length | RenderInfo JSON (padded to 4 bytes) | indexed mesh` (see `shade`).
+async fn render_reply(rendered: render::Rendered) -> Result<Response, RenderFailure> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let empty = rendered.mesh.is_empty();
+        let mesh = if empty { Vec::new() } else { render::encode_model(&rendered.mesh) };
+        let mut info = serde_json::to_vec(&RenderInfo {
+            echoes: rendered.echoes,
+            diagnostics: rendered.diagnostics,
+            ms: rendered.ms,
+            empty,
+        })
+        .map_err(|e| RenderFailure::new(e.to_string()))?;
+        pad4(&mut info);
+        let mut out = Vec::with_capacity(4 + info.len() + mesh.len());
+        out.extend_from_slice(&(info.len() as u32).to_le_bytes());
+        out.extend_from_slice(&info);
+        out.extend_from_slice(&mesh);
+        Ok(Response::new(out))
     })
     .await
-    .map_err(|e| RenderFailure {
-        message: e.to_string(),
-        line: None,
-        column: None,
-    })??;
+    .map_err(|e| RenderFailure::new(e.to_string()))?
+}
 
-    let empty = rendered.mesh.is_empty();
-    let mut info = serde_json::to_vec(&RenderInfo {
-        echoes: rendered.echoes,
-        diagnostics: rendered.diagnostics,
-        ms: rendered.ms,
-        empty,
-    })
-    .map_err(|e| RenderFailure {
-        message: e.to_string(),
-        line: None,
-        column: None,
-    })?;
-    pad4(&mut info);
+/// Runs the design script in Rhino and returns the model. `tolerance` is the largest distance, in mm, between
+/// the mesh and the true surface.
+#[tauri::command]
+async fn render_model(
+    source: String,
+    tolerance: Option<f64>,
+    engine: State<'_, Engine>,
+) -> Result<Response, RenderFailure> {
+    render_reply(engine.render(&source, tolerance).await?).await
+}
 
-    let mesh = if empty { Vec::new() } else { render::encode_model(&rendered.mesh) };
-    let mut out = Vec::with_capacity(4 + info.len() + mesh.len());
-    out.extend_from_slice(&(info.len() as u32).to_le_bytes());
-    out.extend_from_slice(&info);
-    out.extend_from_slice(&mesh);
-    Ok(Response::new(out))
+/// The model as it is in Rhino now, without running the script (it may have been changed there directly).
+#[tauri::command]
+async fn refresh_model(source: String, engine: State<'_, Engine>) -> Result<Response, RenderFailure> {
+    render_reply(engine.refresh(&source).await?).await
 }
 
 /// Supports to bake into an export, in the model's coordinates.
@@ -113,11 +115,11 @@ async fn mesh_report(
     simplify: Option<SimplifySpec>,
     checks: Option<checks::CheckOptions>,
     extra: Option<insight::Extra>,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<MeshReport, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mesh = engine.mesh_for(&source).await.map_err(failure_text)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         let stats = meshtools::analyze(&mesh);
         let mut findings = meshtools::validate(&stats);
         let watertight = stats.triangles > 0
@@ -149,11 +151,11 @@ async fn mesh_report(
 #[tauri::command]
 async fn mesh_health(
     source: String,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<insight::Health, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mesh = engine.mesh_for(&source).await.map_err(failure_text)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         Ok(insight::health(&mesh))
     })
     .await
@@ -166,34 +168,47 @@ async fn probe_point(
     source: String,
     point: [f64; 3],
     tilt: f64,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<insight::SpotProbe, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mesh = engine.mesh_for(&source).await.map_err(failure_text)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         insight::probe(&mesh, point, tilt).ok_or_else(|| "The model is empty.".to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+/// An object of the Rhino document that has a spot inside its bounding box.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SourceLookup {
-    hits: Vec<insight::SourceHit>,
-    /// The search hit its limit before it was done.
-    truncated: bool,
+struct LocatedObject {
+    id: String,
+    name: String,
+    kind: String,
+    layer: String,
 }
 
-/// Which statements of the source make the surface at `point` (model coordinates).
+/// Which objects of the Rhino document have `point` (model coordinates, mm) inside their bounding box, so the
+/// frontend can find the script lines that make them.
 #[tauri::command]
-async fn locate_source(source: String, point: [f64; 3], tol: Option<f64>) -> Result<SourceLookup, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let (hits, truncated) = insight::locate(&source, point, tol.unwrap_or(0.05))?;
-        Ok(SourceLookup { hits, truncated })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+async fn locate_objects(point: [f64; 3], rhino: State<'_, std::sync::Arc<rhino::Rhino>>) -> Result<Vec<LocatedObject>, String> {
+    const TOL: f64 = 0.1;
+    let lo: Vec<f64> = point.iter().map(|v| v - TOL).collect();
+    let hi: Vec<f64> = point.iter().map(|v| v + TOL).collect();
+    let v = rhino
+        .fast(
+            "get_document_info",
+            serde_json::json!({ "detail": "inventory", "limit": 50, "bbox": [lo, hi], "bbox_mode": "intersects", "include_bbox": false }),
+        )
+        .await?;
+    let text = |o: &serde_json::Value, k: &str| o[k].as_str().unwrap_or("").to_string();
+    Ok(v["objects"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|o| LocatedObject { id: text(o, "id"), name: text(o, "name"), kind: text(o, "type"), layer: text(o, "layer") })
+        .collect())
 }
 
 /// Pads JSON with spaces so the binary that follows it starts on a 4-byte boundary
@@ -217,11 +232,11 @@ async fn suggest_tilt(
     step: f64,
     angle: f64,
     lift: f64,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<Vec<TiltRow>, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mesh = engine.mesh_for(&source).await.map_err(failure_text)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         if mesh.is_empty() {
             return Err("The model is empty.".to_string());
         }
@@ -246,11 +261,11 @@ async fn auto_supports(
     auto: AutoParams,
     manual: Vec<Support>,
     next_id: u32,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<AutoResult, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mesh = engine.mesh_for(&source).await.map_err(failure_text)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
         supports::auto_supports(&mesh, &print, &auto, &manual, next_id)
             .ok_or_else(|| "The model is empty.".to_string())
     })
@@ -287,21 +302,26 @@ async fn print_layout(
     supports: Vec<Support>,
     sprue: Option<SprueSpec>,
     have: Option<HaveLayout>,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<Response, String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let key = layout_key(&source, &print, &sprue);
+    let mesh = if have.as_ref().is_some_and(|h| h.key == key) {
+        None
+    } else {
+        Some(engine.mesh_for(&source).await.map_err(failure_text)?)
+    };
     tauri::async_runtime::spawn_blocking(move || {
-        let key = layout_key(&source, &print, &sprue);
         let encode_supports = |zoff: f64| {
             if supports.is_empty() { Vec::new() } else { render::encode_flat(&supports::support_mesh(&supports, &print, zoff)) }
         };
-        let (info, model, sup, sprue_mesh) = match have.filter(|h| h.key == key) {
-            Some(h) => {
+        let (info, model, sup, sprue_mesh) = match mesh {
+            None => {
+                let h = have.expect("the layout is already held");
                 let sup = encode_supports(h.zoff);
                 (serde_json::json!({ "key": key, "supportsLen": sup.len() }), Vec::new(), sup, Vec::new())
             }
-            None => {
-                let mesh = render::mesh_for(&source, &cache).map_err(failure_text)?;
+            Some(mesh) => {
                 // show the casting sprue too: stub added as a separate shell, enough for a preview
                 let planned = sprue.and_then(|s| meshtools::plan_sprue_at(&mesh, &s));
                 let sprue_at = planned.as_ref().map(|p| p.2);
@@ -345,11 +365,11 @@ async fn export_model(
     simplify: Option<SimplifySpec>,
     sprue: Option<SprueSpec>,
     hollow: Option<hollow::HollowSpec>,
-    cache: State<'_, RenderCache>,
+    engine: State<'_, Engine>,
 ) -> Result<(), String> {
-    let cache = cache.inner().clone();
+    let engine = engine.inner().clone();
+    let mut mesh = engine.mesh_for(&source).await.map_err(|e| e.message)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut mesh = render::mesh_for(&source, &cache).map_err(|e| e.message)?;
         if mesh.is_empty() {
             return Err("There is nothing to export: the model is empty.".to_string());
         }
@@ -382,14 +402,64 @@ async fn export_model(
     .map_err(|e| e.to_string())?
 }
 
+/// The Rhino connection, at the address saved in the preferences (or the plugin's default).
+fn rhino_from_settings(app: &tauri::AppHandle) -> rhino::Rhino {
+    use tauri::Manager;
+    use tauri_plugin_store::StoreExt;
+    let store = app.store("settings.json").ok();
+    let saved = |key: &str| store.as_ref().and_then(|s| s.get(key));
+    let host = saved("rhinoHost")
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| rhino::DEFAULT_HOST.into());
+    let port = saved("rhinoPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .filter(|p| *p != 0)
+        .unwrap_or(rhino::DEFAULT_PORT);
+    // Rhino writes the STL here and the app reads it: a folder under the user's home, which Rhino can reach
+    // even when it runs in a sandbox (Wine, Flatpak), unlike the system's temp folder
+    let exchange = app
+        .path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("frederic-coultier"))
+        .join("rhino");
+    rhino::Rhino::new(&host, port, exchange)
+}
+
+/// Whether Rhino is reachable, and what it has open. `force` asks again instead of answering from the last look.
+#[tauri::command]
+async fn rhino_status(force: Option<bool>, rhino: State<'_, std::sync::Arc<rhino::Rhino>>) -> Result<rhino::RhinoStatus, String> {
+    Ok(rhino.status(force.unwrap_or(false)).await)
+}
+
+/// Whether the user changed the document in Rhino since the preview was made; the window then refreshes it.
+#[tauri::command]
+async fn rhino_changed(engine: State<'_, Engine>) -> Result<bool, String> {
+    Ok(engine.changed().await)
+}
+
+/// Points the app at Rhino's plugin somewhere else; the preferences window saves the address.
+#[tauri::command]
+async fn rhino_configure(host: String, port: u16, rhino: State<'_, std::sync::Arc<rhino::Rhino>>) -> Result<rhino::RhinoStatus, String> {
+    if host.trim().is_empty() || port == 0 {
+        return Err("give a host name or address and a port between 1 and 65535".into());
+    }
+    rhino.configure(&host, port).await;
+    Ok(rhino.status(true).await)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .manage(RenderCache::default())
         .setup(|app| {
+            use tauri::Manager;
+            let rhino = std::sync::Arc::new(rhino_from_settings(app.handle()));
+            app.manage(rhino.clone());
+            app.manage(Engine::new(rhino));
             agent::start(app.handle());
             agent::chat::manage(app.handle());
             Ok(())
@@ -405,8 +475,9 @@ pub fn run() {
             can_self_update,
             agent::bridge::agent_reply,
             agent::mcp_status,
-            agent::mcp_configure,
-            agent::connect::mcp_agents,
+            rhino_status,
+            rhino_configure,
+            rhino_changed,
             agent::kb_search,
             agent::kb_read,
             agent::chat::chat_engines,
@@ -414,10 +485,10 @@ pub fn run() {
             agent::chat::chat_cancel,
             agent::chat::chat_load,
             agent::chat::chat_save,
-            agent::connect::mcp_connect,
             open_project,
             save_project,
-            render_scad,
+            render_model,
+            refresh_model,
             export_model,
             suggest_tilt,
             auto_supports,
@@ -425,7 +496,7 @@ pub fn run() {
             mesh_report,
             mesh_health,
             probe_point,
-            locate_source
+            locate_objects
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

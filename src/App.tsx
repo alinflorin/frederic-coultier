@@ -19,7 +19,7 @@ import {
   pickProjectToSave,
   printLayout,
   printParams,
-  renderScad,
+  renderModel,
   saveProject,
 } from "./api";
 import { emptyProject, sampleProject } from "./defaults";
@@ -37,7 +37,8 @@ import { PreferencesDialog } from "./components/PreferencesDialog";
 import { getPref, setPref } from "./prefs";
 import { KbDialog } from "./components/KbDialog";
 import { AboutDialog } from "./components/AboutDialog";
-import { McpIndicator } from "./components/McpIndicator";
+import { RhinoIndicator } from "./components/RhinoIndicator";
+import { rhinoChanged, useRhinoStatus } from "./rhino";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import type { ExportPick } from "./components/ExportDialog";
 import { Onboarding } from "./components/Onboarding";
@@ -81,8 +82,6 @@ function App() {
   const [draftFiles, setDraftFiles] = useState<Attached[]>([]);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  // The chat pane is on unless turned off (Preferences > Agent Chat, or the first-run choice).
-  const [chatEnabled, setChatEnabledState] = useState(() => getPref<boolean>("chatEnabled") !== false);
   // Shown once per install, also to people upgrading from a version without it.
   const [onboarding, setOnboarding] = useState(() => getPref<boolean>("onboarded") !== true);
   const [autoUpdate, setAutoUpdateState] = useState(() => getPref<boolean>("autoUpdate") !== false);
@@ -93,11 +92,6 @@ function App() {
   const setAutoUpdate = (on: boolean) => {
     setPref("autoUpdate", on);
     setAutoUpdateState(on);
-  };
-  const setChatEnabled = (on: boolean) => {
-    setPref("chatEnabled", on);
-    setChatEnabledState(on);
-    if (!on) setMobilePane((p) => (p === "chat" ? "source" : p));
   };
   // Which agents can answer (installed and signed in), and which one the user picked.
   const [engines, setEngines] = useState<EngineInfo[] | null>(null);
@@ -123,6 +117,10 @@ function App() {
     return { source: side, preview: side };
   });
   const [render, setRender] = useState<RenderState>(IDLE);
+  // Rhino runs the design script: the preview is made again when Rhino comes up after the app
+  const rhino = useRhinoStatus();
+  // bumped by Rhino > Run the script again
+  const [rerun, setRerun] = useState(0);
   const [layout, setLayout] = useState<PrintLayout | null>(null);
   const [printView, setPrintView] = useState(true);
   /** The statement that makes the spot clicked with the "find in source" tool. */
@@ -211,6 +209,7 @@ function App() {
 
   // --- rendering: re-render shortly after the source stops changing ---
   const source = project?.source;
+  const tolerance = project?.settings.render.meshTolerance;
   const request = useRef(0);
   useEffect(() => {
     if (source === undefined) return;
@@ -218,7 +217,7 @@ function App() {
     setRender((r) => ({ ...r, status: "rendering" }));
     const timer = setTimeout(async () => {
       try {
-        const res = await renderScad(source);
+        const res = await renderModel(source, tolerance);
         if (id !== request.current) return;
         setRender({ status: "ok", mesh: res.mesh, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source });
       } catch (e) {
@@ -233,7 +232,7 @@ function App() {
       }
     }, RENDER_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [source, projectId]);
+  }, [source, projectId, tolerance, rhino.up, rerun]);
 
   // --- print layout: tilted piece with supports, refreshed when anything it depends on changes ---
   const supOpts = project?.settings.printing.supports;
@@ -427,8 +426,8 @@ function App() {
 
   // --- agent: the MCP tools read and change the live project through this ---
   const viewerRef = useRef<Viewer | null>(null);
-  const live = useRef({ path, dirty, docName, render, layout, printView });
-  live.current = { path, dirty, docName, render, layout, printView };
+  const live = useRef({ path, dirty, docName, render, layout, printView, tolerance: tolerance ?? 0.02 });
+  live.current = { path, dirty, docName, render, layout, printView, tolerance: tolerance ?? 0.02 };
   const saveRef = useRef(doSave);
   saveRef.current = doSave;
   const actions = useRef({} as Pick<AgentApi, "newProject" | "openFile" | "saveTo">);
@@ -453,6 +452,41 @@ function App() {
       return written;
     },
   };
+  // Reads the model as it is in Rhino now (the script is not run), for the agent's refresh and for edits made in Rhino.
+  const refreshFromRhino = async () => {
+    const src = projectRef.current?.source;
+    if (src === undefined) return;
+    const res = await renderModel(src, live.current.tolerance, true);
+    request.current++; // an answer still on its way is older than this one
+    setRender({ status: "ok", mesh: res.mesh, ms: res.ms, diagnostics: res.diagnostics, echoes: res.echoes, source: src });
+  };
+  const refreshRef = useRef(refreshFromRhino);
+  refreshRef.current = refreshFromRhino;
+
+  // Follow what the user does in Rhino: look for a change every second and show it
+  const [follow, setFollowState] = useState(() => getPref<boolean>("followRhino") !== false);
+  const setFollow = (on: boolean) => {
+    setPref("followRhino", on);
+    setFollowState(on);
+  };
+  const hasProject = project !== null;
+  useEffect(() => {
+    if (!follow || !hasProject || !rhino.status?.connected) return;
+    let busy = false;
+    const id = setInterval(async () => {
+      if (busy || live.current.render.status === "rendering") return;
+      busy = true;
+      try {
+        if (await rhinoChanged()) await refreshRef.current();
+      } catch {
+        /* Rhino is busy or gone: the status indicator says so */
+      } finally {
+        busy = false;
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [follow, hasProject, rhino.status?.connected]);
+
   const agentApi = useMemo<AgentApi>(
     () => ({
       project: () => projectRef.current,
@@ -463,6 +497,8 @@ function App() {
       render: () => live.current.render,
       layout: () => live.current.layout,
       layoutPending: () => layoutPending.current,
+      tolerance: () => live.current.tolerance,
+      refresh: () => refreshFromRhino(),
       printView: () => live.current.printView,
       setPrintView,
       viewer: () => viewerRef.current,
@@ -501,6 +537,16 @@ function App() {
           { label: t("menu.export"), shortcut: "Ctrl+E", onSelect: () => setDialog("export"), disabled: !open },
           { separator: true, label: "" },
           { label: t("menu.close"), shortcut: "Ctrl+W", onSelect: closeProject, disabled: !open },
+        ],
+      },
+      {
+        id: "rhino",
+        label: t("menu.rhino"),
+        items: [
+          { label: t("menu.rerun"), shortcut: "Ctrl+R", onSelect: () => setRerun((n) => n + 1), disabled: !open },
+          { label: t("menu.pull"), onSelect: () => void refreshRef.current().catch((e) => notify(errorText(e))), disabled: !open },
+          { separator: true, label: "" },
+          { label: t("menu.rhinoSettings"), onSelect: () => setDialog("prefs") },
         ],
       },
       {
@@ -544,6 +590,7 @@ function App() {
       else if (k === "e" && open) run(() => setDialog("export"));
       else if (k === "h" && open) run(() => setDialog("history"));
       else if (k === "w" && open) run(closeProject);
+      else if (k === "r" && open) run(() => setRerun((n) => n + 1));
       else if (k === ",") run(() => setDialog("prefs"));
     };
     window.addEventListener("keydown", onKey);
@@ -664,13 +711,11 @@ function App() {
         onViewer={(v) => (viewerRef.current = v)}
         onLocate={(h) => setSourceHit(h ? { from: h.from, to: h.to } : null)}
         onAnnotated={
-          chatEnabled
-            ? (picture) => {
-                setDraftFiles((cur) => [...cur, picture]);
-                setMobilePane("chat");
-                notify(t("annotate.attached"));
-              }
-            : undefined
+          (picture) => {
+            setDraftFiles((cur) => [...cur, picture]);
+            setMobilePane("chat");
+            notify(t("annotate.attached"));
+          }
         }
         onPatchRender={(r) => edit((p) => ({ ...p, settings: { ...p.settings, render: { ...p.settings.render, ...r } } }))}
       />
@@ -683,15 +728,14 @@ function App() {
         <Onboarding
           chatAvailable={engines === null ? null : !!engine}
           onRefresh={() => void refreshEngines()}
-          onDone={(mode, allTools) => {
-            setChatEnabled(mode === "chat");
+          onDone={(allTools) => {
             setPref("chatAllTools", allTools);
             setPref("onboarded", true);
             setOnboarding(false);
           }}
         />
       )}
-      <MenuBar menus={menus} title={title} dirty={dirty} trailing={<McpIndicator onClick={() => setDialog("prefs")} />} />
+      <MenuBar menus={menus} title={title} dirty={dirty} trailing={<RhinoIndicator status={rhino.status} onClick={() => setDialog("prefs")} />} />
 
       {!project ? (
         <Welcome recents={recents} onNew={newProject} onOpen={openDialog} onOpenRecent={openRecent} onSample={newSample} />
@@ -699,7 +743,7 @@ function App() {
         <>
           <Box p={8} pb={0} style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>{panes![mobilePane]}</Box>
           <Group component="nav" gap={0} wrap="nowrap" className="glass" aria-label={t("app.panes")} style={{ flex: "none", margin: "8px 8px 0", borderRadius: 20, overflow: "hidden", marginBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
-            {((chatEnabled ? ["source", "chat", "preview"] : ["source", "preview"]) as PaneId[]).map((id) => (
+            {(["source", "chat", "preview"] as PaneId[]).map((id) => (
               <UnstyledButton key={id} flex={1} py={8} px={2} fz={11} c={mobilePane === id ? "var(--accent)" : "dimmed"} onClick={() => setMobilePane(id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                 <Icon name={id === "source" ? "code" : id === "chat" ? "chat" : "cube"} size={20} />
                 {t(`${id}.title`)}
@@ -719,19 +763,13 @@ function App() {
             flex: 1,
             minHeight: 0,
             display: "grid",
-            gridTemplateColumns: chatEnabled
-              ? `minmax(220px, ${cols.source}px) 10px minmax(250px, 1fr) 10px minmax(220px, ${cols.preview}px)`
-              : `minmax(220px, ${cols.source}px) 10px minmax(250px, 1fr)`,
+            gridTemplateColumns: `minmax(220px, ${cols.source}px) 10px minmax(250px, 1fr) 10px minmax(220px, ${cols.preview}px)`,
           }}
         >
           {panes!.source}
           <Handle onPointerDown={startDrag("source")} />
-          {chatEnabled && (
-            <>
-              {panes!.chat}
-              <Handle onPointerDown={startDrag("preview")} />
-            </>
-          )}
+          {panes!.chat}
+          <Handle onPointerDown={startDrag("preview")} />
           {panes!.preview}
         </Box>
       )}
@@ -782,8 +820,8 @@ function App() {
           autoUpdate={autoUpdate}
           autoUpdateAvailable={selfUpdate}
           onAutoUpdate={setAutoUpdate}
-          chatEnabled={chatEnabled}
-          onChatEnabled={setChatEnabled}
+          followRhino={follow}
+          onFollowRhino={setFollow}
           engines={engines}
           engine={engine?.id ?? null}
           onEngine={setChatEngine}

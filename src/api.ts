@@ -58,11 +58,15 @@ function toRenderError(e: unknown): RenderError {
   return new RenderError(String(e));
 }
 
-/** Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | indexed mesh. */
-export async function renderScad(source: string): Promise<RenderResult> {
+/**
+ * Runs the design script in Rhino and returns the model; `tolerance` is the largest distance (mm) between the mesh and
+ * the surface. With `refresh` the script is not run: the model is read as it is in Rhino now.
+ * Reply layout: u32 LE JSON length | JSON (padded to 4 bytes) | indexed mesh.
+ */
+export async function renderModel(source: string, tolerance?: number, refresh = false): Promise<RenderResult> {
   let buf: ArrayBuffer;
   try {
-    buf = await invoke<ArrayBuffer>("render_scad", { source });
+    buf = await invoke<ArrayBuffer>(refresh ? "refresh_model" : "render_model", refresh ? { source } : { source, tolerance: tolerance ?? null });
   } catch (e) {
     throw toRenderError(inTauri() ? e : "Rendering needs the desktop app.");
   }
@@ -212,7 +216,7 @@ export const probePoint = (source: string, point: [number, number, number], tilt
 
 export const meshHealth = (source: string) => invoke<Health>("mesh_health", { source });
 
-/** A statement of the source that has a spot on its surface. */
+/** A line of the script that mentions an object which has a spot of the piece inside its bounding box. */
 export interface SourceHit {
   /** Range in the source, in editor (UTF-16) units. */
   from: number;
@@ -222,12 +226,33 @@ export interface SourceHit {
   endLine: number;
   text: string;
   depth: number;
-  /** Nothing inside it has the spot too: this is where the spot comes from. */
+  /** Always true: kept for the list in the preview. */
   leaf: boolean;
+  /** The object's name in Rhino. */
+  object: string;
 }
 
-export const locateSource = (source: string, point: [number, number, number], tol?: number) =>
-  invoke<{ hits: SourceHit[]; truncated: boolean }>("locate_source", { source, point, tol: tol ?? null });
+/** The lines of `source` that name `name` (as a quoted string), in editor units. */
+function linesNaming(source: string, name: string): SourceHit[] {
+  if (!name) return [];
+  const out: SourceHit[] = [];
+  const lines = source.split("\n");
+  let at = 0;
+  lines.forEach((text, i) => {
+    if (text.includes(`"${name}`) || text.includes(`'${name}`)) {
+      out.push({ from: at, to: at + text.length, line: i + 1, column: 1, endLine: i + 1, text: text.trim(), depth: 0, leaf: true, object: name });
+    }
+    at += text.length + 1;
+  });
+  return out;
+}
+
+/** The script lines that make the object(s) of the document at a spot of the piece (model coordinates). */
+export async function locateSource(source: string, point: [number, number, number]): Promise<{ hits: SourceHit[]; truncated: boolean }> {
+  const objects = await invoke<{ id: string; name: string }[]>("locate_objects", { point });
+  const hits = objects.flatMap((o) => linesNaming(source, o.name));
+  return { hits, truncated: false };
+}
 
 // --- supports ---
 

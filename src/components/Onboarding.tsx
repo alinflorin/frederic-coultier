@@ -1,15 +1,12 @@
 import { useState } from "react";
-import { Box, Button, Code, Group, Image, List, Modal, SegmentedControl, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
+import { Box, Button, Code, Group, Image, List, Modal, SegmentedControl, Stack, Text, Title } from "@mantine/core";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES, setLanguage, type Language } from "../i18n";
 import { THEMES, getTheme, setTheme, type Theme } from "../theme";
-import { Icon } from "./Icon";
 import { Check, Section } from "./form";
 
-export type RunMode = "chat" | "mcp";
-
-/** First-run walkthrough: what the app is, then how the user wants to drive it. */
+/** First-run walkthrough: what the app is, then the agent it talks to. */
 export function Onboarding({
   chatAvailable,
   onRefresh,
@@ -19,15 +16,13 @@ export function Onboarding({
   chatAvailable: boolean | null;
   /** Looks for signed-in agents again, after the user followed the sign-in steps. */
   onRefresh: () => void;
-  onDone: (mode: RunMode, allTools: boolean) => void;
+  onDone: (allTools: boolean) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [theme, setThemeState] = useState<Theme>(getTheme);
-  const [mode, setMode] = useState<RunMode>("chat");
   const [allTools, setAllTools] = useState(false);
   const chatBlocked = chatAvailable === false;
-  const chosen: RunMode = chatBlocked ? "mcp" : mode;
 
   return (
     <Modal
@@ -74,40 +69,13 @@ export function Onboarding({
         </Stack>
       ) : (
         <Stack gap={8}>
-          <Title order={2} fz={18}>{t("onboarding.modeTitle")}</Title>
-          <Text fz={12} c="dimmed">{t("onboarding.modeHint")}</Text>
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing={12} my={12} role="radiogroup">
-            {(["chat", "mcp"] as const).map((id) => {
-              const disabled = id === "chat" && chatBlocked;
-              const on = chosen === id;
-              return (
-                <UnstyledButton
-                  key={id}
-                  role="radio"
-                  aria-checked={on}
-                  disabled={disabled}
-                  onClick={() => setMode(id)}
-                  className="choice"
-                  data-on={on}
-                  p={16}
-                  style={{ opacity: disabled ? 0.45 : 1 }}
-                >
-                  <Stack gap={8}>
-                    <Group gap={8} c="var(--accent)">
-                      <Icon name={id === "chat" ? "chat" : "code"} size={20} />
-                      <Text span fw={700} fz={15} c="var(--text)">{t(`onboarding.${id}.name`)}</Text>
-                      {id === "chat" && <Text span fz={11} px={7} bg="var(--accent)" c="var(--accent-text)" style={{ borderRadius: 99 }}>{t("onboarding.recommended")}</Text>}
-                    </Group>
-                    <Text inherit>{t(`onboarding.${id}.what`)}</Text>
-                    <Text inherit c="dimmed">{t(`onboarding.${id}.how`)}</Text>
-                    {disabled && <Text inherit c="var(--accent)">{t("chat.noAgent")}</Text>}
-                  </Stack>
-                </UnstyledButton>
-              );
-            })}
-          </SimpleGrid>
+          <Title order={2} fz={18}>{t("onboarding.agentTitle")}</Title>
+          <Text fz={13}>{t("onboarding.agentWhat")}</Text>
+          <Text fz={12} c="dimmed">{t("onboarding.agentHow")}</Text>
+          <Text fz={13} fw={700} mt={6}>{t("onboarding.rhinoTitle")}</Text>
+          <Text fz={12} c="dimmed">{t("onboarding.rhinoHow")}</Text>
           {chatBlocked && (
-            <Stack gap={6} fz={13}>
+            <Stack gap={6} fz={13} mt={6}>
               <Text fw={700} inherit>{t("onboarding.signin.title")}</Text>
               <List type="ordered" fz={13}>
                 <List.Item>{t("onboarding.signin.step1")}</List.Item>
@@ -119,7 +87,7 @@ export function Onboarding({
               <Box><Button type="button" variant="default" size="xs" onClick={onRefresh}>{t("onboarding.signin.check")}</Button></Box>
             </Stack>
           )}
-          {chosen === "chat" && !chatBlocked && (
+          {!chatBlocked && (
             <>
               <Check checked={allTools} onChange={setAllTools} label={t("prefs.chat.allTools")} />
               <Text fz={12} c="dimmed">{t("prefs.chat.allToolsHint")}</Text>
@@ -140,7 +108,7 @@ export function Onboarding({
         {step < 2 ? (
           <Button onClick={() => setStep((step + 1) as 1 | 2)}>{t("onboarding.next")}</Button>
         ) : (
-          <Button onClick={() => onDone(chosen, chosen === "chat" && allTools)}>{t("onboarding.start")}</Button>
+          <Button onClick={() => onDone(!chatBlocked && allTools)}>{t("onboarding.start")}</Button>
         )}
       </Group>
     </Modal>

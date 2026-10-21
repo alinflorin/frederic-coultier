@@ -56,7 +56,7 @@ fn walk_baked(dir: &Dir<'_>, exts: &[String], out: &mut Vec<Doc>) {
 
 /// Extensions that are indexed unless `--ext` says otherwise.
 pub const DEFAULT_EXTS: &[&str] = &[
-    "md", "markdown", "txt", "rst", "adoc", "org", "tex", "scad", "json", "yaml", "yml", "toml",
+    "md", "markdown", "txt", "rst", "adoc", "org", "tex", "py", "json", "yaml", "yml", "toml",
     "csv", "tsv",
 ];
 const MAX_FILE: u64 = 2 * 1024 * 1024;
@@ -521,6 +521,54 @@ pub fn find<'a>(docs: &'a [Doc], rel: &str) -> Result<&'a Doc, String> {
     })
 }
 
+// ---- the rhinoscriptsyntax reference ----
+
+const RS_DIR: &str = "rhinoscriptsyntax/";
+
+/// The categories (modules) of the rhinoscriptsyntax reference and the functions in each.
+pub fn rs_categories(docs: &[Doc]) -> Vec<(String, Vec<String>)> {
+    let mut out: Vec<(String, Vec<String>)> = docs
+        .iter()
+        .filter_map(|d| {
+            let name = d.rel.strip_prefix(RS_DIR)?.strip_suffix(".md")?;
+            if name == "README" {
+                return None;
+            }
+            let funcs = d.lines.iter().filter_map(|l| l.strip_prefix("## ")).map(|f| f.trim().to_string()).collect();
+            Some((name.to_string(), funcs))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// What the reference says about one function: signature, arguments, returns, example.
+pub fn rs_function(docs: &[Doc], name: &str) -> Option<String> {
+    let want = name.trim().trim_start_matches("rs.").trim_end_matches("()");
+    for pass in [false, true] {
+        for d in docs.iter().filter(|d| d.rel.starts_with(RS_DIR) && d.rel != "rhinoscriptsyntax/README.md") {
+            let mut section: Option<Vec<&str>> = None;
+            for l in &d.lines {
+                if let Some(h) = l.strip_prefix("## ") {
+                    if let Some(s) = section.take() {
+                        return Some(s.join("\n").trim_end().to_string());
+                    }
+                    let h = h.trim();
+                    if (!pass && h == want) || (pass && h.eq_ignore_ascii_case(want)) {
+                        section = Some(vec![l.as_str()]);
+                    }
+                } else if let Some(s) = section.as_mut() {
+                    s.push(l);
+                }
+            }
+            if let Some(s) = section {
+                return Some(s.join("\n").trim_end().to_string());
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,6 +615,22 @@ mod tests {
         ("image.png", "not text"),
         (".hidden/secret.md", "# Secret\n\nprong prong prong\n"),
     ];
+
+    #[test]
+    fn the_rhinoscriptsyntax_reference_is_looked_up_by_category_and_name() {
+        let (dir, docs) = make(&[
+            ("rhinoscriptsyntax/layer.md", "# layer\n\n## AddLayer\n\nAdd a layer\n\n## CurrentLayer\n\nThe current one\n"),
+            ("rhinoscriptsyntax/curve.md", "# curve\n\n## AddLine\n\nA line\n"),
+            ("rhinoscriptsyntax/README.md", "# index\n\n## not a function\n"),
+        ]);
+        let cats = rs_categories(&docs);
+        assert_eq!(cats, vec![("curve".to_string(), vec!["AddLine".to_string()]), ("layer".to_string(), vec!["AddLayer".to_string(), "CurrentLayer".to_string()])]);
+        assert!(rs_function(&docs, "AddLayer").unwrap().contains("Add a layer"));
+        assert!(!rs_function(&docs, "AddLayer").unwrap().contains("The current one"));
+        assert!(rs_function(&docs, "rs.currentlayer()").unwrap().contains("The current one"), "last section, any case, as written in code");
+        assert!(rs_function(&docs, "Nope").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn scans_text_files_and_skips_the_rest() {

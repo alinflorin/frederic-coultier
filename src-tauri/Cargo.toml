@@ -23,12 +23,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-openrscad-syntax = { git = "https://github.com/matthova/openrscad", tag = "v0.14.0", version = "0.14.0" }
-openrscad-eval = { git = "https://github.com/matthova/openrscad", tag = "v0.14.0", version = "0.14.0" }
-openrscad-geom = { git = "https://github.com/matthova/openrscad", tag = "v0.14.0", version = "0.14.0" }
 zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
 tauri-plugin-dialog = "2.8.3"
 thiserror = "2.0.21"
+manifold-csg = "0.3"
 meshopt-rs = { version = "0.1.2", features = ["experimental"] }
 tauri-plugin-store = "2.5.0"
 regex = "1"

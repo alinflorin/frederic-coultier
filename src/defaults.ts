@@ -1,6 +1,6 @@
 import { freshBook } from "./chat/book";
 import type { FcProject } from "./types";
-import sampleScad from "./sample.scad?raw";
+import sampleScript from "./sample.py?raw";
 
 export const DEFAULT_SETTINGS: FcProject["settings"] = {
   general: { name: "Untitled", notes: "" },
@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: FcProject["settings"] = {
     finish: "polished",
     shading: "shaded",
     orthographic: false,
-    previewQuality: 48,
+    meshTolerance: 0.02,
   },
   printing: {
     printer: "Elegoo Mars 5",
@@ -54,6 +54,6 @@ export function sampleProject(): FcProject {
       ...DEFAULT_SETTINGS,
       general: { name: "Solitaire ring", notes: "EU 54, 5 mm centre stone." },
     },
-    source: sampleScad,
+    source: sampleScript,
   };
 }

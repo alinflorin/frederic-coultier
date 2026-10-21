@@ -18,11 +18,13 @@ use serde::Deserialize;
 
 use super::bridge::Bridge;
 use super::cli::Cli;
+use crate::rhino::Rhino;
 
 /// Shown to the agent when it connects, before anything else. The rule at the end is the one that matters.
 const INSTRUCTIONS: &str = "\
-A desktop CAD app for jewellery. The user has a project open: through the `fc` command line you read and edit its \
-OpenSCAD model, look at it, check it for printing, manage supports and the casting sprue, and export it.
+A desktop app for designing jewellery in Rhino. The user has a project open, and Rhino is running next to the app: through the `fc` command line you \
+write the design script that Rhino runs, use the Rhino plugin's tools (objects, layers, views, materials), look at the result, check it for printing, \
+manage supports and the casting sprue, and export it.
 
 IMPORTANT, BEFORE ANYTHING ELSE: call `read_instructions` and read the whole result. It holds the user's own \
 instructions and the full reference of `fc`. Do this before your first `exec_fc` call, even for a simple question; \
@@ -33,9 +35,9 @@ When you finish a long piece of work, or need the user's answer and they may be 
 
 /// For the agent of the chat panel, whose context already holds the manual (there is no `read_instructions` for it).
 const EMBEDDED_INSTRUCTIONS: &str = "\
-A desktop CAD app for jewellery. The user has a project open: through the `fc` command line (the `exec_fc` tool) you \
-read and edit its OpenSCAD model, look at it, check it for printing, manage supports and the casting sprue, and \
-export it. The complete manual is in your instructions; follow it. The app chimes by itself when a long reply ends; \
+A desktop app for designing jewellery in Rhino. The user has a project open, and Rhino is running next to the app: through the `fc` command line (the `exec_fc` tool) you \
+write the design script that Rhino runs, use the Rhino plugin's tools (objects, layers, views, materials), look at the result, check it for printing, \
+manage supports and the casting sprue, and export it. The complete manual is in your instructions; follow it. The app chimes by itself when a long reply ends; \
 run `chime` only to get the user's attention earlier, for instance when you need an answer.";
 
 const EMBEDDED_EXEC: &str = "Run fc commands, e.g. `status` or `src cat 1:40`, as described in your instructions. Give the command line without the leading `fc`; join several with && or newlines; multi-line text goes in a here-document (<<EOF). Returns text, and a picture for `shot`.";
@@ -114,9 +116,9 @@ pub struct AppTools {
 }
 
 impl AppTools {
-    pub fn new(bridge: Arc<dyn Bridge>, gate: Arc<Gate>) -> Self {
+    pub fn new(bridge: Arc<dyn Bridge>, rhino: Arc<Rhino>, gate: Arc<Gate>) -> Self {
         Self {
-            cli: Cli::new(bridge),
+            cli: Cli::new(bridge, rhino),
             gate,
             embedded: false,
             tool_router: Self::tool_router(),
@@ -124,8 +126,8 @@ impl AppTools {
     }
 
     /// The tools for the chat panel's agent: no `read_instructions`, and no need to have read it.
-    pub fn embedded(bridge: Arc<dyn Bridge>, gate: Arc<Gate>) -> Self {
-        let mut tools = Self::new(bridge, gate);
+    pub fn embedded(bridge: Arc<dyn Bridge>, rhino: Arc<Rhino>, gate: Arc<Gate>) -> Self {
+        let mut tools = Self::new(bridge, rhino, gate);
         tools.embedded = true;
         tools.tool_router.remove_route("read_instructions");
         if let Some(route) = tools.tool_router.map.get_mut("exec_fc") {

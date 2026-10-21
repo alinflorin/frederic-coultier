@@ -16,7 +16,7 @@ interface Hit {
 type Part = { code: false; text: string } | { code: true; lang: string; text: string };
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
-const SCAD_LANGS = new Set(["scad", "openscad"]);
+const SCRIPT_LANGS = new Set(["python", "py"]);
 
 /** Splits Markdown at its fenced code blocks. */
 function parts(text: string): Part[] {
@@ -86,7 +86,7 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
     }
   }
 
-  const doc = open && (open.path.toLowerCase().endsWith(".scad") ? [{ code: true, lang: "scad", text: open.text } as Part] : parts(open.text));
+  const doc = open && (open.path.toLowerCase().endsWith(".py") ? [{ code: true, lang: "py", text: open.text } as Part] : parts(open.text));
 
   return (
     <Dialog wide title={t("kb.title")} onClose={onClose}>
@@ -102,7 +102,7 @@ export function KbDialog({ onLoad, onClose }: { onLoad: ((code: string) => void)
             p.code ? (
               <Box key={i} mt={8} mb={12}>
                 <Box component="pre" m={0} p={10} fz={12} bg="var(--code-bg)" bd="1px solid var(--border)" style={{ overflowX: "auto", borderRadius: 6 }}>{p.text}</Box>
-                {(SCAD_LANGS.has(p.lang) || open.path.toLowerCase().endsWith(".scad")) && (
+                {(SCRIPT_LANGS.has(p.lang) || open.path.toLowerCase().endsWith(".py")) && (
                   <Group gap={8} mt={6}>
                     <LoadButton code={p.text} onLoad={onLoad} />
                   </Group>

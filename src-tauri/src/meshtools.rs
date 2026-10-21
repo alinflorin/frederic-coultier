@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use meshopt_rs::simplify::simplify as meshopt_simplify;
-use openrscad_geom::Mesh;
+use crate::mesh::Mesh;
 use serde::{Deserialize, Serialize};
 
 use crate::supports::BED;

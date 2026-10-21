@@ -165,7 +165,7 @@ export function SettingsDialog({
           <Section>{t("settings.renderTitle")}</Section>
           <ColorField control={control} name="render.metalColor" label={t("settings.metalColor")} />
           <SelectField control={control} name="render.finish" label={t("settings.finish")} data={FINISHES.map((f) => ({ value: f, label: t(`finish.${f}`) }))} />
-          <NumField control={control} name="render.previewQuality" label={t("settings.previewQuality")} hint={t("settings.previewQualityHint")} step={4} unit="$fn" />
+          <NumField control={control} name="render.meshTolerance" label={t("settings.meshTolerance")} hint={t("settings.meshToleranceHint")} step={0.005} unit="mm" />
         </Tabs.Panel>
 
         <Tabs.Panel value="printing" style={PANEL}>

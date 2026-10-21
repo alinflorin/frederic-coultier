@@ -9,7 +9,7 @@ import type { EngineInfo, ModelInfo } from "../chat/engines";
 import { getPref, setPref } from "../prefs";
 import { playChime, setChimeOn, setChimeSecs, useChime } from "../chime";
 import { Dialog } from "./Dialog";
-import { McpPrefs } from "./McpPrefs";
+import { RhinoPrefs } from "./RhinoPrefs";
 import { chimeSchema } from "../validation";
 import { Check, Field, Note, NumField, Section } from "./form";
 
@@ -17,9 +17,9 @@ import { Check, Field, Note, NumField, Section } from "./form";
 export function PreferencesDialog({
   autoUpdate,
   autoUpdateAvailable,
+  followRhino,
+  onFollowRhino,
   onAutoUpdate,
-  chatEnabled,
-  onChatEnabled,
   engines,
   engine,
   onEngine,
@@ -35,9 +35,10 @@ export function PreferencesDialog({
   autoUpdate: boolean;
   /** False when a package manager owns the installation. */
   autoUpdateAvailable: boolean;
+  /** Show what the user changes in Rhino within a second. */
+  followRhino: boolean;
+  onFollowRhino: (on: boolean) => void;
   onAutoUpdate: (on: boolean) => void;
-  chatEnabled: boolean;
-  onChatEnabled: (on: boolean) => void;
   /** The agents that could answer in the chat; null until they have been looked up. */
   engines: EngineInfo[] | null;
   engine: string | null;
@@ -114,9 +115,6 @@ export function PreferencesDialog({
       {!autoUpdateAvailable && <Note>{t("prefs.autoUpdateManaged")}</Note>}
 
       <Section>{t("prefs.chat.title")}</Section>
-      <Field label={t("prefs.chat.enabled")}>
-        <Check checked={chatEnabled} disabled={!chatEnabled && !usable} onChange={onChatEnabled} label="" />
-      </Field>
       <Field label={t("prefs.chat.allTools")}>
         <Check
           checked={allTools}
@@ -162,8 +160,12 @@ export function PreferencesDialog({
       ))}
       <Note>{t("prefs.chat.hint")}</Note>
 
-      <Section>{t("prefs.mcp.title")}</Section>
-      <McpPrefs />
+      <Section>{t("prefs.rhino.title")}</Section>
+      <Field label={t("prefs.rhino.follow")}>
+        <Check checked={followRhino} onChange={onFollowRhino} label="" />
+      </Field>
+      <Note>{t("prefs.rhino.followHint")}</Note>
+      <RhinoPrefs />
     </Dialog>
   );
 }

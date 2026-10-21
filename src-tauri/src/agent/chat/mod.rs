@@ -714,14 +714,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn real_agents() {
-        let mcp = Mcp::new(Mock::new(|_, _| Ok(serde_json::json!({}))));
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
+        let rhino = std::sync::Arc::new(crate::rhino::Rhino::new("127.0.0.1", 1999, std::env::temp_dir()));
+        let mcp = Mcp::new(Mock::new(|_, _| Ok(serde_json::json!({}))), rhino);
         let url = mcp
-            .apply("127.0.0.1", port)
+            .start()
             .await
             .url
             .unwrap()

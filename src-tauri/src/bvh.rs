@@ -1,6 +1,6 @@
 //! A bounding-volume hierarchy over a triangle mesh, for ray and box queries.
 
-use openrscad_geom::Mesh;
+use crate::mesh::Mesh;
 
 pub type V3 = [f64; 3];
 

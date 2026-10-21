@@ -40,7 +40,11 @@
     "settingsShort": "Setări",
     "kb": "Bază de cunoștințe…",
     "about": "Despre…",
-    "preferences": "Setări aplicație"
+    "preferences": "Setări aplicație",
+    "rhino": "Rhino",
+    "rerun": "Rulează din nou scriptul",
+    "pull": "Reîmprospătează din Rhino",
+    "rhinoSettings": "Conexiune Rhino…"
   },
   "file": {
     "untitled": "Fără titlu",
@@ -54,15 +58,15 @@
     "exportFailed": "Exportul a eșuat: {{error}}"
   },
   "welcome": {
-    "tagline": "Proiectează bijuterii prin conversație. Proiectele se salvează ca fișiere .fc.",
+    "tagline": "Proiectează bijuterii în Rhino prin conversație. Proiectele se salvează ca fișiere .fc.",
     "new": "Proiect nou",
     "open": "Deschide proiect…",
     "recent": "Recente",
     "sample": "Deschide exemplul"
   },
   "source": {
-    "title": "Sursă",
-    "copy": "Copiază sursa"
+    "title": "Script",
+    "copy": "Copiază scriptul"
   },
   "chat": {
     "title": "Chat",
@@ -188,8 +192,6 @@
     "direct": "Imprimat direct",
     "metalColor": "Culoare metal",
     "finish": "Finisaj",
-    "previewQuality": "Calitate schiță",
-    "previewQualityHint": "Fațete folosite în previzualizări rapide; exportul folosește mereu calitatea maximă.",
     "printer": "Imprimantă",
     "minWall": "Perete minim",
     "minWallHint": "Bijuteriile din rășină au de obicei 0,5–0,8 mm.",
@@ -254,7 +256,9 @@
     "source": {
       "auto": "automat",
       "manual": "manual"
-    }
+    },
+    "meshTolerance": "Toleranță plasă",
+    "meshToleranceHint": "Cea mai mare distanță dintre plasa previzualizării și suprafața reală. Mai mică înseamnă mai neted și mai lent; exporturile o folosesc și ele."
   },
   "metal": {
     "silver925": "Argint 925",
@@ -283,9 +287,9 @@
     "rename": "Nume",
     "delete": "Șterge",
     "same": "Identică cu designul curent.",
-    "changes": "Față de acum: +{{added}} / −{{removed}} linii de cod",
-    "settingsOnly": "Codul e identic; diferă setările sau suporturile.",
-    "diff": "Modificări în cod",
+    "changes": "Față de acum: +{{added}} / −{{removed}} linii de script",
+    "settingsOnly": "Scriptul e același; diferă setările sau suporturile.",
+    "diff": "Schimbări în script",
     "restored": "Restaurat „{{name}}”. Starea anterioară e în istoric.",
     "taken": "Instantaneu făcut.",
     "kind": {
@@ -364,21 +368,10 @@
       "sprue": "Adaugă canal de turnare"
     }
   },
-  "mcp": {
-    "agent": "Agent",
-    "off": "MCP oprit",
-    "error": "MCP eroare",
-    "ready": "MCP · pornit",
-    "idle": "MCP · {{name}}",
-    "active": "MCP · {{name}} lucrează",
-    "about": "Server MCP: lasă agenți externi (ca Claude Code) să controleze aplicația. Agentul din panoul de chat este separat.",
-    "offTitle": "Serverul MCP nu rulează.",
-    "last": "{{name}}: {{calls}} apeluri, ultimul acum {{secs}} s",
-    "none": "Niciun agent nu s-a conectat încă."
-  },
   "about": {
     "title": "Despre",
-    "version": "Versiunea {{version}}"
+    "version": "Versiunea {{version}}",
+    "credits": "Integrarea cu Rhino se bazează pe tectopus (CDCD Lab și CEA), derivat din RhinoMCP, licență Apache 2.0."
   },
   "annotate": {
     "title": "Desenează pe vizualizare",
@@ -402,8 +395,8 @@
     "probeHint": "Arată poziția, grosimea peretelui și înclinarea sub cursor",
     "measure": "Măsurare",
     "measureHint": "Fă clic pe puncte ale piesei: distanță, unghi, cerc",
-    "locate": "Găsește în cod",
-    "locateHint": "Fă clic pe piesă ca să afli linia care a creat acel loc",
+    "locate": "Găsește în script",
+    "locateHint": "Apasă pe piesă ca să găsești obiectele și liniile din script care au făcut acel loc",
     "flatUp": "orientată în sus",
     "flatDown": "tavan",
     "wall": "perete vertical",
@@ -421,9 +414,9 @@
     "ringSize": "ca inel: mărimea EU {{eu}}",
     "checking": "Se verifică…",
     "nothing": "Nimic de marcat.",
-    "searching": "Se caută în cod…",
-    "locateStart": "Fă clic pe piesă ca să afli de unde vine acel loc.",
-    "noSource": "Nicio instrucțiune singură nu creează acest loc (provine dintr-o formă combinată sau învelită).",
+    "searching": "Se caută în Rhino…",
+    "locateStart": "Apasă pe piesă ca să găsești obiectul din care vine acel loc.",
+    "noSource": "Niciun obiect numit în script nu are acest loc în caseta lui de încadrare (dă nume obiectelor cu rs.ObjectName ca să poată fi găsite).",
     "truncated": "Căutarea s-a oprit mai devreme; lista poate fi incompletă.",
     "healthOk": "Rețeaua este în regulă",
     "healthBad": "Rețea: {{open}} muchii deschise, {{shared}} comune, {{flipped}} întoarse, {{empty}} triunghiuri goale"
@@ -460,37 +453,30 @@
       "chimeAfter": "Timp minim (secunde)",
       "chimePlay": "Ascultă",
       "allToolsHint": "Dezactivat: agentul poate căuta pe web, citi fișiere și folosi FC. Activat: și shell-ul, modificarea fișierelor și orice alt tool are.",
-      "enabled": "Activat",
-      "hint": "Afișează un panou de chat lângă editor, unde Claude sau Codex proiectează împreună cu tine. Folosește contul cu care ești deja autentificat pe acest calculator.",
+      "hint": "Panoul de chat de lângă editor, unde Claude sau Codex proiectează împreună cu tine în Rhino. Folosește contul cu care ești deja autentificat pe acest calculator.",
       "agent": "Agent",
-      "none": "Nici Claude Code, nici Codex nu sunt autentificate pe acest calculator, deci chat-ul nu poate fi pornit.",
+      "none": "Nici Claude Code, nici Codex nu sunt autentificate pe acest calculator, deci chatul nu poate răspunde încă.",
       "refresh": "Verifică din nou",
       "unavailable": "indisponibil",
       "model": "Model implicit",
       "effort": "Nivel de gândire implicit",
       "own": "Alegerea agentului"
     },
-    "mcp": {
-      "title": "Conexiune agent (MCP)",
-      "intro": "Un agent AI, precum Claude Code, se poate conecta la aplicație și poate lucra pe proiectul deschis. Se conectează la această adresă:",
+    "rhino": {
+      "title": "Rhino",
+      "intro": "Aplicația proiectează în Rhino: rulează acolo scriptul de design și citește înapoi geometria. Vorbește cu pluginul tectopus, care ascultă la această adresă cât timp Rhino rulează (comanda mcpmodstart).",
       "host": "Gazdă",
       "port": "Port",
       "badHost": "Gazda trebuie să fie un nume sau o adresă, de exemplu 127.0.0.1.",
       "badPort": "Portul trebuie să fie un număr între 1 și 65535.",
-      "exposed": "Oricine poate ajunge la această adresă poate controla aplicația: nu există parolă. Folosește 127.0.0.1 dacă nu ești sigur că ai nevoie de altceva.",
       "apply": "Aplică",
       "applying": "Se aplică…",
+      "check": "Verifică din nou",
       "defaults": "Implicit",
-      "running": "Pornit",
-      "stopped": "Oprit.",
-      "copy": "Copiază",
-      "agents": "Conectează un agent",
-      "connect": "Apasă play ca să configurezi agentul cu acest server. Rulează din nou după o schimbare de port ca să actualizezi intrarea.",
-      "run": "Rulează pentru {{name}}",
-      "needsServer": "Pornește mai întâi serverul.",
-      "running_cmd": "Se rulează…",
-      "local": "Nu există parolă: se pot conecta doar programele de pe acest calculator.",
-      "desktopOnly": "Conexiunea agentului este disponibilă doar în aplicația desktop."
+      "plugin": "Necesită Rhino 8 cu pluginul rhinomcp-mod (tectopus) instalat. Ține documentul în milimetri.",
+      "desktopOnly": "Conexiunea la Rhino este disponibilă doar în aplicația desktop.",
+      "follow": "Urmărește editările din Rhino",
+      "followHint": "Se uită o dată pe secundă la documentul Rhino și arată în previzualizare ce ai schimbat acolo (obiecte adăugate, mutate, redimensionate, redenumite sau șterse), fără să ruleze din nou scriptul. Istoricul de comenzi din Rhino notează fiecare verificare."
     }
   },
   "findings": {
@@ -542,32 +528,37 @@
   },
   "onboarding": {
     "title": "Bine ai venit în Frederic Coultier",
-    "about1": "Un atelier de design de bijuterii condus de un agent AI. Descrie un inel, un pandantiv sau niște cercei; agentul scrie modelul, iar tu îl vezi apărând în 3D.",
-    "about2": "Verifică piesa pentru turnare și printare, adaugă suporturi și canal de turnare și exportă fișiere gata de producție. Proiectele se salvează ca fișiere .fc.",
+    "about1": "Un atelier de design de bijuterii condus de un agent AI. Descrie un inel, un pandantiv sau niște cercei; agentul îl proiectează în Rhino, iar tu îl vezi apărând în 3D.",
+    "about2": "Verifică piesa pentru turnare și imprimare, adaugă suporturi și un canal de turnare și exportă fișiere gata de produs. Proiectele se salvează ca fișiere .fc.",
     "next": "Înainte",
     "back": "Înapoi",
     "start": "Începe",
-    "modeTitle": "Cum vrei să lucrezi cu agentul?",
-    "modeHint": "Ambele folosesc aceleași unelte. Diferența este locul unde vorbești cu agentul.",
-    "recommended": "Recomandat",
     "later": "Poți schimba oricând din Preferințe.",
-    "chat": {
-      "name": "Chat cu agentul",
-      "what": "Scrii prompturile direct în aplicație. Un panou de chat se deschide lângă editor și previzualizare.",
-      "how": "Folosește Claude Code sau Codex, cu contul în care ești deja autentificat pe acest calculator. Agentul vede și editează proiectul deschis, iar tu vezi fiecare schimbare pe loc."
-    },
-    "mcp": {
-      "name": "Doar MCP",
-      "what": "Fără panou de chat. Aplicația oferă doar uneltele ei, iar tu vorbești cu propriul agent în altă parte.",
-      "how": "Cât rulează, aplicația expune un endpoint MCP local. Conectează Claude Code, Codex sau orice client MCP la el (Preferințe → Conexiune agent) și lucrează din terminalul sau editorul lui. Schimbările apar live în aplicație."
-    },
     "lookTitle": "Aspect și limbă",
     "signin": {
       "title": "Autentifică-te mai întâi la un agent",
       "step1": "Instalează Claude Code sau Codex, dacă nu le ai încă.",
       "or": "sau",
-      "step3": "Apoi verifică din nou. Până atunci poți continua doar cu MCP.",
+      "step3": "Apoi verifică din nou.",
       "check": "Verifică din nou"
-    }
+    },
+    "agentTitle": "Agentul tău de design",
+    "agentWhat": "Scrie-ți cererile în panoul de chat de lângă editor. Agentul scrie scriptul de design, Rhino îl rulează, iar tu vezi fiecare schimbare în previzualizarea 3D pe măsură ce apare.",
+    "agentHow": "Folosește Claude Code sau Codex, cu contul cu care ești deja autentificat pe acest calculator.",
+    "rhinoTitle": "Rhino",
+    "rhinoHow": "Pornește Rhino 8 cu pluginul rhinomcp-mod (tectopus) și rulează mcpmodstart. Indicatorul din bara de sus arată dacă aplicația îl poate contacta."
+  },
+  "rhino": {
+    "name": "Rhino",
+    "off": "indisponibil",
+    "untitled": "fără titlu",
+    "connected": "Conectat la Rhino la {{host}}:{{port}}",
+    "document": "Document",
+    "units": "Unități",
+    "objects_one": "{{count}} obiect",
+    "objects_few": "{{count}} obiecte",
+    "objects_other": "{{count}} de obiecte",
+    "notMm": "aplicația așteaptă milimetri: schimbă unitățile documentului în Rhino",
+    "offTitle": "Rhino nu răspunde la {{host}}:{{port}}. Pornește Rhino și rulează mcpmodstart."
   }
 }
