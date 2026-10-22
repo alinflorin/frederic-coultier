@@ -39,7 +39,8 @@ export function emptyProject(name: string): FcProject {
   return {
     formatVersion: 1,
     settings: { ...DEFAULT_SETTINGS, general: { ...DEFAULT_SETTINGS.general, name } },
-    source: "// New project\n$fn = 128;\n",
+    source:
+      "// New project\ninclude <BOSL2/std.scad>\ninclude <BOSL2/nurbs.scad>\n\n$fn = 128;\n",
     supports: { list: [], nextId: 1 },
     chats: freshBook(),
     history: [],

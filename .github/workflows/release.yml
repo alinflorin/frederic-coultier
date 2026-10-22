@@ -55,6 +55,20 @@ jobs:
           workspaces: "./src-tauri -> target"
           key: ${{ matrix.args }}-arch
 
+      - name: Cache C++ compilation (manifold, built by cmake)
+        if: runner.os != 'Windows'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.platform }}-${{ matrix.args }}
+          max-size: 500M
+
+      - name: Route cmake C/C++ builds through ccache
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+
       - run: pnpm install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@v1

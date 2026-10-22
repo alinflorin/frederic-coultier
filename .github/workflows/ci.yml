@@ -42,6 +42,20 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
+      - name: Cache C++ compilation (manifold, built by cmake)
+        if: runner.os != 'Windows'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.platform }}
+          max-size: 500M
+
+      - name: Route cmake C/C++ builds through ccache
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+
       - run: pnpm install --frozen-lockfile
 
       - name: Build frontend (typecheck + bundle)
