@@ -143,6 +143,9 @@ impl Mcp {
                 .is_err()
             {
                 old.task.abort();
+                // An abort only takes effect once the task is polled; wait so the listener is
+                // really closed before the port is reused or reported free.
+                let _ = (&mut old.task).await;
             }
         }
         let loopback = is_loopback(&host);
