@@ -307,34 +307,29 @@ mod tests {
     }
 
     #[test]
-    fn bundled_nurbs_library_is_offered() {
-        // A degree-2 rational quarter circle: every point lies exactly on the unit circle.
-        let src = "use <nurbs.scad>\n\
-                   q = nurbs_curve([[1,0],[1,1],[0,1]], degree=2, weights=[1,sqrt(2)/2,1], steps=8);\n\
-                   echo(max([for (p = q) abs(norm(p) - 1)]) < 1e-9, q[0], q[8]);";
+    fn bundled_bosl2_renders() {
+        let src = "include <BOSL2/std.scad>\n\
+                   cuboid([10,8,4], rounding=1, $fn=24);";
         let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
-        assert_eq!(r.echoes, vec!["ECHO: true, [1, 0], [0, 1]"]);
+        let (min, max) = r.mesh.bbox().expect("non-empty");
+        assert!((max[0] - min[0] - 10.0).abs() < 1e-6, "{min:?} {max:?}");
+        assert!(r.mesh.volume() > 250.0 && r.mesh.volume() < 320.0, "volume {}", r.mesh.volume());
         assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+        eprintln!("BOSL2 cuboid: {} ms", r.ms);
     }
 
     #[test]
-    fn nurbs_tube_is_a_solid() {
-        // Rows along u: a straight run of 4 sections; columns along v: a closed ring of 6 points.
-        let src = "use <nurbs.scad>\n\
-                   ring = [for (a = [0:60:300]) [2*cos(a), 2*sin(a)]];\n\
-                   grid = [for (z = [0:3]) [for (p = ring) [p[0], p[1], 3*z]]];\n\
-                   grid_polyhedron(nurbs_surface(grid, degree=[1,3], closed=[false,true], steps=[3,24]), closed=[false,true]);";
+    fn bundled_bosl2_nurbs_and_sweep() {
+        // A ring shank: a closed NURBS path swept with a rounded rectangle profile.
+        let src = "include <BOSL2/std.scad>\n\
+                   include <BOSL2/nurbs.scad>\n\
+                   ctrl = [for (a = [0:45:315]) [9*cos(a), 0, 9*sin(a) * (a == 90 ? 1.15 : 1)]];\n\
+                   path = nurbs_curve(ctrl, 3, splinesteps=16, type=\"closed\");\n\
+                   path_sweep(rect([2.4,1.6], rounding=0.5, $fn=16), path, closed=true);";
         let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
-        let v = r.mesh.volume();
-        assert!(v > 70.0 && v < 9.0 * std::f64::consts::PI * 1.67 * 1.67, "volume {v}");
-
-        // The same tube with the directions swapped: closed along u, capped along v.
-        let src = "use <nurbs.scad>\n\
-                   ring = [for (a = [0:60:300]) [2*cos(a), 2*sin(a)]];\n\
-                   grid = [for (p = ring) [for (z = [0:3]) [p[0], p[1], 3*z]]];\n\
-                   grid_polyhedron(nurbs_surface(grid, degree=[3,1], closed=[true,false], steps=[24,3]), closed=[true,false]);";
-        let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
-        assert!((r.mesh.volume() - v).abs() < 1e-6, "volume {} vs {v}", r.mesh.volume());
+        assert!(r.mesh.volume() > 100.0, "volume {}", r.mesh.volume());
+        assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+        eprintln!("BOSL2 nurbs sweep: {} ms", r.ms);
     }
 
     #[test]

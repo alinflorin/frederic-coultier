@@ -71,6 +71,27 @@ mod tests {
     }
 
     #[test]
+    fn every_bundled_file_parses() {
+        fn walk(dir: &std::path::Path, bad: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, bad);
+                } else if path.extension().is_some_and(|e| e == "scad") {
+                    let source = std::fs::read_to_string(&path).unwrap();
+                    if let Err(e) = openrscad_syntax::parse(&source) {
+                        let (line, _) = crate::render::line_col(&source, e.span.start);
+                        bad.push(format!("{}:{line}: {}", path.display(), e.message));
+                    }
+                }
+            }
+        }
+        let mut bad = Vec::new();
+        walk(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/scad-lib")), &mut bad);
+        assert!(bad.is_empty(), "{bad:#?}");
+    }
+
+    #[test]
     fn unknown_files_are_not_found() {
         assert!(LibResolver.load("no-such-lib.scad", ".").is_none());
         assert!(LibResolver.load("../Cargo.toml", ".").is_none());

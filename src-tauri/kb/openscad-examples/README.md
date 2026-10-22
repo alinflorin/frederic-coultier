@@ -5,7 +5,7 @@ Shallow clones of public GitHub repos, text files only (.scad .md .rst .txt), co
 | Folder | Source | Commit |
 |---|---|---|
 | adrianschlatter_threadlib | https://github.com/adrianschlatter/threadlib | dce1967 |
-| BelfrySCAD_BOSL2 | https://github.com/BelfrySCAD/BOSL2 | 7b3728f |
+| BelfrySCAD_BOSL2 | https://github.com/BelfrySCAD/BOSL2 | dd79b22 (refreshed 2026-10-22, the version bundled in `scad-lib/`) |
 | brodykenrick_text_on_OpenSCAD | https://github.com/brodykenrick/text_on_OpenSCAD | 868bd87 |
 | cloudymike_scadexamples | https://github.com/cloudymike/scadexamples | f430e51 |
 | davidson16807_relativity.scad | https://github.com/davidson16807/relativity.scad | 3c57b82 |

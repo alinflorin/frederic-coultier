@@ -1,4 +1,7 @@
 // Plain ring band
+include <BOSL2/std.scad>
+include <BOSL2/nurbs.scad>
+
 // Parameters
 ring_size_mm  = 17.3;   // inner diameter (EU 54) [14:0.1:24]
 band_width    = 2.4;    // [1.2:0.1:6]
