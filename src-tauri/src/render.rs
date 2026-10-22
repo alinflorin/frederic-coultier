@@ -5,7 +5,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use openrscad_eval::{NullResolver, eval_program_with_budget, register_system_fonts};
+use openrscad_eval::{eval_program_with_budget, register_system_fonts};
+use crate::scadlib::LibResolver;
 use crate::shade;
 use openrscad_geom::{GeomCache, Mesh, render_cached_warns};
 use serde::Serialize;
@@ -96,8 +97,8 @@ fn render_now(source: &str) -> Result<Rendered, RenderFailure> {
 
     let program =
         openrscad_syntax::parse(source).map_err(|e| failure(source, e.message, Some(e.span)))?;
-    // Projects are self-contained: no file system access for include/use/import.
-    let out = eval_program_with_budget(&program, &NullResolver, ".", EVAL_BUDGET)
+    // No file system access: include/use only reach the libraries bundled with the app.
+    let out = eval_program_with_budget(&program, &LibResolver, ".", EVAL_BUDGET)
         .map_err(|e| failure(source, e.message, e.span))?;
 
     let mut diagnostics: Vec<Diagnostic> = out
@@ -303,6 +304,43 @@ mod tests {
             t.elapsed()
         );
         assert!(got.is_some());
+    }
+
+    #[test]
+    fn bundled_nurbs_library_is_offered() {
+        // A degree-2 rational quarter circle: every point lies exactly on the unit circle.
+        let src = "use <nurbs.scad>\n\
+                   q = nurbs_curve([[1,0],[1,1],[0,1]], degree=2, weights=[1,sqrt(2)/2,1], steps=8);\n\
+                   echo(max([for (p = q) abs(norm(p) - 1)]) < 1e-9, q[0], q[8]);";
+        let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
+        assert_eq!(r.echoes, vec!["ECHO: true, [1, 0], [0, 1]"]);
+        assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    }
+
+    #[test]
+    fn nurbs_tube_is_a_solid() {
+        // Rows along u: a straight run of 4 sections; columns along v: a closed ring of 6 points.
+        let src = "use <nurbs.scad>\n\
+                   ring = [for (a = [0:60:300]) [2*cos(a), 2*sin(a)]];\n\
+                   grid = [for (z = [0:3]) [for (p = ring) [p[0], p[1], 3*z]]];\n\
+                   grid_polyhedron(nurbs_surface(grid, degree=[1,3], closed=[false,true], steps=[3,24]), closed=[false,true]);";
+        let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
+        let v = r.mesh.volume();
+        assert!(v > 70.0 && v < 9.0 * std::f64::consts::PI * 1.67 * 1.67, "volume {v}");
+
+        // The same tube with the directions swapped: closed along u, capped along v.
+        let src = "use <nurbs.scad>\n\
+                   ring = [for (a = [0:60:300]) [2*cos(a), 2*sin(a)]];\n\
+                   grid = [for (p = ring) [for (z = [0:3]) [p[0], p[1], 3*z]]];\n\
+                   grid_polyhedron(nurbs_surface(grid, degree=[3,1], closed=[true,false], steps=[24,3]), closed=[true,false]);";
+        let r = render_on_big_stack(src.into(), &RenderCache::default()).expect("render");
+        assert!((r.mesh.volume() - v).abs() < 1e-6, "volume {} vs {v}", r.mesh.volume());
+    }
+
+    #[test]
+    fn missing_library_is_a_warning() {
+        let r = render_on_big_stack("use <nope.scad>\ncube(1);".into(), &RenderCache::default()).unwrap();
+        assert!(r.diagnostics.iter().any(|d| d.message.contains("nope.scad")));
     }
 
     #[test]

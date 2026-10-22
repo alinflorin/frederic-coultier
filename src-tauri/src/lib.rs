@@ -6,6 +6,7 @@ mod insight;
 mod meshtools;
 mod project;
 mod render;
+mod scadlib;
 mod shade;
 mod supports;
 
