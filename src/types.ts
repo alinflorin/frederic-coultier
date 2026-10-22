@@ -69,6 +69,9 @@ export interface ToolCall {
   done: boolean;
 }
 
+/** One step of an answer, in the order it happened: a stretch of thinking, of the answer's text, or a tool call. */
+export type Step = { type: "thought"; text: string } | { type: "text"; text: string } | { type: "tool"; call: ToolCall };
+
 /** A share of a time window of the account's plan that is used up. */
 export interface Limit {
   /** "5h", "weekly". */
@@ -98,6 +101,8 @@ export interface ChatMessage {
   thinking?: string;
   /** Assistant only: the tools it used while answering, for display. */
   tools?: ToolCall[];
+  /** Assistant only: its thinking and tool calls in the order they happened; replaces `thinking`, `tools` and the display of `text` when set. */
+  steps?: Step[];
   /** Assistant only: summary of the change made to the source. */
   change?: { added: number; removed: number };
 }

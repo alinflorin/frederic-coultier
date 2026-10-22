@@ -85,6 +85,9 @@ impl Mcp {
             old.stop.cancel();
             if tokio::time::timeout(Duration::from_secs(3), &mut old.task).await.is_err() {
                 old.task.abort();
+                // An abort only takes effect once the task is polled; wait so the listener is
+                // really closed before the port is reused or reported free.
+                let _ = (&mut old.task).await;
             }
         }
         let mut status = McpStatus { running: false, url: None, error: None, client: None, idle_secs: None, calls: 0 };

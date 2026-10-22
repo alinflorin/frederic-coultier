@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { Limit as ChatLimit, Attached, ChatBook, ChatLog, ChatMessage, FcProject, ToolCall } from "../types";
+import type { Limit as ChatLimit, Attached, ChatBook, ChatLog, ChatMessage, FcProject, Step } from "../types";
 import { inTauri } from "../api";
 import { getPref, setPref } from "../prefs";
-import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine } from "./engines";
+import { loadChat, onChatEvent, saveChat, sendToEngine, stopEngine, type ChatEvent } from "./engines";
 import { freshBook, freshLog, needsAutoCompact, portableBook, mergeBooks, readBook, titleOf } from "./book";
 import { COMPACT_PROMPT, lineChange, opening } from "./prompt";
 import { chimeOn, chimeSecs, chimedSince, playChime } from "../chime";
@@ -13,8 +13,26 @@ export const AUTO_COMPACT_AT = 0.8;
 /** The answer being written right now. */
 export interface Live {
   text: string;
-  thinking: string;
-  tools: ToolCall[];
+  steps: Step[];
+}
+
+/** The answer being written, with one more thing the agent did. */
+function stepped(l: Live, e: ChatEvent): Live {
+  const last = l.steps[l.steps.length - 1];
+  // text and thinking grow the step before them if it is of the same kind
+  const grow = (type: "thought" | "text", more: string): Live => ({
+    ...l,
+    steps: last?.type === type ? [...l.steps.slice(0, -1), { type, text: last.text + more }] : [...l.steps, { type, text: more }],
+  });
+  if (e.kind === "delta") return { ...grow("text", e.text), text: l.text + e.text };
+  if (e.kind === "thought") return grow("thought", e.text);
+  if (e.kind === "tool") return { ...l, steps: [...l.steps, { type: "tool", call: e.call }] };
+  return {
+    ...l,
+    steps: l.steps.map((s) =>
+      s.type === "tool" && s.call.id === e.id ? { type: "tool", call: { ...s.call, output: e.output, error: e.error, done: true } } : s,
+    ),
+  };
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e));
@@ -110,6 +128,7 @@ export function useAgentChat({
   }, [engine]);
 
   const [live, setLive] = useState<Live | null>(null);
+  const liveRef = useRef<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<"answer" | "compact" | null>(null);
   const busy = useRef(false);
@@ -119,16 +138,10 @@ export function useAgentChat({
     let off: (() => void) | undefined;
     let gone = false;
     onChatEvent((e) => {
-      setLive((l) => {
-        if (!l) return l;
-        if (e.kind === "delta") return { ...l, text: l.text + e.text };
-        if (e.kind === "thought") return { ...l, thinking: l.thinking + e.text };
-        if (e.kind === "tool") return { ...l, tools: [...l.tools, e.call] };
-        return {
-          ...l,
-          tools: l.tools.map((c) => (c.id === e.id ? { ...c, output: e.output, error: e.error, done: true } : c)),
-        };
-      });
+      const l = liveRef.current;
+      if (!l) return;
+      liveRef.current = stepped(l, e);
+      setLive(liveRef.current);
     }).then(
       (f) => (gone ? f() : (off = f)),
       () => {},
@@ -166,7 +179,8 @@ export function useAgentChat({
     busy.current = true;
     setError(null);
     setWorking(kind);
-    setLive({ text: "", thinking: "", tools: [] });
+    liveRef.current = { text: "", steps: [] };
+    setLive(liveRef.current);
     try {
       const r = await sendToEngine(engine!, prompt, session, model, effort, files);
       if (r.session) patch((c) => ({ ...c, session: { engine: engine!, id: r.session! } }));
@@ -180,10 +194,11 @@ export function useAgentChat({
         setPref("chatLimits", next);
         setLimits(u.limits);
       }
-      return r;
+      return { ...r, steps: liveRef.current?.steps ?? [] };
     } finally {
       busy.current = false;
       setWorking(null);
+      liveRef.current = null;
       setLive(null);
     }
   }
@@ -204,8 +219,14 @@ export function useAgentChat({
       const change = lineChange(before, projectRef.current!.source);
       const changed = change.added + change.removed > 0;
       const said = r.cancelled ? `${r.text}${r.text ? "\n\n" : ""}…` : r.text;
-      if (said || r.tools.length) {
-        add({ role: "assistant", text: said, thinking: r.thinking || undefined, tools: r.tools.length ? r.tools : undefined, change: changed ? change : undefined });
+      if (said || r.steps.length) {
+        let steps = r.steps;
+        // what the agent said is shown in its steps; a cancelled answer ends with the dots
+        if (r.cancelled) {
+          const last = steps[steps.length - 1];
+          steps = last?.type === "text" ? [...steps.slice(0, -1), { type: "text", text: `${last.text}…` }] : [...steps, { type: "text", text: "…" }];
+        } else if (r.text && !steps.some((s) => s.type === "text")) steps = [...steps, { type: "text", text: r.text }];
+        add({ role: "assistant", text: said, steps: steps.length ? steps : undefined, change: changed ? change : undefined });
       }
       const log = bookRef.current.list.find((l) => l.id === convo);
       if (!r.cancelled && bookRef.current.active === convo && needsAutoCompact(log, engine, AUTO_COMPACT_AT)) await compact();
