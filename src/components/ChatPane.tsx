@@ -21,18 +21,44 @@ function Say({ text }: { text: string }) {
   );
 }
 
+/** The colours that tell the kinds of block apart: thinking, tool calls, the answer itself. */
+const TONES = { thought: "#8b5cf6", tool: "#e0902b", say: "var(--accent)" } as const;
+const tint = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, var(--surface))`;
+
+/** A block of the answer: a rounded card with a coloured edge and icon. */
+function Block({ tone, icon, head, children, ...rest }: { tone: string; icon?: string; head?: ReactNode; children: ReactNode } & BoxProps) {
+  return (
+    <Box
+      mb={8}
+      bg={tint(tone, 7)}
+      bd={`1px solid ${tint(tone, 28)}`}
+      {...rest}
+      style={{ minWidth: 0, overflow: "hidden", borderRadius: 12, borderLeft: `3px solid ${tone}`, ...rest.style }}
+    >
+      {head && (
+        <Group gap={7} wrap="nowrap" px={10} pt={7} pb={0} fz={11.5} fw={600} c={tone} style={{ letterSpacing: 0.2, textTransform: "uppercase" }}>
+          {icon && <Icon name={icon} size={13} />}
+          {head}
+        </Group>
+      )}
+      {children}
+    </Box>
+  );
+}
+
 /** A heading that folds its content up until clicked. */
-function Fold({ head, open, children, ...rest }: { head: ReactNode; open?: boolean; children: ReactNode | ((shown: boolean) => ReactNode) } & BoxProps) {
+function Fold({ head, open, tone, icon, children, ...rest }: { head: ReactNode; open?: boolean; tone: string; icon: string; children: ReactNode | ((shown: boolean) => ReactNode) } & BoxProps) {
   const [shown, setShown] = useState(!!open);
   useEffect(() => setShown(!!open), [open]);
   return (
-    <Box {...rest}>
-      <UnstyledButton onClick={() => setShown((v) => !v)} aria-expanded={shown} style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0, width: "100%", textAlign: "left" }}>
-        <Text span inherit style={{ flex: "none" }}>{shown ? "▾" : "▸"}</Text>
+    <Block tone={tone} {...rest}>
+      <UnstyledButton onClick={() => setShown((v) => !v)} aria-expanded={shown} c={tone} style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0, width: "100%", textAlign: "left", padding: "7px 10px" }}>
+        <Icon name={icon} size={14} />
         {head}
+        <Box ml="auto" c="dimmed" style={{ flex: "none", display: "flex", transform: shown ? "rotate(180deg)" : undefined, transition: "transform .15s" }}><Icon name="chevron" size={13} /></Box>
       </UnstyledButton>
       <Collapse expanded={shown}>{typeof children === "function" ? children(shown) : children}</Collapse>
-    </Box>
+    </Block>
   );
 }
 
@@ -44,7 +70,7 @@ function ThoughtBody({ text, shown }: { text: string; shown: boolean }) {
     if (el && shown) el.scrollTop = el.scrollHeight;
   }, [text, shown]);
   return (
-    <Box ref={box} mt={4} pl={10} fs="italic" bd="0 solid var(--border)" style={{ borderLeftWidth: 2, maxHeight: 240, overflow: "auto" }}>
+    <Box ref={box} px={12} pb={10} pt={2} fs="italic" c="var(--text-dim, inherit)" style={{ maxHeight: 240, overflow: "auto" }}>
       <Say text={text} />
     </Box>
   );
@@ -56,7 +82,7 @@ function Thought({ text, open }: { text: string; open?: boolean }) {
   const body = text.trim();
   if (!body) return null;
   return (
-    <Fold mb={8} fz={12} c="dimmed" open={open} head={<span>{t("chat.thoughts")}</span>}>
+    <Fold tone={TONES.thought} icon="bulb" fz={12} open={open} head={<Text span inherit fw={600} style={{ letterSpacing: 0.2, textTransform: "uppercase", fontSize: 11.5 }}>{t("chat.thoughts")}</Text>}>
       {(shown) => <ThoughtBody text={body} shown={shown} />}
     </Fold>
   );
@@ -65,24 +91,24 @@ function Thought({ text, open }: { text: string; open?: boolean }) {
 /** The tool calls of one answer, each folded up until clicked: what was asked, what came back, pictures included. */
 function Tools({ tools }: { tools: ToolCall[] }) {
   const { t } = useTranslation();
-  const out = { margin: 0, padding: "6px 8px", fontSize: 11.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 260, overflow: "auto", borderTop: "1px solid var(--border)" } as const;
+  const out = { margin: 0, padding: "6px 8px", fontSize: 11.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 260, overflow: "auto", borderTop: "1px solid color-mix(in srgb, var(--text) 12%, transparent)" } as const;
   return (
-    <Stack gap={4} mt={8} fz={12} style={{ minWidth: 0, whiteSpace: "normal" }}>
+    <Stack gap={4} mb={8} fz={12} style={{ minWidth: 0, whiteSpace: "normal" }}>
       {tools.map((c, i) => (
         <Fold
           key={c.id || i}
-          bg="var(--surface-2)"
-          bd="1px solid var(--border)"
-          style={{ minWidth: 0, overflow: "hidden", borderRadius: 10 }}
+          tone={c.error ? "var(--bad)" : TONES.tool}
+          icon="wrench"
+          mb={0}
           head={
             <>
-              <Text span inherit ff="monospace" fw={600} c={c.error ? "var(--bad)" : undefined} style={{ flex: "none" }}>{c.name}</Text>
+              <Text span inherit ff="monospace" fw={600} style={{ flex: "none" }}>{c.name}</Text>
               {c.input && <Text span inherit ff="monospace" c="dimmed" truncate="end" style={{ minWidth: 0 }}>{c.input.split("\n")[0]}</Text>}
               {!c.done && <Text span inherit c="dimmed">…</Text>}
             </>
           }
         >
-          {c.input && <Box component="pre" bg="var(--surface-2)" style={out}>{c.input}</Box>}
+          {c.input && <Box component="pre" style={out}>{c.input}</Box>}
           {c.output.map((p, j) =>
             p.type === "text" ? (
               <Box component="pre" key={j} style={out}>{p.text}</Box>
@@ -99,17 +125,24 @@ function Tools({ tools }: { tools: ToolCall[] }) {
 /** What the agent did while answering, in order: each stretch of thinking, then the tools it called. */
 function Steps({ steps, thinking }: { steps: Step[]; thinking?: boolean }) {
   // runs of tool calls share one list
-  const groups: ({ thought: string } | { tools: ToolCall[] })[] = [];
+  const groups: ({ thought: string } | { say: string } | { tools: ToolCall[] })[] = [];
   for (const s of steps) {
     const last = groups[groups.length - 1];
     if (s.type === "thought") groups.push({ thought: s.text });
+    else if (s.type === "text") groups.push({ say: s.text });
     else if (last && "tools" in last) last.tools.push(s.call);
     else groups.push({ tools: [s.call] });
   }
   return (
     <>
       {groups.map((g, i) =>
-        "thought" in g ? <Thought key={i} text={g.thought} open={thinking && i === groups.length - 1} /> : <Tools key={i} tools={g.tools} />,
+        "thought" in g ? (
+          <Thought key={i} text={g.thought} open={thinking && i === groups.length - 1} />
+        ) : "say" in g ? (
+          <Block key={i} tone={TONES.say} icon="sparkle"><Box px={12} py={9}><Say text={g.say} /></Box></Block>
+        ) : (
+          <Tools key={i} tools={g.tools} />
+        ),
       )}
     </>
   );
@@ -462,7 +495,7 @@ export function ChatPane({
                     {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                   </>
                 )}
-                {m.text && <Say text={m.text} />}
+                {!m.steps && m.text && <Block tone={TONES.say}><Box px={12} py={9}><Say text={m.text} /></Box></Block>}
                 {m.change && (
                   <Group gap={6} mt={8} px={9} py={4} fz={12} ff="monospace" bg="var(--surface-2)" bd="1px solid var(--border)" w="fit-content" wrap="nowrap" style={{ borderRadius: 8 }}>
                     <Icon name="code" size={13} /> model.scad
@@ -482,8 +515,8 @@ export function ChatPane({
               <>
                 <Avatar busy />
                 <Box fz={13.5} aria-label={t("chat.thinking")} style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
-                  <Steps steps={live.steps} thinking={!live.text} />
-                  {live.text ? <Say text={live.text} /> : live.steps.length === 0 && <Loader type="dots" size="sm" color="dimmed" />}
+                  <Steps steps={live.steps} thinking />
+                  {live.steps.length === 0 && <Loader type="dots" size="sm" color="dimmed" />}
                 </Box>
               </>
             )}

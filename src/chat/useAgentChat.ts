@@ -18,15 +18,14 @@ export interface Live {
 
 /** The answer being written, with one more thing the agent did. */
 function stepped(l: Live, e: ChatEvent): Live {
-  if (e.kind === "delta") return { ...l, text: l.text + e.text };
-  if (e.kind === "thought") {
-    const last = l.steps[l.steps.length - 1];
-    const steps: Step[] =
-      last?.type === "thought"
-        ? [...l.steps.slice(0, -1), { type: "thought", text: last.text + e.text }]
-        : [...l.steps, { type: "thought", text: e.text }];
-    return { ...l, steps };
-  }
+  const last = l.steps[l.steps.length - 1];
+  // text and thinking grow the step before them if it is of the same kind
+  const grow = (type: "thought" | "text", more: string): Live => ({
+    ...l,
+    steps: last?.type === type ? [...l.steps.slice(0, -1), { type, text: last.text + more }] : [...l.steps, { type, text: more }],
+  });
+  if (e.kind === "delta") return { ...grow("text", e.text), text: l.text + e.text };
+  if (e.kind === "thought") return grow("thought", e.text);
   if (e.kind === "tool") return { ...l, steps: [...l.steps, { type: "tool", call: e.call }] };
   return {
     ...l,
@@ -221,7 +220,13 @@ export function useAgentChat({
       const changed = change.added + change.removed > 0;
       const said = r.cancelled ? `${r.text}${r.text ? "\n\n" : ""}…` : r.text;
       if (said || r.steps.length) {
-        add({ role: "assistant", text: said, steps: r.steps.length ? r.steps : undefined, change: changed ? change : undefined });
+        let steps = r.steps;
+        // what the agent said is shown in its steps; a cancelled answer ends with the dots
+        if (r.cancelled) {
+          const last = steps[steps.length - 1];
+          steps = last?.type === "text" ? [...steps.slice(0, -1), { type: "text", text: `${last.text}…` }] : [...steps, { type: "text", text: "…" }];
+        } else if (r.text && !steps.some((s) => s.type === "text")) steps = [...steps, { type: "text", text: r.text }];
+        add({ role: "assistant", text: said, steps: steps.length ? steps : undefined, change: changed ? change : undefined });
       }
       const log = bookRef.current.list.find((l) => l.id === convo);
       if (!r.cancelled && bookRef.current.active === convo && needsAutoCompact(log, engine, AUTO_COMPACT_AT)) await compact();
