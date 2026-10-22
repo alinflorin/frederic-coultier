@@ -5,6 +5,13 @@ name: Release cache
 on:
   push:
     branches: [main]
+    paths:
+      # what rust-cache puts in its key; a source-only change hits the same key and saves nothing
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/.cargo/**"
+      - "src-tauri/rust-toolchain*"
+      - ".github/workflows/release-cache.yml"
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
