@@ -383,8 +383,46 @@ async fn export_model(
     .map_err(|e| e.to_string())?
 }
 
+/// An app started from a launcher gets a bare PATH, without what the shell's
+/// rc files add (nvm, npm globals), so the agent CLIs would not be found.
+#[cfg(unix)]
+fn adopt_shell_path() {
+    use std::process::{Command, Stdio};
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = Command::new(shell)
+            .args(["-ilc", "printf '<<%s>>' \"$PATH\""])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = tx.send(out);
+    });
+    let Ok(Ok(out)) = rx.recv_timeout(std::time::Duration::from_secs(5)) else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let Some(shell_path) = text.rsplit_once("<<").and_then(|(_, r)| r.split_once(">>")) else {
+        return;
+    };
+    let mut dirs: Vec<std::path::PathBuf> = std::env::split_paths(shell_path.0).collect();
+    if let Some(own) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&own) {
+            if !dirs.contains(&d) {
+                dirs.push(d);
+            }
+        }
+    }
+    if let Ok(joined) = std::env::join_paths(dirs) {
+        // SAFETY: runs first thing in `run`, before any other thread exists
+        unsafe { std::env::set_var("PATH", joined) };
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(unix)]
+    adopt_shell_path();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
