@@ -53,11 +53,13 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
-          key: ${{ matrix.args }}-arch
+          add-job-id-key: false
+          shared-key: release-${{ matrix.platform }}-${{ matrix.args }}
+          save-if: false # tags can't share caches, release-cache.yml saves them on main
 
       - name: Cache C++ compilation (manifold, built by cmake)
         if: runner.os != 'Windows'
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ${{ matrix.platform }}-${{ matrix.args }}
           max-size: 500M
