@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { EngineInfo, ModelInfo } from "../chat/engines";
 import type { Live } from "../chat/useAgentChat";
-import type { Attached, ChatLog, Limit, ChatMessage, ToolCall } from "../types";
+import type { Attached, ChatLog, Limit, ChatMessage, Step, ToolCall } from "../types";
 import { Icon } from "./Icon";
 import { setChimeOn, useChime } from "../chime";
 import { AUTO_COMPACT_AT } from "../chat/useAgentChat";
@@ -22,7 +22,7 @@ function Say({ text }: { text: string }) {
 }
 
 /** A heading that folds its content up until clicked. */
-function Fold({ head, open, children, ...rest }: { head: ReactNode; open?: boolean; children: ReactNode } & BoxProps) {
+function Fold({ head, open, children, ...rest }: { head: ReactNode; open?: boolean; children: ReactNode | ((shown: boolean) => ReactNode) } & BoxProps) {
   const [shown, setShown] = useState(!!open);
   useEffect(() => setShown(!!open), [open]);
   return (
@@ -31,7 +31,21 @@ function Fold({ head, open, children, ...rest }: { head: ReactNode; open?: boole
         <Text span inherit style={{ flex: "none" }}>{shown ? "▾" : "▸"}</Text>
         {head}
       </UnstyledButton>
-      <Collapse expanded={shown}>{children}</Collapse>
+      <Collapse expanded={shown}>{typeof children === "function" ? children(shown) : children}</Collapse>
+    </Box>
+  );
+}
+
+/** The text of a thought, kept scrolled to its end as it grows and when it is opened. */
+function ThoughtBody({ text, shown }: { text: string; shown: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el && shown) el.scrollTop = el.scrollHeight;
+  }, [text, shown]);
+  return (
+    <Box ref={box} mt={4} pl={10} fs="italic" bd="0 solid var(--border)" style={{ borderLeftWidth: 2, maxHeight: 240, overflow: "auto" }}>
+      <Say text={text} />
     </Box>
   );
 }
@@ -43,9 +57,7 @@ function Thought({ text, open }: { text: string; open?: boolean }) {
   if (!body) return null;
   return (
     <Fold mb={8} fz={12} c="dimmed" open={open} head={<span>{t("chat.thoughts")}</span>}>
-      <Box mt={4} pl={10} fs="italic" bd="0 solid var(--border)" style={{ borderLeftWidth: 2, maxHeight: 240, overflow: "auto" }}>
-        <Say text={body} />
-      </Box>
+      {(shown) => <ThoughtBody text={body} shown={shown} />}
     </Fold>
   );
 }
@@ -81,6 +93,25 @@ function Tools({ tools }: { tools: ToolCall[] }) {
         </Fold>
       ))}
     </Stack>
+  );
+}
+
+/** What the agent did while answering, in order: each stretch of thinking, then the tools it called. */
+function Steps({ steps, thinking }: { steps: Step[]; thinking?: boolean }) {
+  // runs of tool calls share one list
+  const groups: ({ thought: string } | { tools: ToolCall[] })[] = [];
+  for (const s of steps) {
+    const last = groups[groups.length - 1];
+    if (s.type === "thought") groups.push({ thought: s.text });
+    else if (last && "tools" in last) last.tools.push(s.call);
+    else groups.push({ tools: [s.call] });
+  }
+  return (
+    <>
+      {groups.map((g, i) =>
+        "thought" in g ? <Thought key={i} text={g.thought} open={thinking && i === groups.length - 1} /> : <Tools key={i} tools={g.tools} />,
+      )}
+    </>
   );
 }
 
@@ -423,9 +454,15 @@ export function ChatPane({
             <Group key={m.id} wrap="nowrap" align="flex-start" gap={10} style={{ minWidth: 0 }} className="fade-up">
               <Avatar />
               <Box fz={13.5} style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
-                {m.thinking && <Thought text={m.thinking} />}
+                {m.steps ? (
+                  <Steps steps={m.steps} />
+                ) : (
+                  <>
+                    {m.thinking && <Thought text={m.thinking} />}
+                    {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
+                  </>
+                )}
                 {m.text && <Say text={m.text} />}
-                {m.tools && <Tools tools={m.tools.filter((c) => typeof c === "object")} />}
                 {m.change && (
                   <Group gap={6} mt={8} px={9} py={4} fz={12} ff="monospace" bg="var(--surface-2)" bd="1px solid var(--border)" w="fit-content" wrap="nowrap" style={{ borderRadius: 8 }}>
                     <Icon name="code" size={13} /> model.scad
@@ -445,9 +482,8 @@ export function ChatPane({
               <>
                 <Avatar busy />
                 <Box fz={13.5} aria-label={t("chat.thinking")} style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>
-                  {live.thinking.trim() && <Thought text={live.thinking} open={!live.text} />}
-                  {live.text ? <Say text={live.text} /> : !live.thinking.trim() && <Loader type="dots" size="sm" color="dimmed" />}
-                  {live.tools.length > 0 && <Tools tools={live.tools} />}
+                  <Steps steps={live.steps} thinking={!live.text} />
+                  {live.text ? <Say text={live.text} /> : live.steps.length === 0 && <Loader type="dots" size="sm" color="dimmed" />}
                 </Box>
               </>
             )}
