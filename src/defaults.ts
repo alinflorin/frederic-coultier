@@ -39,7 +39,7 @@ export function emptyProject(name: string): FcProject {
   return {
     formatVersion: 1,
     settings: { ...DEFAULT_SETTINGS, general: { ...DEFAULT_SETTINGS.general, name } },
-    source: "// New project\n$fn = 128;\n",
+    source: "# New project\nimport rhinoscriptsyntax as rs\n",
     supports: { list: [], nextId: 1 },
     chats: freshBook(),
     history: [],
