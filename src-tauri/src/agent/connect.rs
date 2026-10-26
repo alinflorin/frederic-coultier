@@ -162,19 +162,11 @@ fn connect_desktop(config_dir: &Path, url: &str) -> Result<String, String> {
 }
 
 async fn run(s: &Step) -> Result<String, String> {
-    // npm installs the CLIs as .cmd shims on Windows, which only the shell finds
-    let mut cmd = if cfg!(windows) {
-        let mut c = tokio::process::Command::new("cmd");
-        c.arg("/C").arg(s.program);
-        c
-    } else {
-        tokio::process::Command::new(s.program)
-    };
+    let mut cmd = super::chat::command(s.program);
     cmd.args(&s.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .stderr(Stdio::piped());
     let child = cmd.spawn().map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => format!(
             "`{}` was not found; is it installed and on the PATH?",

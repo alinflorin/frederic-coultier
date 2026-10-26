@@ -246,17 +246,48 @@ fn engine(id: &str) -> Result<Box<dyn Engine>, String> {
         .ok_or_else(|| format!("unknown agent {id:?}"))
 }
 
-fn command(program: &str) -> tokio::process::Command {
-    // npm installs the CLIs as .cmd shims on Windows, which only the shell finds
-    let mut c = if cfg!(windows) {
-        let mut c = tokio::process::Command::new("cmd");
-        c.arg("/C").arg(program);
-        c
-    } else {
-        tokio::process::Command::new(program)
+pub(crate) fn command(program: &str) -> tokio::process::Command {
+    let mut c = match native_exe(program) {
+        Some(exe) => tokio::process::Command::new(exe),
+        // npm installs the CLIs as .cmd shims on Windows, which only the shell finds
+        None if cfg!(windows) => {
+            let mut c = tokio::process::Command::new("cmd");
+            c.arg("/C").arg(program);
+            c
+        }
+        None => tokio::process::Command::new(program),
     };
     c.kill_on_drop(true);
+    hide_window(&mut c);
     c
+}
+
+/// A GUI app has no console, so Windows opens a new one for every child process.
+fn hide_window(c: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    #[cfg(not(windows))]
+    let _ = c;
+}
+
+/// The full path of a natively installed `<program>.exe`, which runs without
+/// `cmd /C` and so without its command length limit. Looks on the PATH, then in
+/// the folder the native installers use.
+#[cfg(windows)]
+fn native_exe(program: &str) -> Option<std::path::PathBuf> {
+    let exe = format!("{program}.exe");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let local = std::env::var_os("USERPROFILE")
+        .map(|h| std::path::PathBuf::from(h).join(".local").join("bin"));
+    std::env::split_paths(&path)
+        .chain(local)
+        .map(|d| d.join(&exe))
+        .find(|p| p.is_file())
+}
+
+#[cfg(not(windows))]
+fn native_exe(_program: &str) -> Option<std::path::PathBuf> {
+    None
 }
 
 fn not_found(program: &str, e: &std::io::Error) -> String {
