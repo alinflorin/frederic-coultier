@@ -125,6 +125,10 @@ impl Engine for Codex {
         share(&paths.codex_home.join("auth.json"), &home.join("auth.json"))?;
 
         let mut args: Vec<String> = vec!["exec".into()];
+        // an option of `exec` only: `exec resume` rejects it, so it goes before the subcommand
+        if turn.all_tools {
+            args.push("--approve-for-me".into());
+        }
         if let Some(id) = turn.session {
             args.push("resume".into());
             args.push(id.into());
@@ -141,9 +145,6 @@ impl Engine for Codex {
         // ask for the reasoning summaries, so there is something to show while it thinks
         args.extend(["-c".into(), "model_reasoning_summary=\"auto\"".into()]);
         args.extend(["--json", "--skip-git-repo-check"].map(String::from));
-        if turn.all_tools {
-            args.push("--approve-for-me".into());
-        }
         // pictures are handed over as files; the rest is text that goes into the prompt
         let pics = subdir(paths, "codex-files")?;
         for old in std::fs::read_dir(&pics).into_iter().flatten().flatten() {
@@ -446,7 +447,7 @@ mod tests {
             all_tools: true,
         };
         let inv = Codex.prepare(&t, &p).unwrap();
-        assert_eq!(inv.args[..3], ["exec", "resume", "t9"]);
+        assert_eq!(inv.args[..4], ["exec", "--approve-for-me", "resume", "t9"]);
         assert_eq!(inv.args.last().unwrap(), "-");
         let a = inv.args.join(" ");
         assert!(
