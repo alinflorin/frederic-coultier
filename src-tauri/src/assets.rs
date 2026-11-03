@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use openrscad_geom::Mesh;
 use serde::Serialize;
 
+use crate::meshtools::{self, RepairReport};
+
 type Store = BTreeMap<String, Arc<Vec<u8>>>;
 
 fn store() -> &'static Mutex<Store> {
@@ -62,6 +64,9 @@ pub struct AssetInfo {
     pub triangles: usize,
     /// Axis-aligned bounds in the file's own units: `[min, max]`.
     pub bounds: Option<[[f64; 3]; 2]>,
+    /// Set when the file was open or non-manifold and was repaired on the way in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repair: Option<RepairReport>,
 }
 
 fn info(name: &str, bytes: &[u8]) -> AssetInfo {
@@ -74,7 +79,7 @@ fn info(name: &str, bytes: &[u8]) -> AssetInfo {
             b[1][k] = b[1][k].max(p[k]);
         }
     }
-    AssetInfo { name: name.to_owned(), bytes: bytes.len(), triangles: mesh.tris.len(), bounds }
+    AssetInfo { name: name.to_owned(), bytes: bytes.len(), triangles: mesh.tris.len(), bounds, repair: None }
 }
 
 pub fn list() -> Vec<AssetInfo> {
@@ -95,12 +100,45 @@ fn clean_name(raw: &str) -> String {
     format!("{s}.stl")
 }
 
+/// The bytes with open or non-manifold geometry repaired, plus what was done. The file is kept
+/// as it came when it is already clean or when repairing would not leave it better.
+fn repaired(bytes: Vec<u8>) -> (Vec<u8>, Option<RepairReport>) {
+    let mesh = Mesh::from_stl(&bytes);
+    if meshtools::is_clean(&meshtools::analyze(&mesh)) {
+        return (bytes, None);
+    }
+    let (fixed, report) = meshtools::repair(&mesh);
+    let defects = |s: &meshtools::MeshStats| s.open_edges + s.non_manifold_edges + s.winding_edges;
+    if fixed.tris.is_empty() || defects(&report.after) >= defects(&report.before) {
+        return (bytes, None);
+    }
+    (fixed.to_binary_stl(), Some(report))
+}
+
+/// Repairs the stored file `name` in place. Returns None if there is no such file; the report's
+/// `after` shows what is left when the damage was more than could be fixed.
+pub fn repair(name: &str) -> Option<(AssetInfo, bool)> {
+    let bytes = get(name)?;
+    let (new, report) = repaired(bytes.to_vec());
+    let changed = report.is_some();
+    let mut g = lock();
+    if changed {
+        g.insert(name.to_owned(), Arc::new(new.clone()));
+    }
+    drop(g);
+    Some((AssetInfo { repair: report, ..info(name, &new) }, changed))
+}
+
 /// Adds an STL (binary or ASCII) under a name derived from `file_name`, never replacing another
 /// file: a clash gets `-2`, `-3`, ... Rejects files with no triangles.
 pub fn add_stl(file_name: &str, bytes: Vec<u8>) -> Result<AssetInfo, String> {
-    let probe = info("", &bytes);
+    let mut probe = info("", &bytes);
     if probe.triangles == 0 {
         return Err("this file has no triangles; only STL (binary or ASCII) can be imported".into());
+    }
+    let (bytes, report) = repaired(bytes);
+    if report.is_some() {
+        probe = AssetInfo { repair: report, ..info("", &bytes) };
     }
     let wanted = clean_name(file_name);
     let mut g = lock();

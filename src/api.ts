@@ -155,6 +155,8 @@ export interface SimplifyReport {
   accepted: boolean;
   reason: string | null;
   volumeChange: number;
+  /** The mesh was open or non-manifold, so it was repaired before being simplified. */
+  repaired?: boolean;
 }
 
 export interface MeshReport {
@@ -359,6 +361,25 @@ export interface AssetInfo {
   triangles: number;
   /** `[min, max]` corners in the file's own units. */
   bounds: [[number, number, number], [number, number, number]] | null;
+  /** Present when the file was open or non-manifold and was repaired on import. */
+  repair?: RepairReport;
+}
+
+export interface RepairCounts {
+  openEdges: number;
+  nonManifoldEdges: number;
+  windingEdges: number;
+}
+
+export interface RepairReport {
+  before: RepairCounts;
+  after: RepairCounts;
+  duplicatesRemoved: number;
+  nonManifoldRemoved: number;
+  flipped: number;
+  holesFilled: number;
+  holeTriangles: number;
+  inverted: boolean;
 }
 
 export async function pickMeshToImport(): Promise<string | null> {

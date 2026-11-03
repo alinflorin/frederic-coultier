@@ -43,6 +43,19 @@ export function ImportDialog({
         {size && ` · ${size.map((v) => v.toFixed(1)).join(" × ")}`}
       </Text>
       <Note>{t("import.units")}</Note>
+      {asset.repair && (() => {
+        const left = asset.repair.after.openEdges + asset.repair.after.nonManifoldEdges + asset.repair.after.windingEdges;
+        return (
+          <Note>
+            {t("import.repaired", {
+              holes: asset.repair.holesFilled,
+              removed: asset.repair.duplicatesRemoved + asset.repair.nonManifoldRemoved,
+              flipped: asset.repair.flipped,
+            })}
+            {left > 0 && ` ${t("import.repairLeft", { count: left })}`}
+          </Note>
+        );
+      })()}
 
       <Section>{t("import.cuts")}</Section>
       <Stack gap="xs">

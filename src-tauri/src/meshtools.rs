@@ -205,6 +205,232 @@ pub fn validate(stats: &MeshStats) -> Vec<Finding> {
     f
 }
 
+// --- repair ---
+
+/// True when every edge has exactly two triangles that agree on direction.
+pub fn is_clean(s: &MeshStats) -> bool {
+    s.open_edges + s.non_manifold_edges + s.winding_edges == 0
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairReport {
+    pub before: MeshStats,
+    pub after: MeshStats,
+    /// Coincident triangles removed (same-direction copies, and opposite pairs that form an inner wall).
+    pub duplicates_removed: usize,
+    /// Triangles dropped where three or more met at one edge.
+    pub non_manifold_removed: usize,
+    /// Triangles turned around to agree with their neighbours.
+    pub flipped: usize,
+    pub holes_filled: usize,
+    pub hole_triangles: usize,
+    /// The whole mesh was turned inside out because it enclosed negative volume.
+    pub inverted: bool,
+}
+
+fn edge_key(a: u32, b: u32) -> (u32, u32) {
+    if a < b { (a, b) } else { (b, a) }
+}
+
+fn has_dir(t: &[u32; 3], a: u32, b: u32) -> bool {
+    (0..3).any(|k| t[k] == a && t[(k + 1) % 3] == b)
+}
+
+fn tri_area(m: &Mesh, t: &[u32; 3]) -> f64 {
+    let (a, b, c) = (m.verts[t[0] as usize], m.verts[t[1] as usize], m.verts[t[2] as usize]);
+    norm(cross(sub(b, a), sub(c, a))) * 0.5
+}
+
+/// Closes up a damaged mesh: welds, drops duplicate and degenerate triangles, resolves edges shared
+/// by more than two triangles, makes the winding consistent, fills open holes and faces the result
+/// outward. Never fails; `after` in the report says what is left.
+pub fn repair(mesh: &Mesh) -> (Mesh, RepairReport) {
+    let before = analyze(mesh);
+    let w = mesh.welded(WELD_EPS);
+
+    // 1. duplicates: group by vertex set, cancel opposite pairs, keep one of identical copies
+    let mut groups: HashMap<[u32; 3], (Vec<usize>, Vec<usize>)> = HashMap::new();
+    let mut order: Vec<[u32; 3]> = Vec::new();
+    for (i, t) in w.tris.iter().enumerate() {
+        let mut k = *t;
+        k.sort_unstable();
+        let even = {
+            let rot = (0..3).find(|&r| (0..3).all(|j| t[(r + j) % 3] == k[j]));
+            rot.is_some()
+        };
+        let g = groups.entry(k).or_insert_with(|| {
+            order.push(k);
+            Default::default()
+        });
+        if even { g.0.push(i) } else { g.1.push(i) }
+    }
+    let mut tris: Vec<[u32; 3]> = Vec::new();
+    let mut duplicates = 0;
+    for k in &order {
+        let (pos, neg) = &groups[k];
+        let cancel = pos.len().min(neg.len());
+        let (p, n) = (pos.len() - cancel, neg.len() - cancel);
+        duplicates += pos.len() + neg.len() - (p.min(1) + n.min(1));
+        if p > 0 { tris.push(w.tris[pos[0]]); }
+        if n > 0 { tris.push(w.tris[neg[0]]); }
+    }
+
+    // 2. edges with 3+ triangles: keep the two largest
+    let mut alive = vec![true; tris.len()];
+    let mut edges: std::collections::BTreeMap<(u32, u32), Vec<usize>> = Default::default();
+    for (i, t) in tris.iter().enumerate() {
+        for k in 0..3 {
+            edges.entry(edge_key(t[k], t[(k + 1) % 3])).or_default().push(i);
+        }
+    }
+    let mut non_manifold_removed = 0;
+    for faces in edges.values() {
+        let mut live: Vec<usize> = faces.iter().copied().filter(|&f| alive[f]).collect();
+        if live.len() <= 2 {
+            continue;
+        }
+        live.sort_by(|&a, &b| tri_area(&w, &tris[b]).total_cmp(&tri_area(&w, &tris[a])));
+        for &f in &live[2..] {
+            alive[f] = false;
+            non_manifold_removed += 1;
+        }
+    }
+    let mut tris: Vec<[u32; 3]> =
+        tris.iter().zip(&alive).filter(|(_, a)| **a).map(|(t, _)| *t).collect();
+
+    // 3. consistent winding, flooding across edges shared by exactly two triangles
+    let mut edges: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+    for (i, t) in tris.iter().enumerate() {
+        for k in 0..3 {
+            edges.entry(edge_key(t[k], t[(k + 1) % 3])).or_default().push(i);
+        }
+    }
+    let mut seen = vec![false; tris.len()];
+    let mut flipped = 0;
+    for s in 0..tris.len() {
+        if seen[s] {
+            continue;
+        }
+        seen[s] = true;
+        let mut stack = vec![s];
+        while let Some(f) = stack.pop() {
+            let t = tris[f];
+            for k in 0..3 {
+                let (a, b) = (t[k], t[(k + 1) % 3]);
+                let Some(fs) = edges.get(&edge_key(a, b)) else { continue };
+                if fs.len() != 2 {
+                    continue;
+                }
+                let g = if fs[0] == f { fs[1] } else { fs[0] };
+                if seen[g] {
+                    continue;
+                }
+                seen[g] = true;
+                if has_dir(&tris[g], a, b) {
+                    tris[g].swap(1, 2);
+                    flipped += 1;
+                }
+                stack.push(g);
+            }
+        }
+    }
+
+    // 4. fill holes: boundary edges are directed edges whose reverse is absent
+    let mut directed: std::collections::HashSet<(u32, u32)> = Default::default();
+    for t in &tris {
+        for k in 0..3 {
+            directed.insert((t[k], t[(k + 1) % 3]));
+        }
+    }
+    let mut boundary: Vec<(u32, u32)> =
+        directed.iter().copied().filter(|&(a, b)| !directed.contains(&(b, a))).collect();
+    boundary.sort_unstable();
+    let mut out: HashMap<u32, Vec<u32>> = HashMap::new();
+    for &(a, b) in &boundary {
+        out.entry(a).or_default().push(b);
+    }
+    let mut verts = w.verts.clone();
+    let (mut holes_filled, mut hole_triangles) = (0, 0);
+    for &(a0, b0) in &boundary {
+        if !out.get(&a0).is_some_and(|v| v.contains(&b0)) {
+            continue; // already part of a loop
+        }
+        let mut lp = vec![a0];
+        let mut cur = b0;
+        out.get_mut(&a0).unwrap().retain(|&x| x != b0);
+        let closed = loop {
+            if cur == a0 {
+                break true;
+            }
+            lp.push(cur);
+            let Some(next) = out.get_mut(&cur).and_then(|v| (!v.is_empty()).then(|| v.remove(0)))
+            else {
+                break false;
+            };
+            cur = next;
+        };
+        if !closed || lp.len() < 3 {
+            continue;
+        }
+        holes_filled += 1;
+        if lp.len() == 3 {
+            tris.push([lp[0], lp[2], lp[1]]);
+            hole_triangles += 1;
+            continue;
+        }
+        let n = lp.len() as f64;
+        let mut c = [0.0; 3];
+        for &v in &lp {
+            for k in 0..3 {
+                c[k] += verts[v as usize][k] / n;
+            }
+        }
+        verts.push(c);
+        let ci = (verts.len() - 1) as u32;
+        for i in 0..lp.len() {
+            tris.push([lp[(i + 1) % lp.len()], lp[i], ci]);
+            hole_triangles += 1;
+        }
+    }
+
+    // 5. compact and face outward
+    let mut remap: HashMap<u32, u32> = HashMap::new();
+    let mut nv: Vec<V3> = Vec::new();
+    let tris: Vec<[u32; 3]> = tris
+        .iter()
+        .map(|t| {
+            let mut r = [0u32; 3];
+            for k in 0..3 {
+                r[k] = *remap.entry(t[k]).or_insert_with(|| {
+                    nv.push(verts[t[k] as usize]);
+                    (nv.len() - 1) as u32
+                });
+            }
+            r
+        })
+        .collect();
+    let mut result = Mesh { verts: nv, tris };
+    let inverted = result.signed_volume() < 0.0;
+    if inverted {
+        result.flip_winding();
+    }
+    let after = analyze(&result);
+    (
+        result,
+        RepairReport {
+            before,
+            after,
+            duplicates_removed: duplicates,
+            non_manifold_removed,
+            flipped,
+            holes_filled,
+            hole_triangles,
+            inverted,
+        },
+    )
+}
+
 // --- simplification ---
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -225,6 +451,8 @@ pub struct SimplifyReport {
     /// Why the result was rejected (the original is kept): "volume" | "bbox" | "open" | "nonManifold" | "stuck".
     pub reason: Option<&'static str>,
     pub volume_change: f64,
+    /// The input was open or non-manifold, so it was repaired before being simplified.
+    pub repaired: bool,
 }
 
 /// Quadric edge-collapse decimation, checked against the input: the result is
@@ -234,6 +462,55 @@ pub fn simplify(mesh: &Mesh, spec: &SimplifySpec) -> (Mesh, SimplifyReport) {
     let welded = mesh.welded(WELD_EPS);
     let before = welded.tris.len();
     let stats_before = analyze(&welded);
+    let accepted = |m: Mesh, vc: f64, repaired: bool| {
+        let after = m.tris.len();
+        let report = SimplifyReport {
+            before,
+            after,
+            accepted: true,
+            reason: None,
+            volume_change: vc,
+            repaired,
+        };
+        (m, report)
+    };
+
+    // A mesh that is open or non-manifold gives the decimator little it can collapse safely (it
+    // either refuses or barely reduces anything), so repair it first and simplify the repaired mesh.
+    // If that is refused too, fall back to simplifying the mesh as it came.
+    if !is_clean(&stats_before) {
+        let (fixed, _) = repair(&welded);
+        let stats_fixed = analyze(&fixed);
+        if let Ok((m, vc)) = run_simplify(&fixed, &stats_fixed, spec) {
+            return accepted(m, vc, true);
+        }
+    }
+    let first_failure = match run_simplify(&welded, &stats_before, spec) {
+        Ok((m, vc)) => return accepted(m, vc, false),
+        Err(f) => f,
+    };
+
+    let (reason, after, vc) = first_failure;
+    (
+        mesh.clone(),
+        SimplifyReport {
+            before,
+            after,
+            accepted: false,
+            reason: Some(reason),
+            volume_change: vc,
+            repaired: false,
+        },
+    )
+}
+
+/// Decimation of `welded` toward the requested size; Ok((mesh, volume change %)) or why it was refused.
+fn run_simplify(
+    welded: &Mesh,
+    stats_before: &MeshStats,
+    spec: &SimplifySpec,
+) -> Result<(Mesh, f64), (&'static str, usize, f64)> {
+    let before = welded.tris.len();
     let mut first_failure: Option<(&'static str, usize, f64)> = None;
 
     // The decimator can occasionally fold an edge at an aggressive target; when the
@@ -244,37 +521,15 @@ pub fn simplify(mesh: &Mesh, spec: &SimplifySpec) -> (Mesh, SimplifyReport) {
         if target >= before {
             break;
         }
-        let result = decimate(&welded, target);
-        match check(&welded, &stats_before, &result, spec) {
-            Ok(vc) => {
-                let after = result.tris.len();
-                return (
-                    result,
-                    SimplifyReport {
-                        before,
-                        after,
-                        accepted: true,
-                        reason: None,
-                        volume_change: vc,
-                    },
-                );
-            }
+        let result = decimate(welded, target);
+        match check(welded, stats_before, &result, spec) {
+            Ok(vc) => return Ok((result, vc)),
             Err(f) => {
                 first_failure.get_or_insert(f);
             }
         }
     }
-    let (reason, after, vc) = first_failure.unwrap_or(("stuck", before, 0.0));
-    (
-        mesh.clone(),
-        SimplifyReport {
-            before,
-            after,
-            accepted: false,
-            reason: Some(reason),
-            volume_change: vc,
-        },
-    )
+    Err(first_failure.unwrap_or(("stuck", before, 0.0)))
 }
 
 fn decimate(welded: &Mesh, target_tris: usize) -> Mesh {
@@ -579,6 +834,86 @@ pub fn plan_sprue_at(mesh: &Mesh, spec: &SprueSpec) -> Option<(Mesh, f64, V3)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn damaged_sphere(f: impl FnOnce(&mut Mesh)) -> (Mesh, f64) {
+        let mut m = sphere(10.0, 16, 24);
+        let v = m.signed_volume();
+        f(&mut m);
+        (m, v)
+    }
+
+    #[test]
+    fn repair_leaves_a_clean_mesh_alone() {
+        let m = sphere(10.0, 16, 24);
+        let (r, rep) = repair(&m);
+        assert!(is_clean(&rep.after));
+        assert_eq!(r.tris.len(), m.tris.len());
+        assert_eq!(rep.holes_filled + rep.flipped + rep.non_manifold_removed, 0);
+    }
+
+    #[test]
+    fn repair_fills_a_hole() {
+        let (m, v) = damaged_sphere(|m| {
+            m.tris.truncate(m.tris.len() - 3);
+        });
+        assert!(!is_clean(&analyze(&m)));
+        let (r, rep) = repair(&m);
+        assert!(is_clean(&rep.after), "{:?}", rep.after);
+        assert!(rep.holes_filled >= 1);
+        assert!((r.signed_volume() - v).abs() / v < 0.05);
+    }
+
+    #[test]
+    fn repair_fixes_flipped_and_duplicate_triangles() {
+        let (m, v) = damaged_sphere(|m| {
+            m.tris[10].swap(1, 2);
+            m.tris[40].swap(1, 2);
+            let d = m.tris[70];
+            m.tris.push(d);
+        });
+        let (r, rep) = repair(&m);
+        assert!(is_clean(&rep.after), "{:?}", rep.after);
+        assert_eq!(rep.flipped, 2);
+        assert_eq!(rep.duplicates_removed, 1);
+        assert!((r.signed_volume() - v).abs() / v < 1e-6);
+    }
+
+    #[test]
+    fn repair_turns_an_inside_out_mesh_outward() {
+        let (m, v) = damaged_sphere(|m| m.flip_winding());
+        let (r, rep) = repair(&m);
+        assert!(rep.inverted);
+        assert!((r.signed_volume() - v).abs() / v < 1e-6);
+    }
+
+    #[test]
+    fn repair_resolves_a_third_face_on_an_edge() {
+        let (m, _) = damaged_sphere(|m| {
+            // a fin: one more triangle hanging off an existing edge
+            let t = m.tris[5];
+            m.verts.push([40.0, 40.0, 40.0]);
+            let n = (m.verts.len() - 1) as u32;
+            m.tris.push([t[1], t[0], n]);
+        });
+        assert!(analyze(&m).non_manifold_edges > 0);
+        let (_, rep) = repair(&m);
+        assert!(is_clean(&rep.after), "{:?}", rep.after);
+        assert!(rep.non_manifold_removed >= 1);
+    }
+
+    #[test]
+    fn simplify_falls_back_to_repair() {
+        let (m, _) = damaged_sphere(|m| {
+            for i in (3..m.tris.len()).step_by(7) {
+                m.tris[i].swap(1, 2);
+            }
+        });
+        let (out, rep) = simplify(&m, &SimplifySpec { keep_percent: 20.0, max_volume_change: 20.0 });
+        assert!(rep.repaired);
+        assert!(rep.accepted, "{:?}", rep.reason);
+        assert!(out.tris.len() < m.tris.len());
+        assert!(is_clean(&analyze(&out)));
+    }
 
     /// A UV sphere with plenty of triangles.
     fn sphere(r: f64, rings: usize, segs: usize) -> Mesh {

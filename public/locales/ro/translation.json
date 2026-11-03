@@ -573,6 +573,8 @@
   },
   "import": {
     "title": "Importă {{name}}",
+    "repaired": "Plasa avea defecte și a fost reparată la import: {{holes}} goluri umplute, {{removed}} triunghiuri duplicate sau în exces eliminate, {{flipped}} întoarse.",
+    "repairLeft": "Au rămas {{count}} muchii cu probleme; verifică-le cu Verificări.",
     "insert": "Adaugă în model",
     "summary": "{{triangles}} triunghiuri",
     "units": "Dimensiunile sunt în unitățile fișierului (de obicei milimetri). STL-ul este copiat în proiect, deci fișierul original nu mai e necesar.",

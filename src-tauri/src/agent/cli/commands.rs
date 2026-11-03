@@ -74,6 +74,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "new-project" => new_project(c, args).await,
         "open-project" => open_project(c, args).await,
         "import-mesh" => import_mesh(c, args).await,
+        "repair-mesh" => repair_mesh(c, args).await,
         "save-project" | "save" => save_project(c, args).await,
         "history" => history(c, args).await,
         "snapshot" => snapshot(c, args).await,
@@ -360,6 +361,47 @@ async fn open_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
 }
 
 /// Copies an STL into the open project; the model then reaches it with `import("name.stl")`.
+fn repair_line(r: &crate::meshtools::RepairReport) -> String {
+    let d = |s: &crate::meshtools::MeshStats| {
+        format!("open {}, non-manifold {}, winding {}", s.open_edges, s.non_manifold_edges, s.winding_edges)
+    };
+    format!(
+        "repaired: before {} → after {}; {} holes filled ({} triangles), {} duplicate and {} extra non-manifold triangles removed, {} turned around{}",
+        d(&r.before),
+        d(&r.after),
+        r.holes_filled,
+        r.hole_triangles,
+        r.duplicates_removed,
+        r.non_manifold_removed,
+        r.flipped,
+        if r.inverted { ", turned outward" } else { "" }
+    )
+}
+
+async fn repair_mesh(_c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let [name] = p.pos.as_slice() else {
+        return Err("give exactly one imported file name (see import-mesh)".into());
+    };
+    let (a, changed) =
+        crate::assets::repair(name).ok_or("no imported file has that name")?;
+    match (&a.repair, changed) {
+        (Some(r), true) => {
+            let left = r.after.open_edges + r.after.non_manifold_edges + r.after.winding_edges;
+            say(format!(
+                "ok: {} repaired ({} triangles now)\n{}{}",
+                name,
+                a.triangles,
+                repair_line(r),
+                if left > 0 { "\nnot everything could be fixed; check will show what is left" } else { "" }
+            ))
+        }
+        _ => say(format!(
+            "nothing changed: {name} is already closed and manifold, or the repair would not have improved it"
+        )),
+    }
+}
+
 async fn import_mesh(_c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     let p = options(args, NO_FLAGS)?;
     let [path] = p.pos.as_slice() else {
@@ -384,8 +426,9 @@ async fn import_mesh(_c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]
         )
     });
+    let fixed = a.repair.as_ref().map_or(String::new(), |r| format!("\n{}", repair_line(r)));
     say(format!(
-        "ok: imported as {n} ({t} triangles){bounds}\nuse it in the source with: import(\"{n}\");\nto remove a section, subtract a shape: difference() {{ import(\"{n}\"); translate([x, y, z]) cube([w, d, h]); }}",
+        "ok: imported as {n} ({t} triangles){bounds}{fixed}\nuse it in the source with: import(\"{n}\");\nto remove a section, subtract a shape: difference() {{ import(\"{n}\"); translate([x, y, z]) cube([w, d, h]); }}",
         n = a.name,
         t = a.triangles
     ))
@@ -1172,7 +1215,11 @@ async fn check(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
             sm["after"],
             n(sm["volumeChange"].as_f64().unwrap_or(0.0)),
             if sm["accepted"] == true {
-                "accepted".to_string()
+                if sm["repaired"] == true {
+                    "accepted (the mesh was repaired first)".to_string()
+                } else {
+                    "accepted".to_string()
+                }
             } else {
                 format!("rejected ({})", sm["reason"].as_str().unwrap_or("?"))
             }

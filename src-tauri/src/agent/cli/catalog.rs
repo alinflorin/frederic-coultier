@@ -146,6 +146,16 @@ pub const COMMANDS: &[Cmd] = &[
     },
     Cmd {
         group: "Project",
+        name: "repair-mesh",
+        usage: "repair-mesh NAME",
+        summary: "close holes and fix non-manifold edges and winding in an imported STL",
+        details: "Repairs the imported file NAME (as import-mesh printed it) in place: welds coincident vertices, removes duplicate triangles, keeps two triangles per edge where three or more meet, makes the winding consistent, fills open holes and faces the mesh outward. The shape is otherwise untouched, so cuts and moves in the source keep working.\nimport-mesh already does this when a file needs it. Use repair-mesh when `check` still reports open, non-manifold or winding edges, or after an import that said it could not fix everything. It says what it did and what is left.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["repair-mesh ring.stl"],
+    },
+    Cmd {
+        group: "Project",
         name: "save-project",
         usage: "save-project [PATH] [--overwrite]",
         summary: "save the project (to its file, or to a new PATH)",

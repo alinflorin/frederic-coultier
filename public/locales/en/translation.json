@@ -573,6 +573,8 @@
   },
   "import": {
     "title": "Import {{name}}",
+    "repaired": "The mesh had defects and was repaired on import: {{holes}} holes filled, {{removed}} duplicate or surplus triangles removed, {{flipped}} turned around.",
+    "repairLeft": "{{count}} problem edges remain; check them with Checks.",
     "insert": "Add to model",
     "summary": "{{triangles}} triangles",
     "units": "Sizes are in the file's own units (usually millimetres). The STL is copied into the project, so the original file is not needed afterwards.",
