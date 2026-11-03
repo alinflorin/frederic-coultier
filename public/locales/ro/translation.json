@@ -40,7 +40,8 @@
     "settingsShort": "Setări",
     "kb": "Bază de cunoștințe…",
     "about": "Despre…",
-    "preferences": "Setări aplicație"
+    "preferences": "Setări aplicație",
+    "import": "Importă STL…"
   },
   "file": {
     "untitled": "Fără titlu",
@@ -569,5 +570,26 @@
       "step3": "Apoi verifică din nou. Până atunci poți continua doar cu MCP.",
       "check": "Verifică din nou"
     }
+  },
+  "import": {
+    "title": "Importă {{name}}",
+    "insert": "Adaugă în model",
+    "summary": "{{triangles}} triunghiuri",
+    "units": "Dimensiunile sunt în unitățile fișierului (de obicei milimetri). STL-ul este copiat în proiect, deci fișierul original nu mai e necesar.",
+    "cuts": "Elimină secțiuni",
+    "noCuts": "Nicio secțiune eliminată: se adaugă toată plasa.",
+    "half": "Taie o parte",
+    "box": "Elimină o cutie",
+    "side": "Partea de eliminat",
+    "above": "Elimină deasupra",
+    "below": "Elimină dedesubt",
+    "axis": "Axa",
+    "to": "până la",
+    "removeCut": "Elimină această tăietură",
+    "addHalf": "Taie o parte",
+    "addBox": "Elimină o cutie",
+    "tune": "Fiecare tăietură devine un cursor în Parametri, deci o poți muta și vedea previzualizarea.",
+    "failed": "Nu s-a putut importa: {{error}}",
+    "added": "{{name}} adăugat în model"
   }
 }

@@ -9,7 +9,11 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   RenderError,
+  type AssetInfo,
   type PrintLayout,
+  clearAssets,
+  importMesh,
+  pickMeshToImport,
   exportModel,
   inTauri,
   canSelfUpdate,
@@ -23,6 +27,8 @@ import {
   saveProject,
 } from "./api";
 import { emptyProject, sampleProject } from "./defaults";
+import { appendSource } from "./importScad";
+import { ImportDialog } from "./components/ImportDialog";
 import { removeSnapshot, renameSnapshot, restoreSnapshot, withSnapshot } from "./history";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { addRecent, baseName, fromWire, getRecents, removeRecent, toWire } from "./project";
@@ -76,6 +82,8 @@ function App() {
   const [projectId, setProjectId] = useState(0);
 
   const [dialog, setDialog] = useState<DialogId>(null);
+  /** An STL just imported, waiting for the user to choose what to remove from it. */
+  const [imported, setImported] = useState<AssetInfo | null>(null);
   const [pending, setPending] = useState<{ next: () => void } | null>(null);
   // Pictures and files waiting to go with the next chat message (the preview can add a drawing).
   const [draftFiles, setDraftFiles] = useState<Attached[]>([]);
@@ -201,6 +209,8 @@ function App() {
   const noAgent = engines === null ? t("chat.checking") : engine ? null : t("chat.noAgent");
 
   const load = (p: FcProject, filePath: string | null) => {
+    // an opened file brings its own meshes (the app side replaces them); a new project has none
+    if (filePath === null) void clearAssets().catch(() => {});
     commit(p);
     setPath(filePath);
     setDirty(false);
@@ -337,6 +347,20 @@ function App() {
         notify(t("file.openFailed", { error: errorText(e) }));
       }
     });
+  const importStl = async () => {
+    try {
+      const p = await pickMeshToImport();
+      if (p) setImported(await importMesh(p));
+    } catch (e) {
+      notify(t("import.failed", { error: errorText(e) }));
+    }
+  };
+  const insertImport = (scad: string) => {
+    const name = imported?.name ?? "";
+    edit((p) => ({ ...p, source: appendSource(p.source, scad) }));
+    setImported(null);
+    notify(t("import.added", { name }));
+  };
   const openRecent = (p: string) => guard(() => void loadPath(p));
   const closeProject = () =>
     guard(() => {
@@ -496,6 +520,7 @@ function App() {
           { separator: true, label: "" },
           { label: t("menu.save"), shortcut: "Ctrl+S", onSelect: doSave, disabled: !open },
           { label: t("menu.saveAs"), shortcut: "Ctrl+Shift+S", onSelect: doSaveAs, disabled: !open },
+          { label: t("menu.import"), onSelect: importStl, disabled: !open },
           { separator: true, label: "" },
           { label: t("menu.history"), shortcut: "Ctrl+H", onSelect: () => setDialog("history"), disabled: !open },
           { label: t("menu.export"), shortcut: "Ctrl+E", onSelect: () => setDialog("export"), disabled: !open },
@@ -736,6 +761,7 @@ function App() {
         </Box>
       )}
 
+      {imported && <ImportDialog asset={imported} onInsert={insertImport} onClose={() => setImported(null)} />}
       {dialog === "settings" && project && (
         <SettingsDialog project={project} layout={layout} onChange={patchSettings} onSupports={patchSupports} onClose={() => setDialog(null)} />
       )}

@@ -55,6 +55,7 @@ type CachedMesh = Option<(u64, Arc<Mesh>)>;
 fn hash(source: &str) -> u64 {
     let mut h = DefaultHasher::new();
     source.hash(&mut h);
+    crate::assets::fingerprint().hash(&mut h);
     h.finish()
 }
 

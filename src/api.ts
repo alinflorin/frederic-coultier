@@ -349,3 +349,25 @@ export async function printLayout(
 
 /** False when the installation is managed by a package manager (a Linux .deb or .rpm). */
 export const canSelfUpdate = () => invoke<boolean>("can_self_update");
+
+// --- imported meshes ---
+
+/** An STL copied into the project; the model reaches it with `import("name")`. */
+export interface AssetInfo {
+  name: string;
+  bytes: number;
+  triangles: number;
+  /** `[min, max]` corners in the file's own units. */
+  bounds: [[number, number, number], [number, number, number]] | null;
+}
+
+export async function pickMeshToImport(): Promise<string | null> {
+  const p = await open({ multiple: false, directory: false, filters: [{ name: "STL mesh", extensions: ["stl"] }] });
+  return typeof p === "string" ? p : null;
+}
+
+export const importMesh = (path: string) => invoke<AssetInfo>("import_mesh", { path });
+export const listAssets = () => invoke<AssetInfo[]>("list_assets");
+export const removeAsset = (name: string) => invoke<boolean>("remove_asset", { name });
+/** A new project starts with no imported meshes. */
+export const clearAssets = () => invoke<void>("clear_assets");

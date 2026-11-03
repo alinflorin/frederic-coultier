@@ -40,7 +40,8 @@
     "settingsShort": "Settings",
     "kb": "Knowledge base…",
     "about": "About…",
-    "preferences": "App settings"
+    "preferences": "App settings",
+    "import": "Import STL…"
   },
   "file": {
     "untitled": "Untitled",
@@ -569,5 +570,26 @@
       "step3": "Then check again. Until then you can continue with MCP only.",
       "check": "Check again"
     }
+  },
+  "import": {
+    "title": "Import {{name}}",
+    "insert": "Add to model",
+    "summary": "{{triangles}} triangles",
+    "units": "Sizes are in the file's own units (usually millimetres). The STL is copied into the project, so the original file is not needed afterwards.",
+    "cuts": "Remove sections",
+    "noCuts": "No sections removed: the whole mesh is added.",
+    "half": "Cut off one side",
+    "box": "Remove a box",
+    "side": "Side to remove",
+    "above": "Remove above",
+    "below": "Remove below",
+    "axis": "Axis",
+    "to": "to",
+    "removeCut": "Remove this cut",
+    "addHalf": "Cut off one side",
+    "addBox": "Remove a box",
+    "tune": "Each cut becomes a slider in Parameters, so you can move it and watch the preview.",
+    "failed": "Could not import: {{error}}",
+    "added": "Added {{name}} to the model"
   }
 }

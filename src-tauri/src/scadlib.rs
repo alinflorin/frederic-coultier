@@ -2,7 +2,8 @@
 //! model through `use <name.scad>` / `include <name.scad>`. They are served from memory and are
 //! never written into a `.fc` file: a project names a library, the app supplies it.
 //!
-//! Nothing outside that folder is reachable, so projects still can't read the file system.
+//! Nothing outside that folder is reachable, so projects still can't read the file system. The one
+//! exception to "served from the folder" is `import()`, which gets the project's own imported meshes.
 
 use include_dir::{Dir, include_dir};
 use openrscad_eval::{FileResolver, LoadedFile};
@@ -54,6 +55,11 @@ impl FileResolver for LibResolver {
             source,
             dir,
         })
+    }
+
+    /// `import("part.stl")`: the meshes imported into the open project (see `assets`).
+    fn load_bytes(&self, path: &str, _from_dir: &str) -> Option<Vec<u8>> {
+        crate::assets::get(path).map(|b| b.to_vec())
     }
 }
 

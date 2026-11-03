@@ -136,6 +136,16 @@ pub const COMMANDS: &[Cmd] = &[
     },
     Cmd {
         group: "Project",
+        name: "import-mesh",
+        usage: "import-mesh PATH",
+        summary: "copy an STL file into the project so the model can import() it",
+        details: "Copies a binary or ASCII `.stl` (absolute path) into the open project and prints the name it got (a clash with another imported file gets `-2`, `-3`, ...) and its bounds. The original file is not needed afterwards; the copy is saved inside the `.fc` file.\nThen use it in the source with `import(\"name.stl\");`, which can be moved, rotated, scaled and combined like any shape. To remove a section of it, subtract a shape: `difference() { import(\"name.stl\"); translate([x, y, z]) cube([w, d, h]); }`. Put the cut positions in top-level variables (`cut_z = 12; // [0:0.1:30]`) so the user gets sliders for them. Only STL is supported.",
+        flags: NO_FLAGS,
+        opts: &[],
+        examples: &["import-mesh /home/anna/scans/ring.stl"],
+    },
+    Cmd {
+        group: "Project",
         name: "save-project",
         usage: "save-project [PATH] [--overwrite]",
         summary: "save the project (to its file, or to a new PATH)",

@@ -1,4 +1,5 @@
 mod agent;
+mod assets;
 mod bvh;
 mod checks;
 mod hollow;
@@ -30,12 +31,46 @@ fn can_self_update() -> bool {
 
 #[tauri::command]
 fn open_project(path: PathBuf) -> Result<Project, String> {
-    project::read_project(&path).map_err(|e| e.to_string())
+    let mut p = project::read_project(&path).map_err(|e| e.to_string())?;
+    assets::replace_all(std::mem::take(&mut p.assets));
+    Ok(p)
+}
+
+/// Starts from no imported meshes (a new project).
+#[tauri::command]
+fn clear_assets() {
+    assets::replace_all([]);
+}
+
+/// Meshes imported into the open project.
+#[tauri::command]
+fn list_assets() -> Vec<assets::AssetInfo> {
+    assets::list()
+}
+
+/// Reads the STL at `path` into the project and returns the name `import()` should use.
+#[tauri::command]
+fn import_mesh(path: PathBuf) -> Result<assets::AssetInfo, String> {
+    const MAX: u64 = 256 * 1024 * 1024;
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > MAX {
+        return Err("this file is too large to import (limit 256 MB)".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    assets::add_stl(&name, bytes)
+}
+
+/// Drops an imported mesh from the project. The source is the caller's business.
+#[tauri::command]
+fn remove_asset(name: String) -> bool {
+    assets::remove(&name)
 }
 
 /// Saves and returns the path actually written (a `.fc` extension is added if missing).
 #[tauri::command]
-fn save_project(path: PathBuf, project: Project) -> Result<String, String> {
+fn save_project(path: PathBuf, mut project: Project) -> Result<String, String> {
+    project.assets = assets::all().into_iter().map(|(n, b)| (n, b.to_vec())).collect();
     project::write_project(&path, &project)
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(|e| e.to_string())
@@ -273,6 +308,7 @@ fn layout_key(source: &str, print: &PrintParams, sprue: &Option<SprueSpec>) -> S
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     source.hash(&mut h);
+    assets::fingerprint().hash(&mut h);
     format!("{print:?}{sprue:?}").hash(&mut h);
     format!("{:x}", h.finish())
 }
@@ -442,6 +478,10 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             can_self_update,
+            clear_assets,
+            list_assets,
+            import_mesh,
+            remove_asset,
             agent::bridge::agent_reply,
             agent::mcp_status,
             agent::mcp_configure,

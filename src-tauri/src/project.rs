@@ -10,6 +10,7 @@
 //! | `chat.json`     | the design conversation                              |
 //! | `supports.json` | print supports                                       |
 //! | `history.json`  | version history: snapshots of source, settings, supports |
+//! | `assets/NAME`   | meshes the model `import()`s (see `assets.rs`), one entry per file |
 //!
 //! `settings`, `chat`, `supports` and `history` are opaque JSON here: the frontend owns
 //! their schema and fills in defaults for anything missing, so older files
@@ -57,7 +58,7 @@ struct Manifest {
     app: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     pub source: String,
     pub settings: Value,
@@ -65,6 +66,10 @@ pub struct Project {
     pub supports: Value,
     #[serde(default)]
     pub history: Value,
+    /// Imported meshes by file name. Never sent to or from the frontend (they live in `assets`,
+    /// and only travel to and from the archive).
+    #[serde(skip)]
+    pub assets: std::collections::BTreeMap<String, Vec<u8>>,
 }
 
 fn read_entry<R: Read + std::io::Seek>(
@@ -110,7 +115,24 @@ pub fn read_project(path: &Path) -> Result<Project, ProjectError> {
     }
 
     let source = read_entry(&mut zip, "model.scad")?.ok_or(ProjectError::Missing("model.scad"))?;
+    let mut assets = std::collections::BTreeMap::new();
+    let names: Vec<String> = zip
+        .file_names()
+        .filter_map(|n| n.ok())
+        .filter_map(|n| n.strip_prefix("assets/").map(str::to_owned))
+        .filter(|n| !n.is_empty() && !n.contains(['/', '\\']))
+        .collect();
+    for name in names {
+        let entry = zip.by_name(&format!("assets/{name}"))?;
+        let mut buf = Vec::new();
+        entry.take(MAX_ENTRY_BYTES + 1).read_to_end(&mut buf)?;
+        if buf.len() as u64 > MAX_ENTRY_BYTES {
+            return Err(ProjectError::TooLarge("assets"));
+        }
+        assets.insert(name, buf);
+    }
     Ok(Project {
+        assets,
         source: String::from_utf8_lossy(&source).into_owned(),
         settings: read_json(&mut zip, "settings.json", json!({}))?,
         chat: read_json(&mut zip, "chat.json", json!([]))?,
@@ -161,6 +183,10 @@ pub fn write_project(path: &Path, project: &Project) -> Result<PathBuf, ProjectE
             zip.start_file(name, opts)?;
             zip.write_all(&bytes)?;
         }
+        for (name, bytes) in &project.assets {
+            zip.start_file(format!("assets/{name}"), opts)?;
+            zip.write_all(bytes)?;
+        }
         zip.finish()?.sync_all()?;
         fs::rename(&tmp, &target)?;
         Ok(())
@@ -183,6 +209,7 @@ mod tests {
             chat: json!([{ "id": "1", "role": "user", "text": "hi" }]),
             supports: json!({ "auto": 3 }),
             history: json!([{ "id": "s1", "label": "first" }]),
+            assets: [("part.stl".to_string(), vec![0u8, 1, 2, 255])].into(),
         }
     }
 

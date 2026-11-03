@@ -73,6 +73,7 @@ pub async fn run(c: &Ctx<'_>, inv: &Invocation) -> Result<Out, String> {
         "get-project-notes" => get_project_notes(c, args).await,
         "new-project" => new_project(c, args).await,
         "open-project" => open_project(c, args).await,
+        "import-mesh" => import_mesh(c, args).await,
         "save-project" | "save" => save_project(c, args).await,
         "history" => history(c, args).await,
         "snapshot" => snapshot(c, args).await,
@@ -356,6 +357,38 @@ async fn open_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
     )
     .await?;
     say(format!("ok: opened {path}"))
+}
+
+/// Copies an STL into the open project; the model then reaches it with `import("name.stl")`.
+async fn import_mesh(_c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
+    let p = options(args, NO_FLAGS)?;
+    let [path] = p.pos.as_slice() else {
+        return Err("give exactly one .stl file path".into());
+    };
+    let file = Path::new(path);
+    if !file.is_absolute() {
+        return Err("the path must be absolute".into());
+    }
+    if !file.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("stl")) {
+        return Err("only .stl files can be imported".into());
+    }
+    if !file.is_file() {
+        return Err("that file does not exist".into());
+    }
+    let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let a = crate::assets::add_stl(&name, bytes)?;
+    let bounds = a.bounds.map_or(String::new(), |[lo, hi]| {
+        format!(
+            "\nbounds: x {:.3}..{:.3}, y {:.3}..{:.3}, z {:.3}..{:.3} (the file's own units)",
+            lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]
+        )
+    });
+    say(format!(
+        "ok: imported as {n} ({t} triangles){bounds}\nuse it in the source with: import(\"{n}\");\nto remove a section, subtract a shape: difference() {{ import(\"{n}\"); translate([x, y, z]) cube([w, d, h]); }}",
+        n = a.name,
+        t = a.triangles
+    ))
 }
 
 async fn save_project(c: &Ctx<'_>, args: &[String]) -> Result<Out, String> {
