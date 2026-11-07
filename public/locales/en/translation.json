@@ -195,7 +195,7 @@
     "minWall": "Minimum wall",
     "minWallHint": "Resin jewelry is typically 0.5–0.8 mm.",
     "tilt": "Print tilt",
-    "tiltHint": "Fine detail should face upwards after tilting. Negative values tilt the other way (e.g. -45° for a stone facing up).",
+    "tiltHint": "Fine detail should face upwards after tilting. Any angle is allowed; negative values tilt the other way (e.g. -45° for a stone facing up).",
     "supportsTitle": "Supports",
     "supportsEnable": "Print with supports",
     "tipRadius": "Tip radius",

@@ -195,7 +195,7 @@
     "minWall": "Perete minim",
     "minWallHint": "Bijuteriile din rășină au de obicei 0,5–0,8 mm.",
     "tilt": "Înclinare la imprimare",
-    "tiltHint": "Detaliile fine trebuie să privească în sus după înclinare. Valorile negative înclină în sens opus (ex. -45° pentru piatra în sus).",
+    "tiltHint": "Detaliile fine trebuie să privească în sus după înclinare. Nu există limită; valorile negative înclină în sens opus (ex. -45° pentru piatra în sus).",
     "supportsTitle": "Suporturi",
     "supportsEnable": "Imprimă cu suporturi",
     "tipRadius": "Rază vârf",

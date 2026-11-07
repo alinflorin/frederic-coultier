@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn full_reference_has_everything() {
-        let rows = json!([{ "path": "printing.tilt", "values": "-60–60", "now": "30", "text": "tilt about X" }]);
+        let rows = json!([{ "path": "printing.tilt", "values": "any", "now": "30", "text": "tilt about X" }]);
         let text = full(Some(&rows));
         for c in COMMANDS {
             assert!(
@@ -263,7 +263,7 @@ mod tests {
         }
         assert!(text.contains("## Running commands") && text.contains("## The model"));
         assert!(
-            text.contains("| `printing.tilt` | -60–60 | 30 | tilt about X |"),
+            text.contains("| `printing.tilt` | any | 30 | tilt about X |"),
             "{text}"
         );
         assert!(full(None).contains("unavailable"));
@@ -311,7 +311,7 @@ mod tests {
     #[ignore]
     fn print_reference() {
         let rows = json!([
-            { "path": "printing.tilt", "values": "-60–60", "now": "30", "text": "tilt of the piece about X when printing (degrees)" },
+            { "path": "printing.tilt", "values": "any", "now": "30", "text": "tilt of the piece about X when printing (degrees)" },
             { "path": "material.metal", "values": "silver925, gold18y", "now": "silver925", "text": "the metal" }
         ]);
         println!(

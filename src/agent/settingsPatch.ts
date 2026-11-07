@@ -5,7 +5,6 @@ import type { ProjectSettings } from "../types";
 const RANGES: Record<string, [number, number]> = {
   "render.previewQuality": [12, 256],
   "printing.minWall": [0.2, 3],
-  "printing.tilt": [-60, 60],
   "printing.supports.tipRadius": [0.1, 1],
   "printing.supports.baseRadius": [0.2, 2],
   "printing.supports.overhangAngle": [0, 80],
