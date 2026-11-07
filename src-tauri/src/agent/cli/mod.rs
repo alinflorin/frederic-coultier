@@ -189,7 +189,7 @@ mod tests {
     #[tokio::test]
     async fn instructions_put_the_notes_above_the_reference() {
         let rows =
-            json!([{ "path": "printing.tilt", "values": "0–60", "now": "30", "text": "tilt" }]);
+            json!([{ "path": "printing.tilt", "values": "-60–60", "now": "30", "text": "tilt" }]);
         let cli = Cli::new(Mock::new(move |op, _| {
             if op == "settings.schema" {
                 Ok(rows.clone())
@@ -208,7 +208,7 @@ mod tests {
             .find("# fc reference")
             .expect("the reference is included");
         assert!(at_notes < at_ref, "notes first");
-        assert!(text.contains("| `printing.tilt` | 0–60 | 30 | tilt |"));
+        assert!(text.contains("| `printing.tilt` | -60–60 | 30 | tilt |"));
         assert!(!text.contains("<!--"), "comments must be stripped");
     }
 

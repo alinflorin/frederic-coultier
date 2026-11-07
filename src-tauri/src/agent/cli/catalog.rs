@@ -443,7 +443,7 @@ pub const COMMANDS: &[Cmd] = &[
         name: "orient",
         usage: "orient",
         summary: "rank print orientations (tilt) by overhang",
-        details: "Ranks print tilts (0–60°) by overhang area, best first, using the current overhang angle and lift. Apply one with `set printing.tilt=N`.",
+        details: "Ranks print tilts (-60 to 60°; negative tilts the other way, e.g. stone up) by overhang area, best first, using the current overhang angle and lift. Apply one with `set printing.tilt=N`.",
         flags: NO_FLAGS,
         opts: &[],
         examples: &[],

@@ -25,7 +25,7 @@ export function settingsSchema(t: TFunction) {
     render: loose({ metalColor: hex, previewQuality: range(t, 12, 256, { int: true }) }),
     printing: loose({
       minWall: range(t, 0.2, 3),
-      tilt: range(t, 0, 60),
+      tilt: range(t, -60, 60),
       supports: loose({
         tipRadius: range(t, 0.1, 1),
         baseRadius: range(t, 0.2, 2),

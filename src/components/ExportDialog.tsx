@@ -56,7 +56,7 @@ export function ExportDialog({
     ? [
         { ok: layout ? layout.fits : null, key: "fits", values: { bed: preset.bed?.join(" × ") } },
         { ok: canSupports, key: "supports", values: { n: project.supports.list.length } },
-        ...(pr.supports.enabled && pr.tilt > 0 ? [{ ok: true, key: "tilt", values: { tilt: pr.tilt } }] : []),
+        ...(pr.supports.enabled && pr.tilt !== 0 ? [{ ok: true, key: "tilt", values: { tilt: pr.tilt } }] : []),
         ...(project.settings.material.process === "casting" ? [{ ok: pick.sprue, key: "sprue" }] : []),
       ]
     : [];

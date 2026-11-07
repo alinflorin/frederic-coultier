@@ -262,7 +262,7 @@ export interface TiltRow {
 }
 
 export const suggestTilt = (source: string, angle: number, lift: number) =>
-  invoke<TiltRow[]>("suggest_tilt", { source, min: 0, max: 60, step: 5, angle, lift });
+  invoke<TiltRow[]>("suggest_tilt", { source, min: -60, max: 60, step: 5, angle, lift });
 
 export interface AutoResult {
   supports: Support[];
