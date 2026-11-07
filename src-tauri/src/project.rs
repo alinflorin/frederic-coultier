@@ -28,8 +28,9 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 pub const FORMAT: &str = "frederic-coultier-project";
 pub const VERSION: u32 = 1;
 const EXTENSION: &str = "fc";
-/// Upper bound for a single entry, so a hostile file can't exhaust memory.
-const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
+/// Upper bound for a single entry, so a hostile file can't exhaust memory. 256 MB matches what the
+/// mesh import accepts; a long chat with pictures can also reach tens of megabytes.
+const MAX_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
